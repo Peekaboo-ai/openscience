@@ -57,6 +57,7 @@ import { ComputeSettingsRoutes } from "./routes/settings/compute"
 import { SettingsPreferencesRoutes } from "./routes/settings/preferences"
 import { UsageLoggingRoutes } from "./routes/settings/usage-logging"
 import { LocalModelsRoutes } from "./routes/settings/local"
+import { ModelConnectionsRoutes } from "./routes/settings/model-connections"
 import { SandboxSettingsRoutes } from "./routes/settings/sandbox"
 import { CliSettingsRoutes } from "./routes/settings/cli"
 import { UpdatesSettingsRoutes, desktopUpdateShutdownAuthorized } from "./routes/settings/updates"
@@ -280,6 +281,7 @@ export namespace Server {
         .route("/settings/preferences", SettingsPreferencesRoutes())
         .route("/settings/usage-logging", UsageLoggingRoutes())
         .route("/settings/local", LocalModelsRoutes())
+        .route("/settings/model-connections", ModelConnectionsRoutes())
         .route("/settings/sandbox", SandboxSettingsRoutes())
         .route("/settings/updates", UpdatesSettingsRoutes())
         .route("/settings/cli", CliSettingsRoutes())

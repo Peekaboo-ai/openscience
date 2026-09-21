@@ -3,7 +3,8 @@ import { IconCpu, IconFolder, IconTerminal, IconActivity } from "@/atlas/shared/
 import { preloadTerminal } from "@/components/terminal"
 import "./session-sidebar.css"
 
-export type SessionContext = "files" | "terminal" | "canvas" | "kernels" | "autoresearch" | "trace" | "artifact"
+export type SessionContext =
+  "files" | "terminal" | "canvas" | "kernels" | "autoresearch" | "trace" | "artifact" | "timeline"
 
 export function CompactContextActions(props: {
   context: SessionContext
@@ -12,6 +13,15 @@ export function CompactContextActions(props: {
 }): JSX.Element {
   return (
     <div class="workspace-header__context-actions" style={{ display: "contents" }}>
+      <button
+        type="button"
+        role="menuitem"
+        aria-pressed={props.context === "timeline" && props.contextOpen}
+        onClick={() => props.onContext("timeline")}
+      >
+        <IconActivity size={16} strokeWidth={1.5} />
+        Action Timeline
+      </button>
       <button
         type="button"
         role="menuitem"
@@ -104,6 +114,15 @@ export function SessionSidebarActions(props: {
         Workspace
       </div>
       <div class="session-sidebar__action-list">
+        <SidebarAction
+          label="Action Timeline"
+          detail="Actions and research state"
+          ariaLabel="Open action timeline"
+          active={props.context === "timeline" && props.contextOpen}
+          onClick={() => props.onContext("timeline")}
+        >
+          <IconActivity size={16} strokeWidth={1.5} />
+        </SidebarAction>
         <SidebarAction
           label="Files"
           detail="Project files"

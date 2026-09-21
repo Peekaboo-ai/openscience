@@ -2629,6 +2629,10 @@ export namespace Provider {
       // config.provider for its whitelist has always been, and must stay,
       // "config" here.
       const credentialSource = providers[providerID]?.source
+      // 自定义连接丢失密钥时保留设置记录，但不再作为可调用供应商。
+      if (provider.options?.customConnection === true && !providers[providerID]?.key) continue
+      // 仅修改目录名称或白名单不代表供应商已连接；保留无密钥本地端点和自动加载器。
+      if (!providers[providerID] && !provider.options?.apiKey && !provider.options?.baseURL && !provider.api) continue
       const claimed = credentialSource === "env" || credentialSource === "api" || credentialSource === "managed"
       const partial: Partial<Info> = claimed ? {} : { source: "config" }
       if (provider.env) partial.env = provider.env
@@ -3313,7 +3317,9 @@ export namespace Provider {
 
     const providers = Object.values(available)
     const configured = (p: Info) => !cfg.provider || Object.keys(cfg.provider).includes(p.id)
-    const candidates = providers.filter((p) => configured(p))
+    const preferred = providers.filter((p) => configured(p))
+    // 删除最后一个自定义连接后，空 provider 配置不能屏蔽仍有效的环境变量或订阅连接。
+    const candidates = preferred.length ? preferred : providers
     const provider = candidates.find((p) => Object.keys(p.models).length > 0) ?? candidates[0]
     if (!provider) throw new Error(NO_PROVIDER_HINT)
     const [model] = sort(Object.values(provider.models))

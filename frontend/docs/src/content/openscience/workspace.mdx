@@ -27,9 +27,26 @@ Give files descriptive names and tell OpenScience where to save outputs. A new c
 | Files | Browse project documents and the current conversation's working files. |
 | Terminal | Run project commands yourself. |
 | Compute | Check analysis work and jobs. |
+| Action Timeline | Inspect persisted actions, timing, failures, checkpoints, and session state. |
 | Customize | Configure model access, skills, tools, connectors, and app settings. |
 
 Use the command palette to find actions such as **Open project files**, **Open project terminal**, **Open settings**, and **New session**. On narrow windows, workspace actions may appear in a menu.
+
+## Action Timeline
+
+Open **Action Timeline** in the workspace sidebar or compact workspace menu. Each turn groups its user request, model calls, tools, retries, compactions, and recorded file snapshots. Select an action to see its execution metadata, token usage, cost, and exact recorded times. Raw tool arguments, outputs, provider protocol state, and reasoning text are excluded from this view.
+
+The first page contains the latest 50 messages. **Load earlier** adds older history; search only covers records already loaded. Search temporarily expands matching turns, preserving their previous folded state when cleared. **Follow latest** returns to current work. The timeline refreshes from persisted state after streaming events and reconnects; a failed request retains the last successful snapshot and shows an error.
+
+Use the overview's buttons or mouse wheel to zoom, Shift/right-drag to pan, and drag to filter by time. The exact-time controls provide a keyboard alternative. The action list supports arrow keys, Page Up/Down, Home, and End. Missing timing phases and unknown measurements display as unavailable rather than estimated zeroes.
+
+**Save checkpoint** creates a research handoff document under `.openscience/checkpoints` and freezes a recovery recipe from the durable execution history. **Recovery plan** shows each step, source generation, code digest and whether it can be replayed safely. **Recover to new branch** copies the checkpoint conversation and replays verified literal state in separate Python/R kernels; the original session and kernels are preserved. This is conservative replay, not an arbitrary memory image: imports, unknown dependencies, file/network effects and nonliteral state require manual review. Such recipes are marked **partial**, never complete. Recovery logs survive reloads, show progress/failures, and allow review and retry in another fresh branch. Current permissions and interpreter availability still apply.
+
+**Fork session** copies the conversation; action details can fork before a selected message and checkpoints can fork at their saved boundary. **Branch lineage** links related sessions. **Undo from this message** first previews affected messages/actions and tracked files, then uses native conversation/file undo. **Restore undone conversation** is available before a subsequent prompt. Conversation undo does not rewind kernel variables, and recovery replay does not roll back files. **Fresh restart** clears a kernel's variables after confirmation.
+
+The workbench also supports cancellation of a specific active runtime run or compute job, and **Guide / Stop** controls for an owned running child agent. Guidance joins the child's current execution loop. Kernel history reports the latest 200 executions, including independent REPL cells, exact queue timestamps and generations. Context composition is the last recorded request estimate, separately labelled from provider-reported usage; it is absent when no request telemetry is available.
+
+The workbench also shows child agents, compute jobs, the latest provider-reported context usage, and actual kernel sandbox/permission state. Reasoning tokens are already included in output tokens. The view distinguishes an empty session from unavailable or stale data.
 
 ## Add context
 

@@ -2594,6 +2594,184 @@ export type McpResource = {
   client: string
 }
 
+export type TimelineRevertPreview = {
+  messageID: string
+  messages: number
+  actions: number
+  files: Array<string>
+}
+
+export type TimelineRecoveryPlan = {
+  checkpointID: string
+  steps: Array<{
+    id: string
+    language: string
+    kernelID: string
+    environment: string
+    generation?: number
+    policy: "safe" | "manual"
+    reason: string
+    hash: string
+  }>
+  safe: number
+  manual: number
+}
+
+export type TimelineRecoveryRun = {
+  id: string
+  checkpointID: string
+  targetID?: string
+  status: "running" | "completed" | "partial" | "failed" | "interrupted"
+  completed: number
+  total: number
+  manual: number
+  createdAt: number
+  updatedAt: number
+  error?: string
+}
+
+export type ActionTimelineEntry = {
+  id: string
+  messageID: string
+  turnID: string
+  kind: "user" | "inference" | "tool" | "kernel" | "delegation" | "retry" | "compaction" | "checkpoint"
+  title: string
+  status: "pending" | "running" | "completed" | "partial" | "error" | "cancelled" | "interrupted"
+  owner: string
+  tool?: string
+  model?: string
+  provider?: string
+  language?: "python" | "r"
+  startedAt?: number
+  queuedAt?: number
+  generation?: number
+  executionID?: string
+  responseAt?: number
+  completedAt?: number
+  tokens?: {
+    input: number
+    output: number
+    reasoning: number
+    cacheRead: number
+    cacheWrite: number
+  }
+  cost?: number
+  resources: Array<string>
+  artifacts: Array<string>
+  childSessionID?: string
+  error?: string
+}
+
+export type ActionTimelinePage = {
+  sessionID: string
+  status: "idle" | "retry" | "busy" | "compacting"
+  entries: Array<ActionTimelineEntry>
+  messageIDs: Array<string>
+  totalMessages: number
+  first: string | null
+  last: string | null
+  hasEarlier: boolean
+  hasMore: boolean
+  generatedAt: number
+}
+
+export type TimelineCheckpoint = {
+  id: string
+  sessionID: string
+  messageID?: string
+  createdAt: number
+  path: string
+  summary: string
+}
+
+export type TimelineBranch = {
+  sessionID: string
+  sourceID: string
+  checkpointID?: string
+  createdAt: number
+}
+
+export type TimelineWorkbench = {
+  sessionID: string
+  revert?: {
+    messageID: string
+    turns?: number
+    files?: Array<string>
+  }
+  status: "idle" | "busy" | "retry" | "compacting"
+  checkpoints: Array<TimelineCheckpoint>
+  branches: Array<TimelineBranch>
+  recoveries: Array<TimelineRecoveryRun>
+  runs: Array<{
+    id: string
+    status: string
+    acceptedAt: number
+  }>
+  executions: Array<{
+    id: string
+    language: string
+    status: string
+    generation: number | null
+    queuedAt: string | null
+    startedAt: string | null
+    completedAt: string | null
+    kernelID: string | null
+  }>
+  children: Array<{
+    sessionID?: string
+    agent: string
+    status: string
+    toolCalls?: number
+  }>
+  jobs: Array<{
+    id: string
+    name: string
+    target: string
+    status: string
+    artifactCount: number
+  }>
+  kernels: Array<{
+    id: string
+    language: string
+    state: string
+    incarnation: number | null
+    queued: number
+    sandbox: string
+    enforced: boolean | null
+    network: string
+  }>
+  permissions: {
+    pending: number
+    total: number
+    rejected: number
+  }
+  context: {
+    input: number | null
+    output: number | null
+    reasoning: number | null
+    cacheRead: number | null
+    cacheWrite: number | null
+    compactions: number
+  }
+  composition?: {
+    recordedAt: number
+    total: number
+    usable: number
+    system: number
+    text: number
+    reasoning: number
+    tool: number
+    skills: number
+    image: number
+    document: number
+  }
+  capabilities: {
+    conversationFork: true
+    fileCheckpoint: true
+    kernelRestore: true
+  }
+}
+
 export type TextPartInput = {
   id?: string
   type: "text"
@@ -9398,6 +9576,148 @@ export type PostSettingsLocalResponses = {
   200: unknown
 }
 
+export type ModelConnectionsListData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/settings/model-connections"
+}
+
+export type ModelConnectionsListErrors = {
+  /**
+   * Connection error
+   */
+  400: {
+    error: string
+  }
+}
+
+export type ModelConnectionsListError = ModelConnectionsListErrors[keyof ModelConnectionsListErrors]
+
+export type ModelConnectionsListResponses = {
+  /**
+   * Success
+   */
+  200: {
+    connections: Array<{
+      id: string
+      name: string
+      baseURL: string
+      models: Array<string>
+      hasKey: boolean
+      context: number
+      output: number
+    }>
+  }
+}
+
+export type ModelConnectionsListResponse = ModelConnectionsListResponses[keyof ModelConnectionsListResponses]
+
+export type ModelConnectionsSaveData = {
+  body?: {
+    id?: string
+    url: string
+    key?: string
+    name: string
+    models: Array<string>
+    context?: number
+    output?: number
+  }
+  path?: never
+  query?: never
+  url: "/settings/model-connections"
+}
+
+export type ModelConnectionsSaveErrors = {
+  /**
+   * Connection error
+   */
+  400: {
+    error: string
+  }
+}
+
+export type ModelConnectionsSaveError = ModelConnectionsSaveErrors[keyof ModelConnectionsSaveErrors]
+
+export type ModelConnectionsSaveResponses = {
+  /**
+   * Success
+   */
+  200: {
+    baseURL: string
+    models: Array<string>
+    id: string
+  }
+}
+
+export type ModelConnectionsSaveResponse = ModelConnectionsSaveResponses[keyof ModelConnectionsSaveResponses]
+
+export type ModelConnectionsDiscoverData = {
+  body?: {
+    id?: string
+    url: string
+    key?: string
+  }
+  path?: never
+  query?: never
+  url: "/settings/model-connections/models"
+}
+
+export type ModelConnectionsDiscoverErrors = {
+  /**
+   * Connection error
+   */
+  400: {
+    error: string
+  }
+}
+
+export type ModelConnectionsDiscoverError = ModelConnectionsDiscoverErrors[keyof ModelConnectionsDiscoverErrors]
+
+export type ModelConnectionsDiscoverResponses = {
+  /**
+   * Success
+   */
+  200: {
+    baseURL: string
+    models: Array<string>
+  }
+}
+
+export type ModelConnectionsDiscoverResponse =
+  ModelConnectionsDiscoverResponses[keyof ModelConnectionsDiscoverResponses]
+
+export type ModelConnectionsRemoveData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: never
+  url: "/settings/model-connections/{id}"
+}
+
+export type ModelConnectionsRemoveErrors = {
+  /**
+   * Connection error
+   */
+  400: {
+    error: string
+  }
+}
+
+export type ModelConnectionsRemoveError = ModelConnectionsRemoveErrors[keyof ModelConnectionsRemoveErrors]
+
+export type ModelConnectionsRemoveResponses = {
+  /**
+   * Success
+   */
+  200: {
+    removed: boolean
+  }
+}
+
+export type ModelConnectionsRemoveResponse = ModelConnectionsRemoveResponses[keyof ModelConnectionsRemoveResponses]
+
 export type PutSettingsSandboxData = {
   body?: {
     enabled?: boolean
@@ -10971,6 +11291,297 @@ export type ExperimentalResourceListResponses = {
 
 export type ExperimentalResourceListResponse =
   ExperimentalResourceListResponses[keyof ExperimentalResourceListResponses]
+
+export type SessionTimelineForkData = {
+  body?: {
+    messageID?: string
+    checkpointID?: string
+  }
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/action-timeline/fork"
+}
+
+export type SessionTimelineForkErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionTimelineForkError = SessionTimelineForkErrors[keyof SessionTimelineForkErrors]
+
+export type SessionTimelineForkResponses = {
+  /**
+   * Branch session identifier
+   */
+  200: {
+    sessionID: string
+  }
+}
+
+export type SessionTimelineForkResponse = SessionTimelineForkResponses[keyof SessionTimelineForkResponses]
+
+export type SessionTimelineRevertPreviewData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query: {
+    directory?: string
+    messageID: string
+  }
+  url: "/session/{sessionID}/action-timeline/revert-preview"
+}
+
+export type SessionTimelineRevertPreviewErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionTimelineRevertPreviewError =
+  SessionTimelineRevertPreviewErrors[keyof SessionTimelineRevertPreviewErrors]
+
+export type SessionTimelineRevertPreviewResponses = {
+  /**
+   * Affected messages and tracked files
+   */
+  200: TimelineRevertPreview
+}
+
+export type SessionTimelineRevertPreviewResponse =
+  SessionTimelineRevertPreviewResponses[keyof SessionTimelineRevertPreviewResponses]
+
+export type SessionTimelineRecoveryPlanData = {
+  body?: never
+  path: {
+    sessionID: string
+    checkpointID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/action-timeline/recovery/{checkpointID}"
+}
+
+export type SessionTimelineRecoveryPlanErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionTimelineRecoveryPlanError =
+  SessionTimelineRecoveryPlanErrors[keyof SessionTimelineRecoveryPlanErrors]
+
+export type SessionTimelineRecoveryPlanResponses = {
+  /**
+   * Replay and manual steps
+   */
+  200: TimelineRecoveryPlan
+}
+
+export type SessionTimelineRecoveryPlanResponse =
+  SessionTimelineRecoveryPlanResponses[keyof SessionTimelineRecoveryPlanResponses]
+
+export type SessionTimelineRecoverData = {
+  body?: never
+  path: {
+    sessionID: string
+    checkpointID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/action-timeline/recovery/{checkpointID}"
+}
+
+export type SessionTimelineRecoverErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionTimelineRecoverError = SessionTimelineRecoverErrors[keyof SessionTimelineRecoverErrors]
+
+export type SessionTimelineRecoverResponses = {
+  /**
+   * Durable recovery receipt
+   */
+  202: TimelineRecoveryRun
+}
+
+export type SessionTimelineRecoverResponse = SessionTimelineRecoverResponses[keyof SessionTimelineRecoverResponses]
+
+export type SessionTimelineChildData = {
+  body?:
+    | {
+        operation: "stop"
+      }
+    | {
+        operation: "steer"
+        text: string
+      }
+  path: {
+    sessionID: string
+    childID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/action-timeline/child/{childID}"
+}
+
+export type SessionTimelineChildErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionTimelineChildError = SessionTimelineChildErrors[keyof SessionTimelineChildErrors]
+
+export type SessionTimelineChildResponses = {
+  /**
+   * Applied child control
+   */
+  200: {
+    ok: boolean
+  }
+}
+
+export type SessionTimelineChildResponse = SessionTimelineChildResponses[keyof SessionTimelineChildResponses]
+
+export type SessionActionTimelineData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    before?: string
+    after?: string
+    limit?: number
+  }
+  url: "/session/{sessionID}/action-timeline"
+}
+
+export type SessionActionTimelineErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionActionTimelineError = SessionActionTimelineErrors[keyof SessionActionTimelineErrors]
+
+export type SessionActionTimelineResponses = {
+  /**
+   * Action timeline page
+   */
+  200: ActionTimelinePage
+}
+
+export type SessionActionTimelineResponse = SessionActionTimelineResponses[keyof SessionActionTimelineResponses]
+
+export type SessionTimelineWorkbenchData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/action-timeline/workbench"
+}
+
+export type SessionTimelineWorkbenchErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionTimelineWorkbenchError = SessionTimelineWorkbenchErrors[keyof SessionTimelineWorkbenchErrors]
+
+export type SessionTimelineWorkbenchResponses = {
+  /**
+   * Safe workbench projection
+   */
+  200: TimelineWorkbench
+}
+
+export type SessionTimelineWorkbenchResponse =
+  SessionTimelineWorkbenchResponses[keyof SessionTimelineWorkbenchResponses]
+
+export type SessionTimelineCheckpointData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/action-timeline/checkpoint"
+}
+
+export type SessionTimelineCheckpointErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionTimelineCheckpointError = SessionTimelineCheckpointErrors[keyof SessionTimelineCheckpointErrors]
+
+export type SessionTimelineCheckpointResponses = {
+  /**
+   * Saved checkpoint
+   */
+  200: TimelineCheckpoint
+}
+
+export type SessionTimelineCheckpointResponse =
+  SessionTimelineCheckpointResponses[keyof SessionTimelineCheckpointResponses]
 
 export type SessionListData = {
   body?: never

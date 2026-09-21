@@ -185,6 +185,14 @@ import type {
   McpLocalConfig,
   McpRemoteConfig,
   McpStatusResponses,
+  ModelConnectionsDiscoverErrors,
+  ModelConnectionsDiscoverResponses,
+  ModelConnectionsListErrors,
+  ModelConnectionsListResponses,
+  ModelConnectionsRemoveErrors,
+  ModelConnectionsRemoveResponses,
+  ModelConnectionsSaveErrors,
+  ModelConnectionsSaveResponses,
   NotebookCommandsResponses,
   NotebookCommandStopErrors,
   NotebookCommandStopResponses,
@@ -286,6 +294,8 @@ import type {
   SearchQueryResponses,
   SessionAbortErrors,
   SessionAbortResponses,
+  SessionActionTimelineErrors,
+  SessionActionTimelineResponses,
   SessionChildrenErrors,
   SessionChildrenResponses,
   SessionCommandErrors,
@@ -325,6 +335,20 @@ import type {
   SessionStatusResponses,
   SessionSummarizeErrors,
   SessionSummarizeResponses,
+  SessionTimelineCheckpointErrors,
+  SessionTimelineCheckpointResponses,
+  SessionTimelineChildErrors,
+  SessionTimelineChildResponses,
+  SessionTimelineForkErrors,
+  SessionTimelineForkResponses,
+  SessionTimelineRecoverErrors,
+  SessionTimelineRecoverResponses,
+  SessionTimelineRecoveryPlanErrors,
+  SessionTimelineRecoveryPlanResponses,
+  SessionTimelineRevertPreviewErrors,
+  SessionTimelineRevertPreviewResponses,
+  SessionTimelineWorkbenchErrors,
+  SessionTimelineWorkbenchResponses,
   SessionTodoErrors,
   SessionTodoResponses,
   SessionTraceErrors,
@@ -2492,6 +2516,126 @@ export class Settings extends HeyApiClient {
   }
 }
 
+export class ModelConnections extends HeyApiClient {
+  /**
+   * List custom model connections
+   */
+  public list<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<
+      ModelConnectionsListResponses,
+      ModelConnectionsListErrors,
+      ThrowOnError
+    >({ url: "/settings/model-connections", ...options })
+  }
+
+  /**
+   * Save a custom connection and its selected models
+   */
+  public save<ThrowOnError extends boolean = false>(
+    parameters: {
+      id?: string
+      url: string
+      key?: string
+      name: string
+      models: Array<string>
+      context?: number
+      output?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "id" },
+            { in: "body", key: "url" },
+            { in: "body", key: "key" },
+            { in: "body", key: "name" },
+            { in: "body", key: "models" },
+            { in: "body", key: "context" },
+            { in: "body", key: "output" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ModelConnectionsSaveResponses,
+      ModelConnectionsSaveErrors,
+      ThrowOnError
+    >({
+      url: "/settings/model-connections",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Discover models from an OpenAI-compatible endpoint
+   */
+  public discover<ThrowOnError extends boolean = false>(
+    parameters: {
+      id?: string
+      url: string
+      key?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "id" },
+            { in: "body", key: "url" },
+            { in: "body", key: "key" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ModelConnectionsDiscoverResponses,
+      ModelConnectionsDiscoverErrors,
+      ThrowOnError
+    >({
+      url: "/settings/model-connections/models",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Remove a custom connection and its key
+   */
+  public remove<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "id" }] }])
+    return (options?.client ?? this.client).delete<
+      ModelConnectionsRemoveResponses,
+      ModelConnectionsRemoveErrors,
+      ThrowOnError
+    >({
+      url: "/settings/model-connections/{id}",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class Auth extends HeyApiClient {
   /**
    * Configure an onboarding provider credential
@@ -3531,6 +3675,301 @@ export class Filesystem extends HeyApiClient {
 }
 
 export class Session extends HeyApiClient {
+  /**
+   * Create a timeline branch
+   */
+  public timelineFork<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      messageID?: string
+      checkpointID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "messageID" },
+            { in: "body", key: "checkpointID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionTimelineForkResponses, SessionTimelineForkErrors, ThrowOnError>(
+      {
+        url: "/session/{sessionID}/action-timeline/fork",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    )
+  }
+
+  /**
+   * Preview conversation undo
+   */
+  public timelineRevertPreview<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      messageID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "messageID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionTimelineRevertPreviewResponses,
+      SessionTimelineRevertPreviewErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/action-timeline/revert-preview",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Preview safe checkpoint replay
+   */
+  public timelineRecoveryPlan<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      checkpointID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "checkpointID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionTimelineRecoveryPlanResponses,
+      SessionTimelineRecoveryPlanErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/action-timeline/recovery/{checkpointID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Recover a checkpoint into a fresh branch
+   */
+  public timelineRecover<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      checkpointID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "checkpointID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SessionTimelineRecoverResponses,
+      SessionTimelineRecoverErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/action-timeline/recovery/{checkpointID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Stop or steer an owned child agent
+   */
+  public timelineChild<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      childID: string
+      directory?: string
+      body?:
+        | {
+            operation: "stop"
+          }
+        | {
+            operation: "steer"
+            text: string
+          }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "childID" },
+            { in: "query", key: "directory" },
+            { key: "body", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SessionTimelineChildResponses,
+      SessionTimelineChildErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/action-timeline/child/{childID}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Read the durable action timeline
+   *
+   * Safe projection of persisted actions. Cursors page whole messages (1–200), newest first by default; entries within a page are chronological. Raw input, output, reasoning and provider state are excluded.
+   */
+  public actionTimeline<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      before?: string
+      after?: string
+      limit?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "before" },
+            { in: "query", key: "after" },
+            { in: "query", key: "limit" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionActionTimelineResponses,
+      SessionActionTimelineErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/action-timeline",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read timeline runtime and research state
+   */
+  public timelineWorkbench<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionTimelineWorkbenchResponses,
+      SessionTimelineWorkbenchErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/action-timeline/workbench",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Save a research recovery checkpoint
+   *
+   * Saves the native research handoff file and its durable timeline reference. Does not snapshot interpreter memory.
+   */
+  public timelineCheckpoint<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SessionTimelineCheckpointResponses,
+      SessionTimelineCheckpointErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/action-timeline/checkpoint",
+      ...options,
+      ...params,
+    })
+  }
+
   /**
    * List sessions
    *
@@ -9146,6 +9585,11 @@ export class OpenScienceClient extends HeyApiClient {
   private _settings?: Settings
   get settings(): Settings {
     return (this._settings ??= new Settings({ client: this.client }))
+  }
+
+  private _modelConnections?: ModelConnections
+  get modelConnections(): ModelConnections {
+    return (this._modelConnections ??= new ModelConnections({ client: this.client }))
   }
 
   private _auth?: Auth

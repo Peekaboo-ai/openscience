@@ -841,6 +841,8 @@ export namespace ComputeJobs {
   const SSH_STDOUT_BYTES = 256 * 1024
   const SSH_STDERR_BYTES = 64 * 1024
   const SSH_DRAIN_TIMEOUT = 1_000
+  // 超算登录节点完成认证后的会话初始化可能超过 30 秒；连接建立仍由 SSH 的 8 秒超时约束。
+  const SSH_PROBE_TIMEOUT = 60_000
 
   function boundedChild(proc: ChildProcess, stdout = SSH_STDOUT_BYTES, stderr = SSH_STDERR_BYTES) {
     const output = { chunks: [] as Buffer[], size: 0 }
@@ -940,7 +942,6 @@ export namespace ComputeJobs {
     // The SSH broker is the sole subprocess allowed to use the host agent.
     // Take it from the server environment, never project/runtime overlays;
     // ordinary subprocess sanitization intentionally removes this capability.
-    const agent = process.env.SSH_AUTH_SOCK
     const cleanupGate = async (release?: string) => {
       if (!release) return
       await Promise.all([
@@ -950,31 +951,10 @@ export namespace ComputeJobs {
     }
     try {
       const launched = await AuthoritySignal.exclusive(() =>
-        OpenScience.withSubprocessEnv(process.env, async (env) => {
+        OpenScience.withSubprocessEnv(process.env, async () => {
           if (options.authorize !== false) await currentAuthority(authority)
-          // The broker receives only this transport allowlist, never a
-          // provider or service credential, so it registers without an
-          // overlay stamp regardless of what `env` carried.
-          const transport = Object.fromEntries(
-            [
-              "PATH",
-              "HOME",
-              "USER",
-              "LOGNAME",
-              "SHELL",
-              "LANG",
-              "LC_ALL",
-              "LC_CTYPE",
-              "TMPDIR",
-              "SSH_AUTH_SOCK",
-              "SYSTEMROOT",
-              "WINDIR",
-              "COMSPEC",
-              "PATHEXT",
-              "USERPROFILE",
-            ].flatMap((key) => (env[key] ? [[key, env[key]]] : [])),
-          )
-          if (agent) transport.SSH_AUTH_SOCK = agent
+          // SSH 仅从服务进程读取传输白名单，避免工作区覆盖变量或服务凭据进入子进程。
+          const transport = SshAdapter.env()
           // This is OpenScience's fixed, host-key-pinned broker transport, not
           // project-authored code. Session sandboxes intentionally deny all
           // network access, so applying them here would make every approved
@@ -2694,15 +2674,12 @@ export namespace ComputeJobs {
       const known = await SshAdapter.known({ ...parsed, ...scanned }, temporary, { executables })
       const ssh = executables.ssh ?? (await SshAdapter.executable("ssh"))
       const argv = SshAdapter.argv({ ...parsed, ...scanned }, known, script, ssh)
-      const agent = process.env.SSH_AUTH_SOCK
       const detached = process.platform !== "win32"
       const proc = spawn(argv[0]!, argv.slice(1), {
         // The broker owns SSH authentication. A selected identity is supplied
         // only as a validated -i path; arbitrary shell credentials and user
         // ssh_config execution remain unavailable.
-        env: agent
-          ? { ...OpenScience.kernelEnv(process.env), SSH_AUTH_SOCK: agent }
-          : OpenScience.kernelEnv(process.env),
+        env: SshAdapter.env(),
         detached,
         windowsHide: true,
         stdio: ["ignore", "pipe", "pipe"],
@@ -2712,7 +2689,10 @@ export namespace ComputeJobs {
         proc.once("error", (error) => resolve({ code: null, error: error.message }))
         proc.once("exit", (code) => resolve({ code }))
       })
-      const timer = setTimeout(() => streams.fail(new Error("Connection timed out")), 12_000)
+      const timer = setTimeout(
+        () => streams.fail(new Error("SSH connection check timed out after 60 seconds")),
+        SSH_PROBE_TIMEOUT,
+      )
       try {
         const outcome = await Promise.race([
           done.then((result) => ({ result, error: undefined })),

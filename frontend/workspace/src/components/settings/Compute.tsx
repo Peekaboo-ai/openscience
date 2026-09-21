@@ -117,7 +117,7 @@ const Compute: Component = () => {
   const [data, control] = steady(createResource(() => call<Info>()))
   const [state, setState] = createStore({
     adding: false,
-    busy: {} as Record<string, boolean>,
+    busy: {} as Record<string, boolean | undefined>,
     probes: {} as Record<string, Probe>,
     label: "",
     host: "",
@@ -147,12 +147,8 @@ const Compute: Component = () => {
   const adding = () => state.adding
   const setAdding: Setter<boolean> = (value) => setState("adding", value)
   const setBusy = (key: string, value: boolean) => {
-    setState("busy", (current) => {
-      const next = { ...current }
-      if (value) next[key] = true
-      else delete next[key]
-      return next
-    })
+    // Solid 会合并对象更新；必须显式删除该键，才能在请求结束后解除按钮禁用。
+    setState("busy", key, value ? true : undefined)
     return value
   }
   const isBusy = (key: string) => Boolean(state.busy[key])

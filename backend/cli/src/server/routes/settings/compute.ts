@@ -27,6 +27,7 @@ import { ComputeCapabilities } from "../../../compute/capabilities"
 import { resolveCredentialFields } from "./credentials"
 import { CredentialLifecycle } from "../../../credentials/lifecycle"
 import { TrustedExecutable } from "../../../process/trusted-executable"
+import { sshConfigTokens } from "../../../compute/ssh/config-tokens"
 
 const Directory = z.object({
   directory: z.string().trim().min(1).optional(),
@@ -653,43 +654,6 @@ export namespace ComputeSettings {
       throw new Error(`Compute provider ${target} CLI is not approved; run Check connection in Settings > Compute`)
     }
     return entry.executable
-  }
-
-  function sshConfigTokens(value: string) {
-    const tokens: string[] = []
-    let token = ""
-    let quote: "'" | '"' | undefined
-    let escaped = false
-    for (const char of value) {
-      if (escaped) {
-        token += char
-        escaped = false
-        continue
-      }
-      if (char === "\\") {
-        escaped = true
-        continue
-      }
-      if (quote) {
-        if (char === quote) quote = undefined
-        else token += char
-        continue
-      }
-      if (char === "'" || char === '"') {
-        quote = char
-        continue
-      }
-      if (char === "#") break
-      if (/\s/.test(char)) {
-        if (token) tokens.push(token)
-        token = ""
-        continue
-      }
-      token += char
-    }
-    if (escaped) token += "\\"
-    if (token) tokens.push(token)
-    return tokens
   }
 
   const SSH_CONFIG_MAX_DEPTH = 4

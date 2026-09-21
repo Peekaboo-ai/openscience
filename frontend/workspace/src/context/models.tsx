@@ -149,6 +149,7 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
       // and direct-key routes (set here or implicitly via local.set()).
       if (state === "hide") return false
       if (state === "show") return true
+      if (model.providerID.startsWith("custom-")) return true
       // Default: only the curated frontier set surfaces in the picker. The full
       // catalog stays one click away in Manage Models. If no frontier model is
       // connected, show everything so the picker is never empty.

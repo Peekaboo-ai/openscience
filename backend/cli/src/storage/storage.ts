@@ -207,11 +207,15 @@ export namespace Storage {
    */
   async function publish(target: string, content: string) {
     const tmp = `${target}.${process.pid}.${randomUUID()}.tmp`
-    await Bun.write(tmp, content)
-    await fs.rename(tmp, target).catch(async (error) => {
-      await fs.unlink(tmp).catch(() => {})
-      throw error
-    })
+    // Bun.write 在 Windows 对普通长路径仍受 MAX_PATH 限制；Node 文件接口会处理扩展路径。
+    // 继续在同目录暂存后重命名，保证其他进程不会读到未写完的记录。
+    await fs
+      .writeFile(tmp, content, { flag: "wx", mode: 0o600 })
+      .then(() => fs.rename(tmp, target))
+      .catch(async (error) => {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") await fs.unlink(tmp).catch(() => {})
+        throw error
+      })
   }
 
   /** A narrow cross-process lock for storage mutations. OpenScience commonly

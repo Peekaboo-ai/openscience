@@ -22365,6 +22365,355 @@
         ]
       }
     },
+    "/settings/model-connections": {
+      "get": {
+        "operationId": "modelConnections.list",
+        "summary": "List custom model connections",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "connections": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "baseURL": {
+                            "type": "string"
+                          },
+                          "models": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "hasKey": {
+                            "type": "boolean"
+                          },
+                          "context": {
+                            "type": "number"
+                          },
+                          "output": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "baseURL",
+                          "models",
+                          "hasKey",
+                          "context",
+                          "output"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "connections"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Connection error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.modelConnections.list({\n  ...\n})"
+          }
+        ]
+      },
+      "post": {
+        "operationId": "modelConnections.save",
+        "summary": "Save a custom connection and its selected models",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "baseURL": {
+                      "type": "string"
+                    },
+                    "models": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "baseURL",
+                    "models",
+                    "id"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Connection error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^custom-[a-f0-9-]{36}$"
+                  },
+                  "url": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2048
+                  },
+                  "key": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 8192
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "models": {
+                    "minItems": 1,
+                    "maxItems": 2000,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    }
+                  },
+                  "context": {
+                    "default": 32768,
+                    "type": "integer",
+                    "minimum": 1024,
+                    "maximum": 2097152
+                  },
+                  "output": {
+                    "default": 8192,
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 262144
+                  }
+                },
+                "required": [
+                  "url",
+                  "name",
+                  "models"
+                ]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.modelConnections.save({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/settings/model-connections/models": {
+      "post": {
+        "operationId": "modelConnections.discover",
+        "summary": "Discover models from an OpenAI-compatible endpoint",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "baseURL": {
+                      "type": "string"
+                    },
+                    "models": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "baseURL",
+                    "models"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Connection error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^custom-[a-f0-9-]{36}$"
+                  },
+                  "url": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2048
+                  },
+                  "key": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 8192
+                  }
+                },
+                "required": [
+                  "url"
+                ]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.modelConnections.discover({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/settings/model-connections/{id}": {
+      "delete": {
+        "operationId": "modelConnections.remove",
+        "summary": "Remove a custom connection and its key",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "removed": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "removed"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Connection error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.modelConnections.remove({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/settings/sandbox": {
       "put": {
         "operationId": "putSettingsSandbox",
@@ -26616,6 +26965,642 @@
           {
             "lang": "js",
             "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.experimental.resource.list({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/action-timeline/fork": {
+      "post": {
+        "operationId": "session.timelineFork",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Create a timeline branch",
+        "responses": {
+          "200": {
+            "description": "Branch session identifier",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "sessionID": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "sessionID"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "messageID": {
+                    "type": "string",
+                    "pattern": "^msg.*"
+                  },
+                  "checkpointID": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.session.timelineFork({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/action-timeline/revert-preview": {
+      "get": {
+        "operationId": "session.timelineRevertPreview",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "messageID",
+            "schema": {
+              "type": "string",
+              "pattern": "^msg.*"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Preview conversation undo",
+        "responses": {
+          "200": {
+            "description": "Affected messages and tracked files",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimelineRevertPreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.session.timelineRevertPreview({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/action-timeline/recovery/{checkpointID}": {
+      "get": {
+        "operationId": "session.timelineRecoveryPlan",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "checkpointID",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Preview safe checkpoint replay",
+        "responses": {
+          "200": {
+            "description": "Replay and manual steps",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimelineRecoveryPlan"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.session.timelineRecoveryPlan({\n  ...\n})"
+          }
+        ]
+      },
+      "post": {
+        "operationId": "session.timelineRecover",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "checkpointID",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Recover a checkpoint into a fresh branch",
+        "responses": {
+          "202": {
+            "description": "Durable recovery receipt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimelineRecoveryRun"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.session.timelineRecover({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/action-timeline/child/{childID}": {
+      "post": {
+        "operationId": "session.timelineChild",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "childID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Stop or steer an owned child agent",
+        "responses": {
+          "200": {
+            "description": "Applied child control",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "operation": {
+                        "type": "string",
+                        "const": "stop"
+                      }
+                    },
+                    "required": [
+                      "operation"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "operation": {
+                        "type": "string",
+                        "const": "steer"
+                      },
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 16000
+                      }
+                    },
+                    "required": [
+                      "operation",
+                      "text"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.session.timelineChild({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/action-timeline": {
+      "get": {
+        "operationId": "session.actionTimeline",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "schema": {
+              "type": "string",
+              "pattern": "^msg.*"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "schema": {
+              "type": "string",
+              "pattern": "^msg.*"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            }
+          }
+        ],
+        "summary": "Read the durable action timeline",
+        "description": "Safe projection of persisted actions. Cursors page whole messages (1–200), newest first by default; entries within a page are chronological. Raw input, output, reasoning and provider state are excluded.",
+        "responses": {
+          "200": {
+            "description": "Action timeline page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionTimelinePage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.session.actionTimeline({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/action-timeline/workbench": {
+      "get": {
+        "operationId": "session.timelineWorkbench",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Read timeline runtime and research state",
+        "responses": {
+          "200": {
+            "description": "Safe workbench projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimelineWorkbench"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.session.timelineWorkbench({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/action-timeline/checkpoint": {
+      "post": {
+        "operationId": "session.timelineCheckpoint",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Save a research recovery checkpoint",
+        "description": "Saves the native research handoff file and its durable timeline reference. Does not snapshot interpreter memory.",
+        "responses": {
+          "200": {
+            "description": "Saved checkpoint",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimelineCheckpoint"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.session.timelineCheckpoint({\n  ...\n})"
           }
         ]
       }
@@ -62647,6 +63632,851 @@
           "name",
           "uri",
           "client"
+        ]
+      },
+      "TimelineRevertPreview": {
+        "type": "object",
+        "properties": {
+          "messageID": {
+            "type": "string"
+          },
+          "messages": {
+            "type": "number"
+          },
+          "actions": {
+            "type": "number"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "messageID",
+          "messages",
+          "actions",
+          "files"
+        ]
+      },
+      "TimelineRecoveryPlan": {
+        "type": "object",
+        "properties": {
+          "checkpointID": {
+            "type": "string"
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "language": {
+                  "type": "string"
+                },
+                "kernelID": {
+                  "type": "string"
+                },
+                "environment": {
+                  "type": "string"
+                },
+                "generation": {
+                  "type": "number"
+                },
+                "policy": {
+                  "type": "string",
+                  "enum": [
+                    "safe",
+                    "manual"
+                  ]
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "hash": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "language",
+                "kernelID",
+                "environment",
+                "policy",
+                "reason",
+                "hash"
+              ]
+            }
+          },
+          "safe": {
+            "type": "number"
+          },
+          "manual": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "checkpointID",
+          "steps",
+          "safe",
+          "manual"
+        ]
+      },
+      "TimelineRecoveryRun": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "checkpointID": {
+            "type": "string"
+          },
+          "targetID": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "completed",
+              "partial",
+              "failed",
+              "interrupted"
+            ]
+          },
+          "completed": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          },
+          "manual": {
+            "type": "number"
+          },
+          "createdAt": {
+            "type": "number"
+          },
+          "updatedAt": {
+            "type": "number"
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "checkpointID",
+          "status",
+          "completed",
+          "total",
+          "manual",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "ActionTimelineEntry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "messageID": {
+            "type": "string"
+          },
+          "turnID": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "user",
+              "inference",
+              "tool",
+              "kernel",
+              "delegation",
+              "retry",
+              "compaction",
+              "checkpoint"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "running",
+              "completed",
+              "partial",
+              "error",
+              "cancelled",
+              "interrupted"
+            ]
+          },
+          "owner": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string",
+            "enum": [
+              "python",
+              "r"
+            ]
+          },
+          "startedAt": {
+            "type": "number",
+            "minimum": 0
+          },
+          "queuedAt": {
+            "type": "number",
+            "minimum": 0
+          },
+          "generation": {
+            "type": "number"
+          },
+          "executionID": {
+            "type": "string"
+          },
+          "responseAt": {
+            "type": "number",
+            "minimum": 0
+          },
+          "completedAt": {
+            "type": "number",
+            "minimum": 0
+          },
+          "tokens": {
+            "type": "object",
+            "properties": {
+              "input": {
+                "type": "number"
+              },
+              "output": {
+                "type": "number"
+              },
+              "reasoning": {
+                "type": "number"
+              },
+              "cacheRead": {
+                "type": "number"
+              },
+              "cacheWrite": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "input",
+              "output",
+              "reasoning",
+              "cacheRead",
+              "cacheWrite"
+            ]
+          },
+          "cost": {
+            "type": "number",
+            "minimum": 0
+          },
+          "resources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "childSessionID": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "messageID",
+          "turnID",
+          "kind",
+          "title",
+          "status",
+          "owner",
+          "resources",
+          "artifacts"
+        ]
+      },
+      "ActionTimelinePage": {
+        "type": "object",
+        "properties": {
+          "sessionID": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "retry",
+              "busy",
+              "compacting"
+            ]
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActionTimelineEntry"
+            }
+          },
+          "messageIDs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "totalMessages": {
+            "type": "number"
+          },
+          "first": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "last": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hasEarlier": {
+            "type": "boolean"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "generatedAt": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "sessionID",
+          "status",
+          "entries",
+          "messageIDs",
+          "totalMessages",
+          "first",
+          "last",
+          "hasEarlier",
+          "hasMore",
+          "generatedAt"
+        ]
+      },
+      "TimelineCheckpoint": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "messageID": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "number"
+          },
+          "path": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "sessionID",
+          "createdAt",
+          "path",
+          "summary"
+        ]
+      },
+      "TimelineBranch": {
+        "type": "object",
+        "properties": {
+          "sessionID": {
+            "type": "string"
+          },
+          "sourceID": {
+            "type": "string"
+          },
+          "checkpointID": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "sessionID",
+          "sourceID",
+          "createdAt"
+        ]
+      },
+      "TimelineWorkbench": {
+        "type": "object",
+        "properties": {
+          "sessionID": {
+            "type": "string"
+          },
+          "revert": {
+            "type": "object",
+            "properties": {
+              "messageID": {
+                "type": "string"
+              },
+              "turns": {
+                "type": "number"
+              },
+              "files": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "messageID"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "busy",
+              "retry",
+              "compacting"
+            ]
+          },
+          "checkpoints": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimelineCheckpoint"
+            }
+          },
+          "branches": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimelineBranch"
+            }
+          },
+          "recoveries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimelineRecoveryRun"
+            }
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "acceptedAt": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "id",
+                "status",
+                "acceptedAt"
+              ]
+            }
+          },
+          "executions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "language": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "generation": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "queuedAt": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "startedAt": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "completedAt": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "kernelID": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "language",
+                "status",
+                "generation",
+                "queuedAt",
+                "startedAt",
+                "completedAt",
+                "kernelID"
+              ]
+            }
+          },
+          "children": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "sessionID": {
+                  "type": "string"
+                },
+                "agent": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "toolCalls": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "agent",
+                "status"
+              ]
+            }
+          },
+          "jobs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "target": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "artifactCount": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "target",
+                "status",
+                "artifactCount"
+              ]
+            }
+          },
+          "kernels": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "language": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                },
+                "incarnation": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "queued": {
+                  "type": "number"
+                },
+                "sandbox": {
+                  "type": "string"
+                },
+                "enforced": {
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "network": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "language",
+                "state",
+                "incarnation",
+                "queued",
+                "sandbox",
+                "enforced",
+                "network"
+              ]
+            }
+          },
+          "permissions": {
+            "type": "object",
+            "properties": {
+              "pending": {
+                "type": "number"
+              },
+              "total": {
+                "type": "number"
+              },
+              "rejected": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "pending",
+              "total",
+              "rejected"
+            ]
+          },
+          "context": {
+            "type": "object",
+            "properties": {
+              "input": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "output": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "reasoning": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "cacheRead": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "cacheWrite": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "compactions": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "input",
+              "output",
+              "reasoning",
+              "cacheRead",
+              "cacheWrite",
+              "compactions"
+            ]
+          },
+          "composition": {
+            "type": "object",
+            "properties": {
+              "recordedAt": {
+                "type": "number"
+              },
+              "total": {
+                "type": "number"
+              },
+              "usable": {
+                "type": "number"
+              },
+              "system": {
+                "type": "number"
+              },
+              "text": {
+                "type": "number"
+              },
+              "reasoning": {
+                "type": "number"
+              },
+              "tool": {
+                "type": "number"
+              },
+              "skills": {
+                "type": "number"
+              },
+              "image": {
+                "type": "number"
+              },
+              "document": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "recordedAt",
+              "total",
+              "usable",
+              "system",
+              "text",
+              "reasoning",
+              "tool",
+              "skills",
+              "image",
+              "document"
+            ]
+          },
+          "capabilities": {
+            "type": "object",
+            "properties": {
+              "conversationFork": {
+                "type": "boolean",
+                "const": true
+              },
+              "fileCheckpoint": {
+                "type": "boolean",
+                "const": true
+              },
+              "kernelRestore": {
+                "type": "boolean",
+                "const": true
+              }
+            },
+            "required": [
+              "conversationFork",
+              "fileCheckpoint",
+              "kernelRestore"
+            ]
+          }
+        },
+        "required": [
+          "sessionID",
+          "status",
+          "checkpoints",
+          "branches",
+          "recoveries",
+          "runs",
+          "executions",
+          "children",
+          "jobs",
+          "kernels",
+          "permissions",
+          "context",
+          "capabilities"
         ]
       },
       "TextPartInput": {

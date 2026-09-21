@@ -563,7 +563,7 @@ export default function Page(): JSX.Element {
   onMount(() => {
     const onOpenContext = (event: Event) => {
       const context = (event as CustomEvent).detail?.context
-      if (!(["files", "terminal", "kernels", "autoresearch", "trace"] as SessionContext[]).includes(context)) return
+      if (!(["files", "terminal", "kernels", "autoresearch", "trace", "timeline"] as SessionContext[]).includes(context)) return
       openContext(context)
     }
     document.addEventListener("openscience:open-context", onOpenContext)

@@ -22,16 +22,10 @@ type QuickModelRowOptions = {
   hidden?: ReadonlySet<string>
 }
 
-export type QuickModelRow<T extends { key: string }> =
-  | { kind: "choice"; key: string; choice: T }
-  | { kind: "unavailable"; key: string; model: (typeof COMPOSER_MODEL_ROSTER)[number] }
+export type QuickModelRow<T extends { key: string }> = { kind: "choice"; key: string; choice: T }
 
 /**
- * Produces the root picker's source order. Pinned choices lead, followed by
- * visible roster entries and passive placeholders for genuinely disconnected
- * roster models. Hidden connected entries are omitted. The rendered DOM can
- * use this list directly instead of relying on CSS `order`, which would
- * disagree with keyboard and accessibility traversal.
+ * 只排列已连接的选择项；未配置的推荐模型不应混入对话菜单。
  */
 export function curateQuickModelRows<T extends { key: string }>(
   choices: readonly T[],
@@ -58,9 +52,6 @@ export function curateQuickModelRows<T extends { key: string }>(
       added.add(model.key)
       continue
     }
-    if (options.hidden?.has(model.key)) continue
-    rows.push({ kind: "unavailable", key: model.key, model })
-    added.add(model.key)
   }
 
   for (const choice of choices) {
@@ -100,6 +91,9 @@ export function curateQuickModels<T extends QuickModel>(input: QuickModelInput<T
     )
   for (const model of input.pinned) add(model)
   for (const model of curated) add(model)
+  for (const model of input.available) {
+    if (model.provider.id.startsWith("custom-")) add(model)
+  }
   if (input.current) add(input.current)
   return selected.slice(0, limit)
 }

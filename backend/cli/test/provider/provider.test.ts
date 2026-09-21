@@ -217,7 +217,9 @@ test("synthesized Codex OAuth models use Codex variants and preserve model-speci
 test("current frontier models are routable from the seeded catalog", async () => {
   await using tmp = await tmpdir({
     config: {
-      provider: Object.fromEntries(Object.keys(FRONTIER_MODELS).map((id) => [id, {}])),
+      provider: Object.fromEntries(
+        Object.keys(FRONTIER_MODELS).map((id) => [id, { options: { apiKey: "fixture-catalog-key" } }]),
+      ),
     },
   })
   await Instance.provide({

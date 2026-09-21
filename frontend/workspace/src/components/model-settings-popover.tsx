@@ -91,15 +91,6 @@ const providerIcon = (id: string) => {
   return iconNames.includes(alias as IconName) ? (alias as IconName) : undefined
 }
 
-const providerLabels: Record<string, string> = {
-  anthropic: "Anthropic",
-  deepseek: "DeepSeek",
-  moonshotai: "Moonshot AI",
-  openai: "OpenAI",
-  xai: "xAI",
-  zai: "Z.AI",
-}
-
 const ModelMark: Component<{ id: string; name: string }> = (props) => (
   <span class="model-settings-logo" aria-hidden="true">
     <Show when={providerIcon(props.id)} fallback={<span>{props.name.charAt(0).toUpperCase()}</span>}>
@@ -898,36 +889,6 @@ export const ModelSettingsPopover: Component<{ trigger?: "label" | "icon" }> = (
                 >
                   <For each={quickRows()}>
                     {(entry) => {
-                      if (entry.kind === "unavailable") {
-                        const model = entry.model
-                        const provider = () => ({
-                          id: model.provider,
-                          name: providerLabels[model.provider] ?? model.provider,
-                        })
-                        // No connected provider serves this model yet. The row
-                        // leads to the connection settings instead of dead-ending.
-                        return (
-                          <button
-                            type="button"
-                            data-model-menu-item
-                            data-model-quick
-                            data-model-unavailable
-                            class={`${row} model-settings-unavailable`}
-                            aria-label={`${model.label}, ${provider().name} not connected. Connect a provider`}
-                            onClick={manage}
-                          >
-                            <ModelMark id={provider().id} name={provider().name} />
-                            <span class="model-settings-model">
-                              <strong>{model.label}</strong>
-                              <small>{`${provider().name} · Connect to use`}</small>
-                            </span>
-                            <span aria-hidden="true" data-model-menu-value>
-                              ›
-                            </span>
-                          </button>
-                        )
-                      }
-
                       const choice = entry.choice
                       const model = choice.model
                       const provider = () => displayProviderForModel(model.provider, model.id)

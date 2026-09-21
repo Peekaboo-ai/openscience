@@ -1986,7 +1986,12 @@ export namespace Config {
     )
   }
 
-  async function patchConfigPath(scope: Scope, target: string[], value: unknown) {
+  async function patchConfigPath(
+    scope: Scope,
+    target: string[],
+    value: unknown,
+    options: { preserveInstances?: boolean } = {},
+  ) {
     const write = async () => {
       const filepath = scope === "global" ? globalConfigFile() : projectConfigFile()
       const before = await Bun.file(filepath)
@@ -2007,7 +2012,7 @@ export namespace Config {
       const parsed = parseConfig(protectedText, filepath)
       global.reset()
       if (scope === "global") {
-        await disposeGlobalInstances({ strict: target[0] === "mcp" })
+        await disposeGlobalInstances({ strict: target[0] === "mcp", preserveInstances: options.preserveInstances })
       } else {
         await Instance.dispose({ strict: target[0] === "mcp" })
       }
@@ -2029,13 +2034,22 @@ export namespace Config {
    *  OpenAI-compatible endpoint) under `provider.<id>`, JSONC-preserving.
    *  Defaults to the GLOBAL config since a local endpoint is machine-wide, not
    *  per-project. Mirrors setMcp. */
-  export async function setProvider(id: string, provider: Provider, scope: Scope = "global") {
-    return patchConfigPath(scope, ["provider", id], provider)
+  export async function setProvider(
+    id: string,
+    provider: Provider,
+    scope: Scope = "global",
+    options: { preserveInstances?: boolean } = {},
+  ) {
+    return patchConfigPath(scope, ["provider", id], provider, options)
   }
 
   /** Remove a custom provider block. */
-  export async function removeProvider(id: string, scope: Scope = "global") {
-    return patchConfigPath(scope, ["provider", id], undefined)
+  export async function removeProvider(
+    id: string,
+    scope: Scope = "global",
+    options: { preserveInstances?: boolean } = {},
+  ) {
+    return patchConfigPath(scope, ["provider", id], undefined, options)
   }
 
   /**

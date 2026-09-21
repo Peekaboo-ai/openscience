@@ -1239,15 +1239,46 @@ finally:
     return `'${value.replaceAll("'", `'\"'\"'`)}'`
   }
 
-  function env() {
+  export function env(
+    source: NodeJS.ProcessEnv = process.env,
+    platform: NodeJS.Platform = process.platform,
+  ): Record<string, string> {
+    const allowed = new Set([
+      "PATH",
+      "HOME",
+      "USER",
+      "LOGNAME",
+      "SHELL",
+      "LANG",
+      "LC_ALL",
+      "LC_CTYPE",
+      "TMPDIR",
+      "SSH_AUTH_SOCK",
+      ...(platform === "win32"
+        ? [
+            "SYSTEMROOT",
+            "WINDIR",
+            "COMSPEC",
+            "PATHEXT",
+            "TEMP",
+            "TMP",
+            "USERPROFILE",
+            "HOMEDRIVE",
+            "HOMEPATH",
+            "PROGRAMDATA",
+          ]
+        : []),
+    ])
+    // Windows OpenSSH 缺少 PROGRAMDATA 时会静默退出；统一大小写并仅保留传输所需变量。
+    const normalized = Object.fromEntries(
+      Object.entries(source).map(([key, value]) => [platform === "win32" ? key.toUpperCase() : key, value]),
+    )
     return {
       ...Object.fromEntries(
-        ["PATH", "HOME", "USER", "SHELL", "LANG", "LC_ALL", "TMPDIR", "SSH_AUTH_SOCK"].flatMap((key) =>
-          process.env[key] ? [[key, process.env[key]!]] : [],
-        ),
+        Object.entries(normalized).filter((entry): entry is [string, string] => allowed.has(entry[0]) && !!entry[1]),
       ),
       GIT_CONFIG_NOSYSTEM: "1",
-      GIT_CONFIG_GLOBAL: "/dev/null",
+      GIT_CONFIG_GLOBAL: platform === "win32" ? "NUL" : "/dev/null",
       GIT_TERMINAL_PROMPT: "0",
     }
   }

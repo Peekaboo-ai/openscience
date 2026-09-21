@@ -16,7 +16,7 @@ const model = (
 })
 
 describe("curated composer models", () => {
-  test("interleaves connected choices and placeholders in DOM order before explicit exceptions", () => {
+  test("shows only connected choices in DOM order before explicit exceptions", () => {
     const choice = (key: string) => ({ key })
     const rows = curateQuickModelRows([
       choice("openai/gpt-5-6-sol"),
@@ -29,40 +29,24 @@ describe("curated composer models", () => {
 
     expect(rows.map((row) => row.key)).toEqual([
       "openai/gpt-5-6-sol",
-      "openai/gpt-6-astra",
       "openai/gpt-5-6-terra",
       "anthropic/claude-opus-5",
-      "anthropic/claude-fable-5-1",
       "moonshotai/kimi-k3",
-      "zai/glm-5-3",
       "deepseek/deepseek-v4-flash",
-      "anthropic/claude-fable-5",
-      "xai/grok-4-6",
       "google/gemini-3-6-flash",
     ])
-    expect(rows.map((row) => row.kind)).toEqual([
-      "choice",
-      "unavailable",
-      "choice",
-      "choice",
-      "unavailable",
-      "choice",
-      "unavailable",
-      "choice",
-      "unavailable",
-      "unavailable",
-      "choice",
-    ])
+    expect(rows.every((row) => row.kind === "choice")).toBe(true)
   })
 
-  test("omits connected models hidden by the user while retaining truly unavailable placeholders", () => {
+  test("omits hidden and disconnected models", () => {
     const choice = (key: string) => ({ key })
     const rows = curateQuickModelRows([choice("openai/gpt-5-6-sol"), choice("anthropic/claude-opus-5")], {
       hidden: new Set(["openai/gpt-5-6-terra"]),
     })
 
     expect(rows.map((row) => row.key)).not.toContain("openai/gpt-5-6-terra")
-    expect(rows.find((row) => row.key === "zai/glm-5-3")?.kind).toBe("unavailable")
+    expect(rows.find((row) => row.key === "zai/glm-5-3")).toBeUndefined()
+    expect(curateQuickModelRows([])).toEqual([])
   })
 
   test("moves pinned roster and catalog choices ahead of the default roster", () => {
@@ -81,7 +65,7 @@ describe("curated composer models", () => {
       "anthropic/claude-opus-5",
       "google/gemini-3-6-flash",
       "openai/gpt-5-6-sol",
-      "openai/gpt-6-astra",
+      "openai/gpt-5-6-terra",
     ])
   })
 
@@ -109,5 +93,11 @@ describe("curated composer models", () => {
     expect(curateQuickModels({ pinned: [pinned], available: [unrelated, pinned, sol] }).map((item) => item.id)).toEqual(
       ["gemini-3.6-flash", "gpt-5.6-sol"],
     )
+  })
+
+  test("includes every explicitly configured custom model without pinning", () => {
+    const first = model("lab/research", "custom-first")
+    const second = model("lab/research", "custom-second")
+    expect(curateQuickModels({ pinned: [], available: [first, second] })).toEqual([first, second])
   })
 })

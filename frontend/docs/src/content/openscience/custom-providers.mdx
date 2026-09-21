@@ -5,7 +5,33 @@ description: "Connect a compatible model service that is not in the provider pic
 
 Use a custom provider when your service exposes a compatible chat API and supplies its base URL, model IDs, authentication method, and capabilities. For common local runtimes, start with [Local models](/openscience/local-models).
 
-## Configure the endpoint
+## Configure in Models settings
+
+Open **Settings → Models → Custom API connections → Add connection**. Enter a connection name,
+the service's API base URL, and an API key. This form supports OpenAI-compatible **Chat Completions**.
+For example, use `https://models.example.org/v1`; a bare host is normalized to `/v1`.
+Custom gateway path prefixes are preserved.
+
+Choose **Fetch models**, search the results, and select one or more models. **Save connection**
+makes those selections available in the conversation picker. You can add multiple connections;
+identical model IDs on different gateways remain separate choices. The picker does not list
+unconnected recommended models.
+
+If the service does not implement `GET /models`, use **Add a model ID manually**. Select text/chat
+models supported by the endpoint. Under **Model limits**, set the context and output budgets
+documented by the provider; defaults are 32,768 context and 8,192 output tokens. These limits apply
+to all selected models in that connection. Discovery confirms the model listing, not inference,
+tool support, pricing, or every account's model entitlement. The configured models use text inputs
+and outputs with tool calling enabled for the research workflow; use the configuration-file method
+below for per-model capabilities or other API protocols.
+
+Use **Edit** to refresh the list or replace the selected models. Leaving the key blank preserves
+the saved key for the same endpoint; changing the endpoint requires entering a key explicitly.
+**Remove** deletes this connection and its local key. Keys are kept in the owner-only local auth
+store and are never returned in connection listings or written into the provider configuration.
+An existing external credential source can still provide access independently.
+
+## Configure the endpoint in a file
 
 Add a provider block to `openscience.json`:
 

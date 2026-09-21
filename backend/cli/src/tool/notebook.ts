@@ -519,7 +519,8 @@ class PythonKernel implements Kernel {
 
       let buffer = ""
       const onData = (d: Buffer) => {
-        buffer += d.toString()
+        // Windows 文本管道输出 CRLF；在拼接后归一化，兼容跨数据块的回车换行，JSON 内的转义内容不受影响。
+        buffer = (buffer + d.toString()).replace(/\r\n/g, "\n")
         if (!kernel.executionArmed && buffer.includes(EXECUTION_READY)) {
           kernel.executionArmed = true
           buffer = buffer.replace(EXECUTION_READY, "")

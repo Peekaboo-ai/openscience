@@ -266,7 +266,8 @@ async function configuredLocals() {
   return Object.entries(config.provider ?? {})
     .filter(
       ([, p]: [string, any]) =>
-        Provider.isLocalBaseURL(p?.options?.baseURL ?? p?.api) || p?.options?.selfHosted === true,
+        p?.options?.customConnection !== true &&
+        (Provider.isLocalBaseURL(p?.options?.baseURL ?? p?.api) || p?.options?.selfHosted === true),
     )
     .map(([id, p]: [string, any]) => ({
       id,

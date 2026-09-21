@@ -8,7 +8,20 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 
 ## Unreleased
 
+### Fixed
+
+- **Message sending on Windows with long storage paths.** Write atomic staging files through the long-path-aware filesystem API so durable run admission does not fail with `ENAMETOOLONG` before reaching the configured model.
+
+- **Compute settings finish loading.** Release each action's busy state after success or failure so SSH tests, imports and other compute controls become usable again.
+
+- **Windows SSH compute connections.** Preserve Windows drive/UNC identity and include paths when importing SSH config, and retain the Windows OpenSSH runtime environment for host-key checks, connection probes and job transports without exposing provider credentials. Allow up to 60 seconds for slow login-node session initialization while keeping the 8-second connection timeout.
+
 ### Added
+
+- **Custom API model connections.** Models settings can discover, search and select multiple models from an OpenAI-compatible URL and API key, with manual IDs, editable limits, connection editing and removal. Keys stay in the local auth store. The conversation picker shows configured connections only, with custom gateways kept distinct even when model IDs match.
+
+- **Action Timeline in the workspace.** Native-themed action ledger with turn folding, search, pagination, live reconciliation, keyboard navigation, zoom/pan/time selection, measured execution queue times and safe details. Includes checkpoint recovery plans and durable replay logs, branch lineage, undo previews/restoration, exact-run and compute cancellation, child-agent steering/stopping, kernel restart, context composition and sandbox state. Recovery conservatively replays verified literal state into a new branch; unsafe or unresolved steps are explicitly manual. Adapted from OpenAI4S.
+- **Windows Python kernel results.** Normalize CRLF protocol frames so completed cells are received instead of incorrectly timing out.
 
 - **The desktop app installs its command-line tool.** **Customize → General → Command line tool** links `~/.openscience/bin/openscience` to the app's own copy and adds that folder to your shell's startup file the way the standalone installer does, so `openscience` in a new terminal opens the running app. The row says whether the tool is installed and on your PATH, and shows the line to add when it is not. On every launch the app re-points a link of its own that names a moved or reinstalled bundle; it never creates a link you did not ask for and never replaces an `openscience` it did not create. `openscience uninstall` run from that link removes the link and the PATH line. The Linux AppImage runs from a temporary mount and cannot be linked, so the row says to use the standalone installer there; Windows is unchanged.
 

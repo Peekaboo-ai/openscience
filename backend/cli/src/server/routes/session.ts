@@ -22,11 +22,13 @@ import { SessionFilesystem } from "../../session/filesystem"
 import { SessionTrace } from "../../session/trace"
 import { RuntimeEvents } from "../../runtime/events"
 import { SessionLoopState } from "../../session/loop-state"
+import { ActionTimelineRoutes } from "./action-timeline"
 
 const log = Log.create({ service: "server" })
 
 export const SessionRoutes = lazy(() =>
   new Hono()
+    .route("/", ActionTimelineRoutes())
     .get(
       "/",
       describeRoute({

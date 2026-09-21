@@ -40,6 +40,7 @@ const title = (value: string) =>
 
 export function modelGroup(model: GroupModel, pinned = false): ModelGroup {
   if (pinned) return "pinned"
+  if (model.provider.id.startsWith("custom-")) return `provider:${model.provider.name ?? model.provider.id}`
   if (model.provider.id === "openai-codex") return "codex"
   if (
     ["ollama", "lmstudio", "llamacpp", "vllm", "jan"].includes(model.provider.id) ||

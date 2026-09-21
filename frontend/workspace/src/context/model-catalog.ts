@@ -33,8 +33,7 @@ const OPENROUTER_PROVIDER_PREFIX: Record<string, string> = {
 const ANTHROPIC_DASHED_VERSION = /^(claude-(?:opus|sonnet|haiku|fable)-\d+)-(\d+)(?:-\d{8})?$/
 const GLM_PROVIDER_ALIASES = new Set(["zai", "opencode-go", "zai-coding-plan", "zhipuai-coding-plan"])
 
-/** Ordered product roster for the composer. Missing entries are presentation-
- * only placeholders; this list never fabricates a callable provider route. */
+/** 已连接模型的推荐排序；不为尚未连接的供应商创建占位项。 */
 export const COMPOSER_MODEL_ROSTER = [
   { key: "openai/gpt-5-6-sol", label: "5.6 Sol", provider: "openai" },
   { key: "openai/gpt-6-astra", label: "6 Astra", provider: "openai" },
@@ -50,7 +49,7 @@ export const COMPOSER_MODEL_ROSTER = [
 
 // Manage Models remains the one-time place for changing composer visibility.
 // Keep the release's broader frontier defaults intact; the composer roster
-// above only controls ordering and passive unavailable placeholders.
+// above only controls ordering.
 export const FRONTIER_MODELS: ReadonlySet<string> = new Set([
   "openai/gpt-6-astra",
   "openai/gpt-5-6-sol",
@@ -159,6 +158,8 @@ export function modelSummary(input: { reasoning: boolean; context: number; provi
 
 /** Stable key shared by native ids and OpenRouter vendor/model slugs. */
 export function canonicalKey(providerID: string, modelID: string): string {
+  // 网关 ID 区分大小写，且不同连接可能用同名模型表示不同部署。
+  if (providerID.startsWith("custom-")) return `${providerID}/${modelID}`
   let vendor = providerID
   let base = modelID
   const slash = modelID.lastIndexOf("/")

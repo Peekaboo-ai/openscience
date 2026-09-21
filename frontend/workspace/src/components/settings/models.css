@@ -6,6 +6,75 @@
   --models-gap-4: 16px;
 }
 
+.models-custom-form {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--models-gap-3);
+  padding: var(--models-gap-3);
+  border-top: 1px solid var(--settings-border);
+  background: color-mix(in srgb, var(--settings-surface-muted) 55%, transparent);
+}
+
+.models-custom-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--models-gap-2);
+}
+
+.models-custom-wide {
+  grid-column: 1 / -1;
+}
+.models-custom-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--models-gap-2);
+}
+.models-custom-list {
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid var(--settings-border);
+  border-radius: var(--settings-radius-control);
+}
+.models-custom-option {
+  padding: 8px 10px;
+  overflow-wrap: anywhere;
+}
+.models-custom-option + .models-custom-option {
+  border-top: 1px solid var(--settings-border);
+}
+.models-custom-option:hover {
+  background: var(--settings-surface-hover);
+}
+.models-custom-manual {
+  display: flex;
+  align-items: end;
+  gap: var(--models-gap-2);
+}
+.models-custom-manual > label {
+  flex: 1;
+}
+.models-custom-limits summary {
+  cursor: pointer;
+  margin-bottom: var(--models-gap-2);
+}
+.models-custom-url {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.models-custom-notice {
+  padding: 8px var(--models-gap-3);
+  color: var(--color-text-danger);
+  overflow-wrap: anywhere;
+}
+@media (max-width: 640px) {
+  .models-custom-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* Models uses the one settings card and the one row: a bordered card,
    48px rows separated by hairlines, no raised islands. */
 .settings-dialog .settings-models-panel .settings-card {

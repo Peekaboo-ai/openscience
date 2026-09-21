@@ -16,6 +16,7 @@ import {
 import { uiStore, type ContextTab, type WorkTab } from "@/atlas/store/ui"
 import { ComputeSurface } from "@/atlas/ComputeSurface"
 import { AutoresearchPane } from "@/atlas/AutoresearchPane"
+import { ActionTimelinePane } from "@/atlas/timeline/ActionTimelinePane"
 import { ExternalFileAccess } from "@/atlas/FileExplorer"
 import { FilesPane } from "@/atlas/FilesPane"
 import { FileView } from "@/atlas/FilePreview"
@@ -65,6 +66,7 @@ const labels: Record<ContextTab, string> = {
   kernels: "Compute",
   autoresearch: "Autoresearch",
   trace: "Trace",
+  timeline: "Action Timeline",
 }
 
 export function RightPaneGate(props: { children: JSX.Element }): JSX.Element {
@@ -587,6 +589,9 @@ export function RightPane(
               </Match>
               <Match when={context() === "autoresearch"}>
                 <AutoresearchPane />
+              </Match>
+              <Match when={context() === "timeline"}>
+                <ActionTimelinePane sessionID={props.session} active={uiStore.rightPaneOpen()} />
               </Match>
             </Switch>
           </Suspense>

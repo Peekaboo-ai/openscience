@@ -21,6 +21,7 @@ import { resolveModelAccessRoute, type ModelRouteAccess } from "@/context/model-
 import { modelPricing, pricingUpstream } from "@/context/model-pricing"
 import { CodexConnection } from "./CodexConnection"
 import { ProviderKeys } from "./ProviderKeys"
+import { CustomModels } from "./CustomModels"
 import { modelGroup, modelGroupLabel, modelGroupRank } from "../model-groups"
 import { FilterMenu, PanelBody, PanelHeader, PanelScroll, RowCopy, SearchInput, Section, steady } from "./_shared"
 import { settingsApi } from "./api"
@@ -328,6 +329,7 @@ export default function Models() {
             <div class="settings-card models-connections-card">
               <CodexConnection onError={setError} />
               <ProviderKeys onError={setError} />
+              <CustomModels />
             </div>
           </Section>
 
