@@ -1575,6 +1575,17 @@
     }
   }
 
+  [data-slot="request-pending"] {
+    color: var(--text-weak);
+    font-size: var(--font-size-small);
+  }
+
+  [data-slot="request-error"] {
+    width: 100%;
+    margin: 0;
+    color: var(--text-critical-base);
+  }
+
   [data-slot="request-warning"],
   [data-slot="request-note"] {
     margin: 0;
@@ -2071,4 +2082,14 @@
   p {
     margin-block: 4px;
   }
+}
+
+[data-slot="shell-execution-progress"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 8px 12px;
+  color: var(--text-weak);
+  font-size: var(--font-size-small);
+  font-variant-numeric: tabular-nums;
 }

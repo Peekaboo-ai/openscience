@@ -7,7 +7,14 @@ function mount(metadata: Record<string, unknown>) {
   const container = document.createElement("div")
   const responses: string[] = []
   document.body.append(container)
-  container.append(PermissionActions({ respond: (response) => responses.push(response), metadata }))
+  container.append(
+    PermissionActions({
+      respond: (response) => {
+        responses.push(response)
+      },
+      metadata,
+    }),
+  )
   const card = container.querySelector<HTMLElement>('[data-component="request-card"]')!
   const buttons = () => Array.from(card.querySelectorAll("button")).map((button) => button.textContent)
   const click = (label: string) => {
@@ -50,6 +57,39 @@ const modal = {
 }
 
 describe("request card", () => {
+  test("an async decision acknowledges immediately, prevents duplicate replies, and unlocks on failure", async () => {
+    const first = Promise.withResolvers<void>()
+    const second = Promise.withResolvers<void>()
+    const replies: string[] = []
+    const card = PermissionActions({
+      respond: (reply) => {
+        replies.push(reply)
+        return replies.length === 1 ? first.promise : second.promise
+      },
+    })
+    document.body.append(card)
+    try {
+      const allow = Array.from(card.querySelectorAll("button")).find((button) => button.textContent === "Allow once")!
+      allow.click()
+      allow.click()
+      expect(replies).toEqual(["once"])
+      expect(card.getAttribute("aria-busy")).toBe("true")
+      expect(card.querySelector('[role="status"]')?.textContent).toBe("Applying…")
+      first.reject(new Error("Connection interrupted"))
+      await Bun.sleep(0)
+      expect(card.querySelector('[role="alert"]')?.textContent).toBe("Connection interrupted")
+      expect(allow.disabled).toBe(false)
+      allow.click()
+      second.resolve()
+      await Bun.sleep(0)
+      expect(card.querySelector('[role="alert"]')).toBeNull()
+      expect(card.querySelector('[role="status"]')?.textContent).toBe("Decision saved")
+      allow.click()
+      expect(replies).toEqual(["once", "once"])
+    } finally {
+      card.remove()
+    }
+  })
   test("every kind shares one shape: eyebrow, one-line title, quiet facts, details behind a disclosure, actions right", () => {
     const kinds = [
       { network: { host: "api.semanticscholar.org" }, url: "https://api.semanticscholar.org/graph/v1/paper/search" },

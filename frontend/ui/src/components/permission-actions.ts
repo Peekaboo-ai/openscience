@@ -470,7 +470,10 @@ function button(
  * rest behind Details, and Deny · Allow… · Allow once on the right. "Allow…"
  * turns the row into the scopes; Cancel turns it back.
  */
-export function PermissionActions(props: { respond: (response: PermissionReply) => void; metadata?: Metadata }) {
+export function PermissionActions(props: {
+  respond: (response: PermissionReply) => void | Promise<unknown>
+  metadata?: Metadata
+}) {
   const i18n = useI18n()
   const model = describeRequest(props.metadata, {
     deny: i18n.t("ui.permission.deny"),
@@ -488,6 +491,54 @@ export function PermissionActions(props: { respond: (response: PermissionReply) 
   let scopeTrigger: HTMLButtonElement | undefined
   let scopeBack: HTMLButtonElement | undefined
   const root = el("div") as HTMLDivElement
+  let pending = false
+  const respond = (response: PermissionReply) => {
+    if (pending) return
+    root.querySelector('[data-slot="request-error"]')?.remove()
+    const failure = (error: unknown) => {
+      const message =
+        error instanceof Error
+          ? error.message
+          : typeof error === "object" &&
+              error !== null &&
+              "data" in error &&
+              typeof error.data === "object" &&
+              error.data !== null &&
+              "message" in error.data
+            ? String(error.data.message)
+            : i18n.t("ui.permission.failed")
+      append(root, el("p", { "data-slot": "request-error", role: "alert" }, message))
+    }
+    try {
+      const result = props.respond(response)
+      if (!result) return
+      pending = true
+      root.setAttribute("aria-busy", "true")
+      const buttons = [...root.querySelectorAll("button")]
+      buttons.forEach((node) => {
+        node.disabled = true
+      })
+      const status = el("span", { "data-slot": "request-pending", role: "status" }, i18n.t("ui.permission.submitting"))
+      root.querySelector('[data-slot="request-actions"]')?.prepend(status)
+      void result.then(
+        () => {
+          root.removeAttribute("aria-busy")
+          status.textContent = i18n.t("ui.permission.applied")
+        },
+        (error) => {
+          failure(error)
+          pending = false
+          root.removeAttribute("aria-busy")
+          buttons.forEach((node) => {
+            node.disabled = false
+          })
+          status.remove()
+        },
+      )
+    } catch (error) {
+      failure(error)
+    }
+  }
 
   const setExpanded = (value: boolean, focus: "back" | "trigger" | undefined) => {
     scopes = value
@@ -509,19 +560,19 @@ export function PermissionActions(props: { respond: (response: PermissionReply) 
           ref: (element) => (scopeBack = element),
         }),
         ...model.scopes.map((scope) =>
-          button(scope.label, "secondary", () => props.respond(scope.reply), { title: scope.note }),
+          button(scope.label, "secondary", () => respond(scope.reply), { title: scope.note }),
         ),
       )
       return actions
     }
     append(
       actions,
-      button(i18n.t("ui.permission.deny"), "ghost", () => props.respond("reject")),
+      button(i18n.t("ui.permission.deny"), "ghost", () => respond("reject")),
     )
     if (model.secondary) {
       append(
         actions,
-        button(model.secondary.label, "ghost", () => props.respond(model.secondary!.reply)),
+        button(model.secondary.label, "ghost", () => respond(model.secondary!.reply)),
       )
     }
     if (model.scopes.length) {
@@ -535,7 +586,7 @@ export function PermissionActions(props: { respond: (response: PermissionReply) 
     }
     append(
       actions,
-      button(model.primary.label, "primary", () => props.respond(model.primary.reply)),
+      button(model.primary.label, "primary", () => respond(model.primary.reply)),
     )
     return actions
   }

@@ -81,8 +81,8 @@ export namespace AuthoritySignal {
    * that wins this lease is durable before a later spawn can proceed; a spawn
    * that wins first is registered before the mutation's revokers run.
    */
-  export async function exclusive<T>(action: () => Promise<T>): Promise<T> {
-    await using lease = await FileLease.acquire(lock(), spawnOwnerWait)
+  export async function exclusive<T>(action: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    await using lease = await FileLease.acquire(lock(), spawnOwnerWait, signal)
     // Await inside this lexical scope so `await using` cannot dispose the
     // interprocess lease before the spawn/mutation callback has settled.
     return await lease.during(action)

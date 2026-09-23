@@ -3,8 +3,10 @@ import type { ActionTimelineEntry, ActionTimelinePage } from "@synsci/sdk/v2/cli
 export type Entry = ActionTimelineEntry
 export type Page = ActionTimelinePage
 export type Window = { start: number; end: number }
-export type Row = { type: "turn"; id: string; count: number } | { type: "entry"; id: string; entry: Entry }
-export const ROW_HEIGHT = 46
+export type Row =
+  | { type: "turn"; id: string; count: number; request?: Entry; startedAt?: number; issues: number; active: boolean }
+  | { type: "entry"; id: string; entry: Entry; ordinal: number }
+export const ROW_HEIGHT = 68
 
 export function duration(entry: Entry, now: number) {
   if (entry.startedAt === undefined) return undefined
@@ -46,7 +48,7 @@ export function pan(window: Window, fraction: number): Window {
   return { start: window.start + delta, end: window.end + delta }
 }
 
-export function matches(entry: Entry, query: string) {
+export function matches(entry: Entry, query: string, display = "") {
   const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean)
   const document = [
     entry.title,
@@ -55,6 +57,8 @@ export function matches(entry: Entry, query: string) {
     entry.owner,
     entry.tool,
     entry.model,
+    entry.provider,
+    display,
     ...entry.resources,
     ...entry.artifacts,
   ]
@@ -63,18 +67,53 @@ export function matches(entry: Entry, query: string) {
   return terms.every((term) => document.includes(term))
 }
 
-export function rows(entries: Entry[], collapsed: Record<string, boolean>, query = ""): Row[] {
+export function rows(
+  entries: Entry[],
+  collapsed: Record<string, boolean>,
+  query = "",
+  display: (entry: Entry) => string = () => "",
+  context: Entry[] = entries,
+): Row[] {
+  const requests = new Map(context.filter((entry) => entry.kind === "user").map((entry) => [entry.turnID, entry]))
+  const counts = new Map<string, number>()
+  const ordinals = new Map<string, number>()
+  for (const entry of context) {
+    if (entry.kind === "user") continue
+    const ordinal = (counts.get(entry.turnID) ?? 0) + 1
+    counts.set(entry.turnID, ordinal)
+    ordinals.set(entry.id, ordinal)
+  }
   const turns = new Map<string, Entry[]>()
   for (const entry of entries) {
-    if (!matches(entry, query)) continue
     const group = turns.get(entry.turnID) ?? []
     group.push(entry)
     turns.set(entry.turnID, group)
   }
-  return [...turns].flatMap(([id, entries]): Row[] => [
-    { type: "turn", id, count: entries.length },
-    ...(collapsed[id] && !query.trim() ? [] : entries.map((entry): Row => ({ type: "entry", id: entry.id, entry }))),
-  ])
+  return [...turns].flatMap(([id, group]): Row[] => {
+    const request = requests.get(id)
+    const requestMatches = request && matches(request, query, display(request))
+    const matching = group.filter((entry) => requestMatches || matches(entry, query, display(entry)))
+    if (!matching.length) return []
+    return [
+      {
+        type: "turn",
+        id,
+        request,
+        count: matching.filter((entry) => entry.kind !== "user").length,
+        startedAt: request?.startedAt ?? group[0]?.startedAt,
+        issues: matching.filter((entry) => ["error", "partial", "interrupted"].includes(entry.status)).length,
+        active: matching.some((entry) => ["running", "pending"].includes(entry.status)),
+      },
+      ...(collapsed[id] && !query.trim()
+        ? []
+        : matching.map((entry): Row => ({
+            type: "entry",
+            id: entry.id,
+            entry,
+            ordinal: ordinals.get(entry.id) ?? 0,
+          }))),
+    ]
+  })
 }
 
 export function segments(entry: Entry, now: number) {

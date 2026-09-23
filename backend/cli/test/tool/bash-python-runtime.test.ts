@@ -6,7 +6,7 @@ import { PythonTool } from "../../src/tool/notebook"
 import { Instance } from "../../src/project/instance"
 import { SessionFilesystem } from "../../src/session/filesystem"
 import { KernelEnvironmentMutation } from "../../src/science/kernel/environment-mutation"
-import { executionSession, tmpdir } from "../fixture/fixture"
+import { executionSession, fullAccessExecution, tmpdir } from "../fixture/fixture"
 
 test("Bash uses the kernel project package overlay without ambient import paths or control-plane credentials", async () => {
   await using tmp = await tmpdir()
@@ -19,6 +19,8 @@ test("Bash uses the kernel project package overlay without ambient import paths 
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
+        // 此测试验证解释器与凭据隔离；文件系统沙箱由专门的跨平台测试覆盖。
+        await using mode = await fullAccessExecution()
         const session = await executionSession()
         const runtime = await KernelEnvironmentMutation.pythonSubprocessRuntime()
         const module = `approved_${crypto.randomUUID().replaceAll("-", "")}`
@@ -38,7 +40,10 @@ test("Bash uses the kernel project package overlay without ambient import paths 
           const code = `import ${module}, importlib.util, os; print(${module}.value); assert importlib.util.find_spec("unapproved_import") is None; assert os.getenv("MODAL_TOKEN_ID") is None`
           const result = await (
             await BashTool.init()
-          ).execute({ command: `python3 -c '${code}'`, description: "Import approved project package" }, context)
+          ).execute(
+            { command: `python3 -c '${code}'`, environment: "python", description: "Import approved project package" },
+            context,
+          )
           expect(result.metadata.exit, result.output).toBe(0)
           expect(result.output).toContain("approved-project-package")
           expect(result.metadata.execution_environment).toEqual({
@@ -47,13 +52,16 @@ test("Bash uses the kernel project package overlay without ambient import paths 
             profile: "python",
             python: { role: "selected_default", executable: runtime.binary },
           })
-          // Arbitrary shell commands receive a selected default, not a claim
-          // that Python ran or that its version was measured for this command.
+          // 普通命令不选择或安装 Python，也不声称使用了科研解释器。
           const shell = await (
             await BashTool.init()
           ).execute({ command: "printf ordinary-shell", description: "Run a non-Python command" }, context)
           expect(shell.metadata.exit, shell.output).toBe(0)
-          expect(shell.metadata.execution_environment).toEqual(result.metadata.execution_environment)
+          expect(shell.metadata.execution_environment).toEqual({
+            target: "local",
+            cwd: await SessionFilesystem.workspace(session.id),
+            profile: "shell",
+          })
           expect(shell.metadata.execution_environment.python?.version).toBeUndefined()
           // Kernels already support this package location; prove the repaired
           // shell agrees using the actual canonical Python tool too.

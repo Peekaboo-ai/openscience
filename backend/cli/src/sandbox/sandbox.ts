@@ -2,9 +2,9 @@ import path from "path"
 import os from "os"
 import fs from "fs"
 import { spawn, spawnSync } from "child_process"
-import { lazy } from "@synsci/util/lazy"
 import { Log } from "@/util/log"
 import { Shell } from "@/shell/shell"
+import { discoverRuntimeRoots } from "./runtime-roots"
 
 const log = Log.create({ service: "sandbox" })
 
@@ -115,6 +115,8 @@ export namespace Sandbox {
 
   // ── backend detection ───────────────────────────────────────────────────────
 
+  let detectionFailure: string | undefined
+
   function probeBubblewrap(bin: string): boolean {
     // bwrap can exist yet fail at runtime when unprivileged user namespaces are
     // disabled (kernel.unprivileged_userns_clone=0, some hardened distros), and
@@ -122,16 +124,25 @@ export namespace Sandbox {
     // ops the real sandbox uses so detection matches enforcement.
     try {
       const res = spawnSync(bin, [...bubblewrapArgs({ writable: [], network: false }), "--", "/usr/bin/true"], {
-        stdio: "ignore",
-        timeout: 5000,
+        stdio: ["ignore", "ignore", "pipe"],
+        encoding: "utf8",
+        maxBuffer: 4096,
+        timeout: 10000,
       })
+      detectionFailure =
+        res.status === 0
+          ? undefined
+          : res.error?.message ||
+            res.stderr?.trim().slice(0, 1000) ||
+            `bubblewrap probe exited with ${res.signal ?? res.status}`
       return res.status === 0
-    } catch {
+    } catch (error) {
+      detectionFailure = error instanceof Error ? error.message : String(error)
       return false
     }
   }
 
-  const detected = lazy<Backend>(() => {
+  function detect(): Backend {
     if (process.platform === "darwin") {
       return Bun.which("sandbox-exec") ? "seatbelt" : "none"
     }
@@ -141,11 +152,24 @@ export namespace Sandbox {
       return probeBubblewrap(bin) ? "bubblewrap" : "none"
     }
     return "none"
-  })
+  }
+
+  let detection: { backend: Backend; retryAt: number } | undefined
+  let detectionAttempts = 0
 
   /** The sandbox backend usable on this machine right now, or "none". */
   export function backend(): Backend {
-    return detected()
+    // 每次后端连接最多重试一次，避免故障内核不断积累无法终止的探测进程。
+    // 等待和失败期间仍拒绝执行；后续由用户重连重新检测。
+    if (!detection || Date.now() >= detection.retryAt) {
+      detectionAttempts++
+      const value = detect()
+      detection = {
+        backend: value,
+        retryAt: value === "none" && detectionAttempts < 2 ? Date.now() + 30_000 : Infinity,
+      }
+    }
+    return detection.backend
   }
 
   export function available(): boolean {
@@ -187,7 +211,7 @@ export namespace Sandbox {
       process.platform === "darwin"
         ? "sandbox-exec not found on PATH"
         : process.platform === "linux"
-          ? "bubblewrap (bwrap) is not installed, or unprivileged user namespaces are disabled"
+          ? (detectionFailure ?? "bubblewrap (bwrap) was not found on PATH")
           : `no sandbox backend for platform "${process.platform}"`
     return {
       platform: process.platform,
@@ -394,7 +418,7 @@ export namespace Sandbox {
   /** Read-only roots needed to launch common local research runtimes. These
    * are installation/code roots, never the user's home directory as a whole. */
   function runtimeReadRoots(entrypoints: string[]): string[] {
-    const roots = new Set<string>()
+    const roots = new Set<string>(discoverRuntimeRoots(process.env, entrypoints))
     const add = (value?: string | null) => {
       if (!value || !path.isAbsolute(value)) return
       const home = os.homedir()
@@ -903,6 +927,8 @@ export namespace Sandbox {
     options?: Options
     /** The user asked for this network operation (a Repository-tab push). */
     escalateNetwork?: boolean
+    /** 仅用于服务自身创建的独立 PTY，不用于继承宿主终端的普通命令。 */
+    terminal?: { env: Record<string, string> }
   }): Wrapped {
     const { backend: b, warning } = decide(input.options)
     if (b === "none" && !input.runtime) {
@@ -930,7 +956,28 @@ export namespace Sandbox {
         options: input.options!,
         escalateNetwork: input.escalateNetwork,
       })
-      const s = specForArgv(withTempEnvironment([input.file, ...args], temporary, selectedPath), policy)!
+      // 不能抢占沙箱外 PTY 的控制权。script 在隔离后的 /dev/pts 中创建
+      // 私有终端并转发输入、窗口尺寸和退出码，保留 --new-session 的安全边界。
+      const terminalBridge =
+        input.terminal && b === "bubblewrap"
+          ? ["/usr/bin/script", "/bin/script"].find((file) => fs.existsSync(file))
+          : undefined
+      if (input.terminal && b === "bubblewrap" && !terminalBridge)
+        throw new Error(
+          "Sandboxed interactive terminals require the system 'script' utility (util-linux) on this host. Install it through your administrator; resource discovery remains available.",
+        )
+      const quote = (value: string) => `'${value.replaceAll("'", `'\\''`)}'`
+      const payload = terminalBridge
+        ? [
+            terminalBridge,
+            "-q",
+            "-e",
+            "-c",
+            `exec ${["/usr/bin/env", "-i", ...Object.entries(input.terminal!.env).map(([key, value]) => `${key}=${value}`), input.file, ...args].map(quote).join(" ")}`,
+            "/dev/null",
+          ]
+        : [input.file, ...args]
+      const s = specForArgv(withTempEnvironment(payload, temporary, selectedPath), policy)!
       log.info("sandboxing process", { backend: b, network: policy.network, writable: policy.writable.length })
       return { file: s.file, args: s.args, sandboxed: true, backend: b, temporary, warning }
     } catch (error) {

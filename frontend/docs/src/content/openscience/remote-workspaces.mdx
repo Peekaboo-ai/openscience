@@ -1,0 +1,58 @@
+---
+title: "Remote workspaces"
+description: "Run the complete OpenScience backend on an SSH host, WSL distribution, or Docker container."
+---
+
+A remote workspace runs conversations, files, terminals, kernels, and compute against a backend on the selected host. It differs from **Settings → Compute**, which configures remote job submission while the conversation backend can remain local.
+
+## Connect a project
+
+1. Choose **Projects → + → Remote connection**.
+2. Select **SSH**, **WSL**, or **Docker**.
+3. Name the project and choose a target. SSH supports saved hosts or importing `~/.ssh/config`, identity-file paths, and ProxyJump. WSL uses an installed distribution and optional user. Docker uses an existing running container.
+4. Choose **Connect**. OpenScience tests the transport, detects the platform, installs its matching backend, and waits for a successful handshake.
+5. Optionally browse or enter an existing remote directory and choose **Open project**. Leave it blank to create or open a folder named after the project under the remote backend's startup directory (normally your home for SSH). The wizard shows the resulting path. **Create folder** creates a named child of the folder being browsed and selects it; existing files and folders are never overwritten.
+
+The sidebar displays a cloud icon, transport, and connection status. Remote conversations appear only after connection. On failure, use **Retry**, correct the target in a new connection, or return to local Tasks. **Cancel** stops an unfinished connection; removing a bookmark retains remote files and saved conversations.
+
+## Requirements and storage
+
+The target needs Linux or macOS on x64/ARM64, a writable home directory, a POSIX shell, and `sha256sum` or `shasum`. The installation must include a native backend for that target. Alpine/musl images and remote Windows shells are not supported by the bundled Linux runtime.
+
+SSH uses the tested host key, local SSH agent or existing identity file, and optional pinned jump hosts. Private keys are not uploaded and agent forwarding is not enabled. Password/passphrase prompts must be satisfied through your SSH agent before connecting. SSH traffic carries the HTTP/event/terminal bridge; no public remote listening port is required.
+
+Backend binaries are cached by SHA-256 under `~/.openscience/remote/`. Remote application data and configuration live under `~/.openscience/workspaces/data` and `~/.openscience/workspaces/config`. Deployments verify the complete binary before replacing a cached runtime. Reconnection preserves durable data; terminals and running in-process work are disposed when the connection closes.
+
+## Models and execution policy
+
+**Settings** is labeled **Local** or **Remote** for the current backend. Connect a model provider in the remote backend's Models settings before chatting. Local model API keys are not automatically transferred. The remote host must be able to reach the selected model API.
+
+For recognized custom API model IDs, the composer displays the same **Reasoning effort** selector as configured providers. Choices follow the model's supported levels and persist per model; switching models uses that model's own choices. Unknown model aliases do not receive guessed levels. The API gateway must support the selected model's reasoning parameter.
+
+The backend retains OpenScience's project trust, filesystem grants, and sandbox policies. A successful SSH connection does not override those policies. If Linux lacks a usable `bubblewrap` sandbox and policy requires it, terminal/kernel execution is blocked with remediation. Choose the appropriate project execution policy explicitly; connection setup never disables the sandbox on your behalf.
+
+## Inspect resources and environments
+
+Open **Compute → Environment & cluster status**, or ask the agent to inspect the environment. The agent uses `compute_job` with `action: "environment"` to query the backend where the project is running. CPU and memory describe the connected node, with detected container limits; they are not a cluster-wide capacity or a reservation for your job.
+
+Slurm, PBS, LSF and SGE clients are detected independently. Missing clients are normal on a workstation, VM, WSL distribution or container. NVIDIA and AMD management clients are optional too: an absent client means GPU availability is unknown. Client wrappers can expose another scheduler's compatibility interface; their presence does not imply separate clusters.
+
+The discovery service runs fixed, bounded, read-only commands from administrator-owned installations. It never submits jobs or changes project policy. Dependency failures, access restrictions and timeouts are reported separately, and each query has an 8-second deadline. User-writable custom clients are detected but require an explicitly approved command rather than automatic host execution. The panel queries only when expanded and refreshes while visible.
+
+Sandboxed Linux terminals use the system `script` utility from util-linux for a private controlling terminal, while preserving bubblewrap isolation. Missing terminal dependencies are reported without changing project policy. Terminals discover custom Conda/Python installations and sibling runtime libraries without exposing the whole home directory. When Conda and its shell hook are installed, a new terminal initializes that hook automatically; no `conda init` or shell-profile edits are needed. Use `conda env list`, `conda activate <name>` and `conda deactivate` as usual. Registered environments' runtime files are available read-only; installing or modifying packages still requires appropriate project access.
+
+In sandboxed Linux terminals, `sinfo`, `squeue`, `pbsnodes`, `bhosts` and `qhost` use a private read-only status bridge when those clients are installed. Common display and filtering options such as `sinfo -Nel`, `squeue --me`, `squeue -u <user>` and `sinfo -o <format>` are supported. Queries retain the native output and have an 8-second/64-KiB bound. Unsupported options return an explicit error; continuous queries, scheduler mutations and custom configuration or plugin injection are rejected. Absolute executable paths bypass this bridge and retain the terminal's normal sandbox restrictions. Job submission continues through the existing compute workflow.
+
+If a host's kernel or sandbox service is unhealthy, OpenScience does not disable isolation to make the terminal start. Detection retries at most once per backend connection. Reconnect to a healthy node or ask the host administrator to repair the sandbox; resource browsing can remain available even when terminal execution is blocked.
+
+## Building remote runtimes
+
+From a source checkout with the pinned Bun installed:
+
+```sh
+bun tooling/repo/build-remote.ts linux-x64-baseline
+```
+
+Supported build arguments are `linux-x64-baseline`, `linux-arm64`, `darwin-x64`, and `darwin-arm64`. Package the output beside the local executable as `remote/<target>/openscience`, or set `OPENSCIENCE_REMOTE_ASSETS` to the runtime root. Source development also searches `tooling/remote/dist`. A missing runtime produces an actionable connection error.
+
+Responses stream over the connection, including binary downloads and event streams. Individual request bodies currently have a 16 MiB limit; use SSH/SFTP or another file transfer tool for larger uploads. The connection does not create Docker containers, install system packages, or provide unattended remote process persistence.

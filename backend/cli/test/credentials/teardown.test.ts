@@ -103,6 +103,29 @@ async function instance(directory: string, disposed: string[]) {
 }
 
 describe("CredentialTeardown.apply", () => {
+  for (const reason of ["provider-auth.set:custom", "provider-auth.remove:custom"]) {
+    test(`${reason} preserves project runtimes but revokes credential-bearing processes`, async () => {
+      const command = await launch("provider_auth")
+      const mcp = await transport("provider_auth")
+      await using tmp = await tmpdir()
+      const disposed: string[] = []
+      await instance(tmp.path, disposed)
+      try {
+        await CredentialTeardown.apply({ reason })
+        expect(disposed).toEqual([])
+        expect(Instance.has(tmp.path)).toBe(true)
+        expect(await settle(command.state)).toBe(true)
+        expect(command.state.reason).toBe(CredentialRevocation.message(reason))
+        expect(await settle(mcp.state)).toBe(true)
+        expect(await CredentialProcessLedger.owns(mcp.pid, mcp.identity)).toBe(false)
+      } finally {
+        await CommandRuntime.stopAll()
+        await CredentialProcessLedger.revoke({ id: mcp.id })
+        await Instance.provide({ directory: tmp.path, fn: () => Instance.dispose() })
+      }
+      expect(disposed).toEqual([tmp.path])
+    })
+  }
   for (const reason of ["account.replace", "settings-credential.set:github"]) {
     test(`${reason} disposes live instances and stops commands spawned without the overlay`, async () => {
       const label = reason.replace(/[^a-z0-9]+/gi, "_")

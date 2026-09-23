@@ -426,7 +426,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             }),
           )
           try {
-            await client.session.delete({ sessionID })
+            await client.session.delete({ sessionID }, { throwOnError: true })
           } catch (e) {
             if (snapshot)
               setStore(

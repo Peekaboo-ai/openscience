@@ -8,7 +8,34 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 
 ## Unreleased
 
+### Added
+
+- **Windows Workspaces installer.** Package the native desktop shell, embedded workspace, and Linux/macOS remote runtimes in a per-user EXE installer with desktop/Start menu shortcuts. Keep custom-build identity and user data separate from the upstream app and development server; upgrades and uninstall preserve research data.
+
 ### Fixed
+
+- **Windows Unicode profiles.** Encode directory headers in the legacy plugin SDK like the v2 client, so desktop startup also works under Chinese user names and data folders.
+- **Windows installer extraction.** Disable differential archives when using the ZIP extractor, so the Workspaces installer embeds the correct archive format and installs across drives.
+- **Local desktop startup.** Workspaces installations open the local workspace without mandatory cloud account onboarding. Account sign-in remains optional in Settings; model credentials and cloud-service authorization are unchanged.
+- **SSH desktop host verification.** Quote the pinned known-hosts path using OpenSSH configuration syntax, so profiles containing spaces or Chinese characters connect without weakening strict host-key checks.
+
+- **Remote workspace responsiveness.** Shell activation reads installed Python bytecode instead of rebuilding a per-session cache; runtime libraries remain read-only. Keep Timeline mounted across module switches and publish actions before slow summaries. Permission decisions acknowledge immediately with retry feedback, and follow-up delivery uses the native send menu and keyboard shortcuts. Retire deleted-session polling and isolate cancelled HTTP streams and terminal subscribers from the shared SSH connection. Terminal geometry no longer inherits stale parent columns/lines, and Bash rechecks its actual window size.
+
+- **Responsive shell execution and follow-up messages.** Ordinary shell commands no longer provision an unrelated Python science environment or override explicit Conda activation. Preparation and execution share a timeout, live cards show execution phases, and Linux ownership helpers bypass application initialization. The composer offers guidance during a run and a durable queue with full attachments/model settings, editing, ordering, pause/resume, and idempotent submission. Cancellation, failure, and server restart hold pending work for review.
+
+- **Terminal and sidebar continuity.** Use xterm with shell-controlled cursor-line reflow to prevent overlapping prompts, preserve output geometry during history replay, serialize resize updates before input, and retain terminal views during background refresh. Model credential changes retain credential-free terminal processes while still revoking old requests and credential-bearing processes. Reopening project conversations uses bounded backend-scoped caches with background refresh instead of flashing a loading label. Windows terminal ownership helpers start before application configuration, and Git Bash uses clean interactive startup arguments.
+
+- **Readable Action Timeline.** Group execution steps under redacted research-request summaries, translate action names and outcomes, resolve model/provider display names in the active project, and move runtime identifiers into expandable diagnostics. Add a needs-review filter, preserve step numbering while filtering, and use roomier native-theme rows with on-demand timing and recovery panels.
+
+- **Custom model context budgets and saving.** Resolve context, output and input limits per model from endpoint metadata or the reviewed catalog, migrate legacy fixed defaults, and preserve explicit overrides. Context preflight and automatic compaction use the same limits. Saving keeps the form mounted, releases controls after persistence, updates the connection locally and coalesces provider catalog refreshes without dropping concurrent changes. Credential-triggered runtime refreshes retain loaded conversations instead of showing the initial loading screen.
+
+- **Remote navigation cancellation.** Closing or navigating away from a remote event stream now ends its response cleanly instead of surfacing an unhandled stream rejection that can terminate the local service. Transport failures still remain visible to active readers.
+
+- **Remote terminal activation and cluster commands.** Initialize Conda inside the terminal shell so registered environments can be activated and deactivated without editing shell profiles. Expose their required runtime files read-only. Route supported `sinfo`, `squeue`, PBS, LSF and SGE status commands through a bounded, per-terminal query bridge while retaining sandbox network isolation. Limit retries when the host sandbox is unavailable.
+
+- **Reasoning effort for custom API models.** Recover known models' supported effort choices from reviewed metadata and the provider catalog, using the existing composer selector and request serialization. Previously saved connections pick up the fix automatically; unknown aliases do not receive guessed effort levels.
+
+- **Remote runtime and resource discovery.** Keep custom Conda standard libraries and versioned software libraries visible inside the read-only sandbox. Prevent native terminal environment merging from restoring excluded shell hooks or credentials, and attach sandbox terminals to their dedicated controlling TTY. Add bounded host-resource and scheduler queries that distinguish unavailable clients, dependencies, permissions and timeouts without disabling project isolation.
 
 - **Message sending on Windows with long storage paths.** Write atomic staging files through the long-path-aware filesystem API so durable run admission does not fail with `ENAMETOOLONG` before reaching the configured model.
 
@@ -17,6 +44,10 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 - **Windows SSH compute connections.** Preserve Windows drive/UNC identity and include paths when importing SSH config, and retain the Windows OpenSSH runtime environment for host-key checks, connection probes and job transports without exposing provider credentials. Allow up to 60 seconds for slow login-node session initialization while keeping the 8-second connection timeout.
 
 ### Added
+
+- **Optional remote project folders.** Leave the working directory blank to create or open a project-named folder under the remote backend's startup directory. The connection wizard previews that path and can create a new folder while browsing, with collision and permission errors shown inline.
+
+- **Projects, Tasks, and remote workspaces.** A persistent sidebar replaces the project homepage. Standalone conversations live under Tasks; project conversations stay nested under local-folder or remote-host entries. The native-themed connection wizard supports SSH (including SSH config import and ProxyJump), WSL distributions, and running Docker containers, with versioned backend deployment, directory selection, cancellation, retry, and disconnected-state gating. HTTP, file streams, events, and terminals use the selected remote backend; credentials and caches stay isolated by backend.
 
 - **Custom API model connections.** Models settings can discover, search and select multiple models from an OpenAI-compatible URL and API key, with manual IDs, editable limits, connection editing and removal. Keys stay in the local auth store. The conversation picker shows configured connections only, with custom gateways kept distinct even when model IDs match.
 

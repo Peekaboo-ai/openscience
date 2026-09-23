@@ -5,9 +5,11 @@ import { createTestServer } from "../../../test/vite"
 
 const root = fileURLToPath(new URL("../../..", import.meta.url))
 const context = `
-export const state = { connections: [], writes: [], refreshes: 0, revealed: [], fail: false }
+const limits = Object.fromEntries([['alpha', 1050000, 128000], ['beta', 64000, 8000], ['gamma', 128000, 32000]].map(([id, context, output]) => [id, {context, output, mode: 'auto', source: 'catalog'}]))
+const fallback = { context: 128000, output: 32000, mode: 'auto', source: 'fallback' }
+export const state = { connections: [], writes: [], refreshes: 0, revealed: [], fail: false, refreshWait: undefined, refreshFailure: false, reads: 0 }
 export const useGlobalSDK = () => ({ url: "http://fixture.invalid" })
-export const useGlobalSync = () => ({ refreshProviders: async () => { state.refreshes++ } })
+export const useGlobalSync = () => ({ refreshProviders: async () => { state.refreshes++; await state.refreshWait; if (state.refreshFailure) throw new Error('Offline') } })
 export const useModels = () => ({ setVisibility: value => state.revealed.push(value) })
 export const useDialog = () => ({})
 export const confirmDialog = async () => true
@@ -15,16 +17,18 @@ export const showToast = () => {}
 export const usePlatform = () => ({ fetch: async (url, init) => {
   if (url.endsWith("/models")) {
     if (state.fail) return Response.json({ error: "The endpoint rejected this API key." }, { status: 401 })
-    return Response.json({ baseURL: "https://gateway.test/v1", models: ["alpha", "beta", "gamma"] })
+    return Response.json({ baseURL: "https://gateway.test/v1", models: ["alpha", "beta", "gamma"], limits })
   }
+  if (url.endsWith('/limits')) return Response.json({ limits: Object.fromEntries(JSON.parse(init.body).models.map(id => [id, limits[id] ?? fallback])) })
   if (init?.method === "POST") {
     const body = JSON.parse(init.body)
     state.writes.push(body)
     const id = body.id || "custom-test"
-    state.connections = [{ id, name: body.name, baseURL: body.url, models: body.models, hasKey: true, context: body.context, output: body.output }]
-    return Response.json({ id, models: body.models })
+    state.connections = [{ id, name: body.name, baseURL: body.url, models: body.models, hasKey: true, context: 128000, output: 32000, limits: body.limits }]
+    return Response.json(state.connections[0])
   }
   if (init?.method === "DELETE") { state.connections = []; return Response.json({ removed: true }) }
+  state.reads++
   return Response.json({ connections: state.connections })
 } })
 `
@@ -64,10 +68,17 @@ const web = (await server.ssrLoadModule("solid-js/web")) as typeof import("solid
 const fixture = (await server.ssrLoadModule("\0custom-model-context")) as {
   state: {
     connections: unknown[]
-    writes: Array<{ key?: string; models: string[] }>
+    writes: Array<{
+      key?: string
+      models: string[]
+      limits: Record<string, { context: number; output: number; mode: string }>
+    }>
     refreshes: number
     revealed: unknown[]
     fail: boolean
+    refreshWait?: Promise<void>
+    refreshFailure: boolean
+    reads: number
   }
 }
 const cleanups: Array<() => void> = []
@@ -75,7 +86,16 @@ afterAll(() => server.close())
 afterEach(() => {
   cleanups.splice(0).forEach((fn) => fn())
   document.body.replaceChildren()
-  Object.assign(fixture.state, { connections: [], writes: [], refreshes: 0, revealed: [], fail: false })
+  Object.assign(fixture.state, {
+    connections: [],
+    writes: [],
+    refreshes: 0,
+    revealed: [],
+    fail: false,
+    refreshWait: undefined,
+    refreshFailure: false,
+    reads: 0,
+  })
 })
 async function until(check: () => boolean) {
   for (let n = 0; n < 100; n++) {
@@ -138,6 +158,7 @@ test("discovery errors preserve the form, recover controls, and permit manual mo
   expect(input("Connection name").value).toBe("Fixture gateway")
   fill(input("Add a model ID manually"), "private/model")
   button("Add model").click()
+  await until(() => !button("Save connection").disabled)
   button("Save connection").click()
   await until(() => !!button("Edit"))
   expect(fixture.state.writes[0].models).toEqual(["private/model"])
@@ -145,4 +166,51 @@ test("discovery errors preserve the form, recover controls, and permit manual mo
   fill(input("API base URL"), "https://another.test/v1")
   expect(button("Fetch models").disabled).toBe(true)
   expect(button("Save changes").disabled).toBe(true)
+})
+
+test("per-model defaults, manual overrides and resetting detection survive save without remounting", async () => {
+  await mount()
+  button("Fetch models").click()
+  await until(() => document.querySelectorAll('input[type="checkbox"]').length === 3)
+  const checks = [...document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')]
+  checks[0].click()
+  checks[1].click()
+  const context = (id: string) => document.querySelector<HTMLInputElement>(`[aria-label="${id} context tokens"]`)!
+  expect(context("alpha").value).toBe("1050000")
+  expect(context("beta").value).toBe("64000")
+  fill(context("alpha"), "256000")
+  button("Fetch models").click()
+  await until(() => button("Fetch models")?.disabled === false)
+  expect(context("alpha").value).toBe("256000")
+  button("Use detected limits").click()
+  await until(() => button("Fetch models")?.disabled === false)
+  expect(context("alpha").value).toBe("1050000")
+  fill(context("beta"), "48000")
+  fill(input("API key"), "replacement-key")
+  expect(context("beta").value).toBe("48000")
+  expect(button("Save connection").disabled).toBe(false)
+  const form = document.querySelector("form")
+  let release!: () => void
+  fixture.state.refreshWait = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  button("Save connection").click()
+  await until(() => button("Save changes")?.disabled === false)
+  expect(document.querySelector("form")).toBe(form)
+  expect(context("beta").value).toBe("48000")
+  expect(fixture.state.writes[0].limits).toMatchObject({
+    alpha: { context: 1050000, output: 128000, mode: "auto" },
+    beta: { context: 48000, output: 8000, mode: "manual" },
+  })
+  expect(fixture.state.reads).toBe(1)
+  expect(fixture.state.refreshes).toBe(1)
+  expect(input("API key").value).toBe("")
+  input("Connection name").focus()
+  fill(input("Connection name"), "Still editable")
+  fixture.state.refreshFailure = true
+  release()
+  await until(() => !!document.querySelector('[role="alert"]'))
+  expect(document.querySelector('[role="alert"]')?.textContent).toContain("Changes saved")
+  expect(document.activeElement).toBe(input("Connection name"))
+  expect(input("Connection name").value).toBe("Still editable")
 })

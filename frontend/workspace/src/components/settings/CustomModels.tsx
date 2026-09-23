@@ -1,4 +1,4 @@
-import { createMemo, createResource, For, Show } from "solid-js"
+import { batch, createMemo, createResource, For, Show } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { Button } from "@synsci/ui/button"
 import { Checkbox } from "@synsci/ui/checkbox"
@@ -21,6 +21,14 @@ type Connection = {
   hasKey: boolean
   context: number
   output: number
+  limits: Record<string, ModelLimit>
+}
+type ModelLimit = {
+  context: number
+  output: number
+  input?: number
+  mode: "auto" | "manual"
+  source: "catalog" | "endpoint" | "fallback" | "manual"
 }
 const empty = () => ({
   open: false,
@@ -34,8 +42,8 @@ const empty = () => ({
   manual: "",
   models: [] as string[],
   selected: [] as string[],
-  context: 32768,
-  output: 8192,
+  limits: {} as Record<string, ModelLimit>,
+  detected: {} as Record<string, ModelLimit>,
   busy: "",
   error: "",
   discovered: false,
@@ -50,7 +58,7 @@ export function CustomModels() {
   const models = useModels()
   const call = <T,>(path = "", init?: RequestInit) =>
     settingsApi<T>(sdk.url, platform.fetch ?? fetch, `/settings/model-connections${path}`, init)
-  const [connections, { refetch }] = steady(
+  const [connections, { refetch, mutate }] = steady(
     createResource(() => call<{ connections: Connection[] }>().then((data) => data.connections)),
   )
   const [state, setState] = createStore(empty())
@@ -72,8 +80,10 @@ export function CustomModels() {
               hasKey: connection.hasKey,
               models: connection.models,
               selected: connection.models,
-              context: connection.context,
-              output: connection.output,
+              limits: connection.limits,
+              detected: Object.fromEntries(
+                Object.entries(connection.limits).filter(([, limit]) => limit.mode === "auto"),
+              ),
             }
           : {}),
       }),
@@ -87,35 +97,60 @@ export function CustomModels() {
   const discover = async () => {
     setState({ busy: "discover", error: "" })
     try {
-      const result = await call<{ baseURL: string; models: string[] }>("/models", {
+      const result = await call<{ baseURL: string; models: string[]; limits: Record<string, ModelLimit> }>("/models", {
         method: "POST",
         body: JSON.stringify(endpoint()),
       })
       // 保留用户明确选择的 ID；模型发现结果不应悄悄删掉手动配置。
-      setState({ models: [...new Set([...result.models, ...state.selected])].sort(), discovered: true })
+      batch(() => {
+        setState({
+          models: [...new Set([...result.models, ...state.selected])].sort(),
+          discovered: true,
+          detected: result.limits,
+        })
+        for (const [id, limit] of Object.entries(result.limits)) {
+          if (state.limits[id]?.mode !== "manual") setState("limits", id, limit)
+        }
+      })
     } catch (error) {
       setState("error", message(error))
     } finally {
       setState("busy", "")
     }
   }
+  const refresh = () => {
+    void sync
+      .refreshProviders()
+      .catch((error) => setState("error", `Changes saved. The model picker could not refresh: ${message(error)}`))
+  }
   const save = async () => {
+    if (state.busy) return
     setState({ busy: "save", error: "" })
     try {
-      const result = await call<{ id: string; models: string[] }>("", {
+      const result = await call<Connection>("", {
         method: "POST",
         body: JSON.stringify({
           ...endpoint(),
           name: state.name.trim(),
           models: state.selected,
-          context: state.context,
-          output: state.output,
+          limits: Object.fromEntries(state.selected.map((id) => [id, state.limits[id]])),
         }),
       })
-      for (const modelID of result.models) models.setVisibility({ providerID: result.id, modelID }, true)
-      setState(reconcile({ ...empty(), busy: "save" }))
+      batch(() => {
+        for (const modelID of result.models) models.setVisibility({ providerID: result.id, modelID }, true)
+        mutate((items = []) => [...items.filter((item) => item.id !== result.id), result])
+        // 保存后保持表单、滚动与焦点，目录刷新在后台进行；密钥只清空显示值。
+        setState({
+          id: result.id,
+          savedURL: result.baseURL,
+          url: result.baseURL,
+          key: "",
+          hasKey: true,
+          limits: result.limits,
+        })
+      })
       showToast({ title: "Custom connection saved" })
-      await Promise.all([refetch(), sync.refreshProviders()])
+      refresh()
     } catch (error) {
       setState("error", message(error))
     } finally {
@@ -134,7 +169,8 @@ export function CustomModels() {
     try {
       await call(`/${connection.id}`, { method: "DELETE" })
       if (state.id === connection.id) setState(reconcile({ ...empty(), busy: "remove" }))
-      await Promise.all([refetch(), sync.refreshProviders()])
+      mutate((items = []) => items.filter((item) => item.id !== connection.id))
+      refresh()
       showToast({ title: "Custom connection removed" })
     } catch (error) {
       setState("error", message(error))
@@ -142,7 +178,62 @@ export function CustomModels() {
       setState("busy", "")
     }
   }
-  const invalidate = () => setState({ models: [...state.selected], discovered: false, error: "" })
+  const invalidate = () => {
+    setState({ models: [...state.selected], discovered: false, error: "" })
+    // 更换地址后不沿用旧网关的能力；目录默认值和用户覆盖仍可使用，换密钥不影响能力。
+    setState(
+      "limits",
+      reconcile(
+        Object.fromEntries(
+          Object.entries(state.limits).filter(([, limit]) => limit.mode === "manual" || limit.source !== "endpoint"),
+        ),
+      ),
+    )
+    setState(
+      "detected",
+      reconcile(Object.fromEntries(Object.entries(state.detected).filter(([, limit]) => limit.source !== "endpoint"))),
+    )
+  }
+  const resolveLimits = async (ids: string[]) => {
+    const result = await call<{ limits: Record<string, ModelLimit> }>("/limits", {
+      method: "POST",
+      body: JSON.stringify({ models: ids }),
+    })
+    for (const [id, limit] of Object.entries(result.limits)) {
+      setState("detected", id, limit)
+      if (state.limits[id]?.mode !== "manual") setState("limits", id, limit)
+    }
+    return result.limits
+  }
+  const addModel = async () => {
+    if (state.busy || !state.manual.trim()) return
+    const id = state.manual.trim()
+    setState({ busy: "limits", error: "" })
+    try {
+      await resolveLimits([id])
+      setState({
+        models: [...new Set([...state.models, id])].sort(),
+        selected: [...new Set([...state.selected, id])],
+        manual: "",
+        query: "",
+      })
+    } catch (error) {
+      setState("error", message(error))
+    } finally {
+      setState("busy", "")
+    }
+  }
+  const automatic = async (id: string) => {
+    setState({ busy: "limits", error: "" })
+    try {
+      const limit = state.detected[id] ?? (await resolveLimits([id]))[id]
+      setState("limits", id, { ...limit, mode: "auto" })
+    } catch (error) {
+      setState("error", message(error))
+    } finally {
+      setState("busy", "")
+    }
+  }
 
   return (
     <div class="models-provider-keys">
@@ -186,6 +277,7 @@ export function CustomModels() {
         <form
           id="models-custom-form"
           class="models-custom-form"
+          aria-busy={!!state.busy}
           onSubmit={(event) => {
             event.preventDefault()
             void save()
@@ -231,7 +323,7 @@ export function CustomModels() {
                 placeholder={state.hasKey ? "Leave blank to keep the saved key" : "Enter API key"}
                 onInput={(event) => {
                   setState("key", event.currentTarget.value)
-                  invalidate()
+                  setState({ discovered: false, error: "" })
                 }}
               />
             </label>
@@ -333,55 +425,119 @@ export function CustomModels() {
               variant="secondary"
               class="models-secondary-action"
               disabled={!!state.busy || !state.manual.trim()}
-              onClick={() => {
-                const id = state.manual.trim()
-                setState({
-                  models: [...new Set([...state.models, id])].sort(),
-                  selected: [...new Set([...state.selected, id])],
-                  manual: "",
-                  query: "",
-                })
-              }}
+              onClick={() => void addModel()}
             >
               Add model
             </Button>
           </div>
           <details class="models-custom-limits">
             <summary class="text-12-medium text-text-weak">Model limits</summary>
-            <div class="models-custom-fields">
-              <label class="models-key-field">
-                <span class="text-12-medium text-text-weak">Context tokens</span>
-                <input
-                  class="settings-field models-key-input"
-                  type="number"
-                  required
-                  min={1024}
-                  max={2097152}
-                  step={1}
-                  value={state.context}
-                  disabled={!!state.busy}
-                  onInput={(event) => setState("context", event.currentTarget.valueAsNumber)}
-                />
-              </label>
-              <label class="models-key-field">
-                <span class="text-12-medium text-text-weak">Maximum output tokens</span>
-                <input
-                  class="settings-field models-key-input"
-                  type="number"
-                  required
-                  min={1}
-                  max={Math.min(state.context, 262144)}
-                  step={1}
-                  value={state.output}
-                  disabled={!!state.busy}
-                  onInput={(event) => setState("output", event.currentTarget.valueAsNumber)}
-                />
-              </label>
-            </div>
             <p class="text-12-regular text-text-weak">
-              Applied to the selected text models. Set limits supported by your provider. Discovery does not verify tool
-              support or pricing.
+              Limits are detected per model. Override them if your API provider uses different limits. Automatic history
+              compaction uses these values.
             </p>
+            <For each={state.selected}>
+              {(id) => (
+                <fieldset class="models-custom-limit-row">
+                  <legend class="text-12-medium text-text-strong">{id}</legend>
+                  <Show
+                    when={state.limits[id]}
+                    fallback={
+                      <div class="models-custom-toolbar">
+                        <span class="text-12-regular text-text-weak">
+                          API URL changed. Saving will use model catalog defaults.
+                        </span>
+                        <Button
+                          type="button"
+                          size="small"
+                          variant="secondary"
+                          disabled={!!state.busy}
+                          onClick={() => void automatic(id)}
+                        >
+                          Use detected limits
+                        </Button>
+                      </div>
+                    }
+                  >
+                    {(limit) => (
+                      <>
+                        <div class="models-custom-toolbar">
+                          <span class="text-12-regular text-text-weak">
+                            {limit().source === "endpoint"
+                              ? "Reported by this API"
+                              : limit().source === "catalog"
+                                ? "Model catalog defaults"
+                                : limit().source === "manual"
+                                  ? "Custom limits"
+                                  : "Unknown model · unverified fallback; check your provider"}
+                          </span>
+                          <Button
+                            type="button"
+                            size="small"
+                            variant="secondary"
+                            disabled={!!state.busy}
+                            onClick={() => void automatic(id)}
+                          >
+                            Use detected limits
+                          </Button>
+                        </div>
+                        <div class="models-custom-fields">
+                          <label class="models-key-field">
+                            <span class="text-12-medium text-text-weak">Context tokens</span>
+                            <input
+                              class="settings-field models-key-input"
+                              type="number"
+                              required
+                              min={1024}
+                              max={2147483647}
+                              step={1}
+                              value={limit().context}
+                              disabled={!!state.busy}
+                              aria-label={`${id} context tokens`}
+                              onInput={(event) => {
+                                const context = event.currentTarget.valueAsNumber
+                                setState("limits", id, {
+                                  context,
+                                  mode: "manual",
+                                  source: "manual",
+                                  input: limit().input ? Math.min(limit().input!, context) : undefined,
+                                })
+                              }}
+                            />
+                          </label>
+                          <label class="models-key-field">
+                            <span class="text-12-medium text-text-weak">Maximum output tokens</span>
+                            <input
+                              class="settings-field models-key-input"
+                              type="number"
+                              required
+                              min={1}
+                              max={limit().context}
+                              step={1}
+                              value={limit().output}
+                              disabled={!!state.busy}
+                              aria-label={`${id} maximum output tokens`}
+                              onInput={(event) =>
+                                setState("limits", id, {
+                                  output: event.currentTarget.valueAsNumber,
+                                  mode: "manual",
+                                  source: "manual",
+                                })
+                              }
+                            />
+                          </label>
+                        </div>
+                        <Show when={limit().input}>
+                          <p class="text-12-regular text-text-weak">
+                            Maximum input tokens: {limit().input?.toLocaleString()}
+                          </p>
+                        </Show>
+                      </>
+                    )}
+                  </Show>
+                </fieldset>
+              )}
+            </For>
           </details>
           <div class="models-custom-toolbar">
             <Button

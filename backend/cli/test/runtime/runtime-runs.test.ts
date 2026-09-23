@@ -335,7 +335,7 @@ test("the public API runs rich input through a real local provider and exact ret
       expect((await runtime.cancel({ sessionID: session.id, runID: accepted.runID })).state).toBe("completed")
       const python = Bun.spawn(
         [
-          "python3",
+          process.platform === "win32" ? "python" : "python3",
           path.resolve(import.meta.dir, "../../../../tooling/sdk/python/tests/server_conformance.py"),
           api.url.origin,
           "--fixture-model",

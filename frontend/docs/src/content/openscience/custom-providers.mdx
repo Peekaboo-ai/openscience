@@ -18,9 +18,23 @@ identical model IDs on different gateways remain separate choices. The picker do
 unconnected recommended models.
 
 If the service does not implement `GET /models`, use **Add a model ID manually**. Select text/chat
-models supported by the endpoint. Under **Model limits**, set the context and output budgets
-documented by the provider; defaults are 32,768 context and 8,192 output tokens. These limits apply
-to all selected models in that connection. Discovery confirms the model listing, not inference,
+models supported by the endpoint. **Model limits** shows a separate context and maximum output
+limit for each selected model, using metadata reported by the endpoint first, then exact model
+matches in OpenScience's reviewed/provider catalog. Any known input cap is retained for request
+budgeting. Unknown model IDs use an explicitly unverified fallback of 128,000 context and 32,000
+output tokens; check your provider's documentation and override these values when necessary.
+**Use detected limits** restores automatic values. Explicit overrides remain stable across discovery
+and edits. Old connections using the former fixed 32,768/8,192 defaults automatically pick up known
+model limits; other previously saved values remain manual overrides.
+
+Automatic history compaction uses these limits, reserves output space, prunes older tool results,
+and summarizes history when needed. The maximum output field describes model capacity, not a
+promise that every response will use that many tokens; the agent retains its normal output cap.
+A single newest message, its attachments, system instructions and tools must still fit the safe
+input budget; history compression cannot make an arbitrarily large current request fit.
+
+Saving keeps the editor open and refreshes the model picker in the background. Discovery confirms
+the model listing, not inference,
 tool support, pricing, or every account's model entitlement. The configured models use text inputs
 and outputs with tool calling enabled for the research workflow; use the configuration-file method
 below for per-model capabilities or other API protocols.

@@ -10,9 +10,11 @@ import { ComputeAllowance } from "@/permission/allowance"
 import { SessionFilesystem } from "@/session/filesystem"
 import { Filesystem } from "@/util/filesystem"
 import { Tool } from "./tool"
+import { ComputeEnvironment } from "../compute/environment"
 
 const COMPUTE_ACTIONS = [
   "targets",
+  "environment",
   "plan",
   "start",
   "list",
@@ -28,6 +30,8 @@ type ComputeAction = (typeof COMPUTE_ACTIONS)[number]
 
 const ACTION_DESCRIPTIONS = {
   targets: "Discover available local, saved SSH/scheduler, and Modal targets.",
+  environment:
+    "Inspect this backend's host resources, GPU and Slurm/PBS/LSF/SGE state using bounded read-only host probes. Works on standalone hosts too; does not require shell sandbox network access.",
   plan: "Preview an immutable compute plan without dispatching it.",
   start: "Create and dispatch a detached compute job after any required approval.",
   list: "List project-scoped compute jobs, optionally filtered by status.",
@@ -42,6 +46,7 @@ const ACTION_DESCRIPTIONS = {
 
 const ACTION_EXAMPLES = {
   targets: '{"action":"targets"}',
+  environment: '{"action":"environment"}',
   plan: '{"action":"plan","name":"Environment probe","purpose":"Check the local runtime before starting work.","command":"python --version","target":{"kind":"local"}}',
   start:
     '{"action":"start","name":"Run analysis","purpose":"Produce the requested analysis output.","command":"python analysis.py","target":{"kind":"local"}}',
@@ -110,6 +115,7 @@ const ComputeWorkload = z
 
 const ComputeJobActionParameters = z
   .discriminatedUnion("action", [
+    z.object({ action: action("environment") }).strict(),
     z
       .object({ action: action("targets") })
       .strict()
@@ -256,6 +262,7 @@ function normalizeInput(input: unknown): unknown {
     ]
     const allowed: Record<ComputeAction, Set<string>> = {
       targets: new Set(["action"]),
+      environment: new Set(["action"]),
       plan: new Set(workload),
       start: new Set(workload),
       list: new Set(["action", "status", "limit"]),
@@ -695,6 +702,7 @@ export function createComputeJobTool(base?: JobBroker.Options) {
   return Tool.define<typeof ComputeJobParameters, Metadata>("compute_job", {
     description: [
       "Detached local, SSH/scheduler, and Modal jobs; prefer Python/R for interactive work.",
+      'For machine, GPU, cluster nodes or queue status, first use {"action":"environment"}. A remote workspace queries its remote host, not the desktop. Do not use sandboxed sinfo/squeue to infer host availability.',
       "Use targets to discover, plan to preview, start to dispatch, and wait instead of shell polling. list/status/logs/artifacts inspect jobs; cancel, retry_delivery, and release manage them.",
       "plan/start require name, purpose, command, and target. Remote starts require scoped approval. Other job actions use job_id.",
       'Example: {"action":"start","name":"Analysis","purpose":"Produce results","command":"python analysis.py","target":{"kind":"local"}}.',
@@ -705,6 +713,13 @@ export function createComputeJobTool(base?: JobBroker.Options) {
     formatValidationError,
     async execute(value, ctx) {
       const input: Input = ComputeJobActionParameters.parse(value)
+      if (input.action === "environment") {
+        return {
+          title: "Compute environment",
+          metadata: { compute_job: { action: input.action } },
+          output: json(await ComputeEnvironment.inspect()),
+        }
+      }
       if (input.action === "targets") {
         const resolved = await options(ctx.sessionID, base)
         const output = {

@@ -14,6 +14,19 @@ export namespace CredentialTeardown {
   export async function apply(event: Pick<CredentialLifecycle.Event, "reason">): Promise<void> {
     const target = CredentialRevocation.target(event.reason)
     if (target === "none") return
+    if (target === "provider") {
+      // PTY、内核和语言服务只继承 kernelEnv，不持有模型密钥。
+      // 保留项目实例，同时仍撤销旧凭据请求、命令、作业和 MCP 连接。
+      const reason = CredentialRevocation.message(event.reason)
+      await Instance.each(() => SessionPrompt.interrupt(new CredentialRevocation.Interruption(event.reason)))
+      await Promise.all([
+        ComputeJobs.cancelCredentialProcesses(),
+        CommandRuntime.stopAll(reason),
+        Instance.each(() => MCP.disposeCredentials(reason)),
+        CredentialProcessLedger.revoke("mcp"),
+      ])
+      return
+    }
     if (target === "mcp") {
       // MCP authority is scoped to MCP transports. Do not stop unrelated
       // notebooks, compute, or shell commands when an OAuth token refreshes.

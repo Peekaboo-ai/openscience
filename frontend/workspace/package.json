@@ -23,6 +23,7 @@
   },
   "license": "Apache-2.0",
   "devDependencies": {
+    "@xterm/headless": "6.0.0",
     "@happy-dom/global-registrator": "20.0.11",
     "@playwright/test": "catalog:",
     "@tailwindcss/vite": "catalog:",
@@ -35,6 +36,8 @@
     "vite-plugin-solid": "catalog:"
   },
   "dependencies": {
+    "@xterm/xterm": "6.0.0",
+    "@xterm/addon-fit": "0.11.0",
     "@codemirror/lang-css": "6.3.1",
     "@codemirror/lang-html": "6.4.12",
     "@codemirror/lang-javascript": "6.2.5",
@@ -57,7 +60,6 @@
     "@synsci/ui": "workspace:*",
     "@synsci/util": "workspace:*",
     "codemirror": "6.0.2",
-    "ghostty-web": "0.3.0",
     "igv": "^3.8.4",
     "katex": "^0.17.0",
     "luxon": "catalog:",

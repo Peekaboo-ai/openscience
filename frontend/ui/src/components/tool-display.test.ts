@@ -17,6 +17,7 @@ import {
   skillActivity,
   skillName,
   stripBashMetadata,
+  bashTermination,
   stripRedactedReasoning,
   taskOutcome,
   taskPhase,
@@ -818,6 +819,11 @@ describe("toolSummary", () => {
       "one\ntwo\n\n<bash_metadata>\nbash tool terminated command after exceeding timeout 5 ms\n</bash_metadata>"
     expect(stripBashMetadata(output)).toBe("one\ntwo")
     expect(stripBashMetadata("plain\n")).toBe("plain\n")
+    expect(
+      bashTermination("<bash_metadata>bash tool terminated command after exceeding timeout 120000 ms</bash_metadata>"),
+    ).toEqual({ kind: "timeout", seconds: 120 })
+    expect(bashTermination("<bash_metadata>User aborted the command</bash_metadata>")).toEqual({ kind: "cancelled" })
+    expect(bashTermination("command printed: exceeding timeout 120000 ms")).toBeUndefined()
     expect(toolSummary({ tool: "bash", status: "completed", output, metadata: { exit: 124 } })).toEqual([
       { key: "ui.tool.summary.exit", params: { code: 124 } },
       { key: "ui.tool.summary.lines.other", params: { count: 2 } },

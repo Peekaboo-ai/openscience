@@ -62,6 +62,7 @@ const capabilities = {
   serverVersion: "test",
   idempotentPrompts: true,
   richInputs: true,
+  promptQueue: true,
   runSnapshots: true,
   eventRetention: 100,
   crashRecovery: "interrupt",
@@ -116,6 +117,22 @@ test("Research sends the complete composer input to the negotiated runtime with 
     expect(request.headers["x-openscience-directory"]).toBe("/lab/project")
     expect(request.headers["x-openscience-project"]).toBe("project_test")
   }
+})
+
+test("queued prompts preserve attachments and model settings and never enter the current run", async () => {
+  await using server = await host((request) =>
+    request.method === "GET" ? { status: 200, body: capabilities } : accepted(),
+  )
+  await submitComposerPrompt(server.client, { ...input, queued: true })
+  expect(server.requests.map((request) => request.path)).toEqual(["/runtime/capabilities", "/runtime/queue"])
+  const { agent: _, ...expected } = input
+  expect(server.requests[1].body).toEqual({ ...expected, requestID: input.messageID })
+})
+
+test("an old server cannot silently downgrade queueing to immediate execution", async () => {
+  await using server = await host(() => ({ status: 200, body: { ...capabilities, promptQueue: false } }))
+  await expect(submitComposerPrompt(server.client, { ...input, queued: true })).rejects.toThrow("queued prompts")
+  expect(server.requests).toHaveLength(1)
 })
 
 test("only a capabilities 404 selects the legacy prompt route and preserves its fields", async () => {

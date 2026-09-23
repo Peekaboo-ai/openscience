@@ -203,6 +203,34 @@ function setInput(host: HTMLElement, value: string) {
   input.dispatchEvent(new Event("input", { bubbles: true }))
 }
 
+test("a local desktop opens immediately without contacting accounts or changing onboarding state", async () => {
+  window.location.href = "http://localhost/?desktop=1&desktop-onboarding=optional"
+  const app = fixture()
+  const view = app.mount()
+  expect(view.host.textContent).toContain("Research workspace loaded")
+  await Bun.sleep(20)
+  expect(app.requests).toEqual([])
+  expect(app.state.connected).toBe(false)
+  expect(app.state.version).toBe(0)
+  expect(localStorage.getItem(versionKey)).toBeNull()
+  expect(view.host.querySelector('[aria-label="Loading desktop setup"]')).toBeNull()
+})
+
+test("local desktop restart ignores incomplete cloud onboarding without overwriting it", async () => {
+  window.location.href = "http://localhost/?desktop=1&desktop-onboarding=optional"
+  localStorage.setItem(versionKey, "1")
+  const app = fixture({ step: "ace", connected: false })
+  const first = app.mount()
+  expect(first.host.textContent).toContain("Research workspace loaded")
+  first.dispose()
+  const second = app.mount()
+  expect(second.host.textContent).toContain("Research workspace loaded")
+  await Bun.sleep(20)
+  expect(app.requests).toEqual([])
+  expect(app.state.step).toBe("ace")
+  expect(localStorage.getItem(versionKey)).toBe("1")
+})
+
 test("a fresh desktop starts at the account step with no way to skip it", async () => {
   const app = fixture()
   const view = app.mount()

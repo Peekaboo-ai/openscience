@@ -5,6 +5,10 @@ description: "Find your projects, follow a conversation, and review the files Op
 
 The desktop app and browser workspace give you the same research workflow: open a project, choose a model, and work through a question in a conversation.
 
+On Windows, the customized **OpenScience Workspaces** EXE installer provides a desktop and Start menu shortcut. Double-click the shortcut to enter the local workspace and start its backend; no separate server command, Synthetic Sciences account, or sign-in key is needed. Official account sign-in remains optional in Settings. Its settings and research data live in `%LOCALAPPDATA%\OpenScience Workspaces` and remain after upgrading or uninstalling. The installer does not include another user's model keys, SSH settings or conversations. Configure model access and remote hosts on first use.
+
+Desktop SSH connections support data paths containing spaces and Chinese characters. Imported hosts still require a successful connection test to pin their public host keys; remote projects continue to use strict host-key verification.
+
 ```bash
 openscience
 openscience ~/research/my-project
@@ -34,11 +38,15 @@ Use the command palette to find actions such as **Open project files**, **Open p
 
 ## Action Timeline
 
-Open **Action Timeline** in the workspace sidebar or compact workspace menu. Each turn groups its user request, model calls, tools, retries, compactions, and recorded file snapshots. Select an action to see its execution metadata, token usage, cost, and exact recorded times. Raw tool arguments, outputs, provider protocol state, and reasoning text are excluded from this view.
+Open **Action Timeline** in the workspace sidebar or compact workspace menu. An **action** is an observable step taken to carry out a research request: a model response, tool call, analysis, delegation, retry, context compaction, or recorded file snapshot. A request is the starting point that groups these steps; its redacted text summary names the group. A step's completion does not certify the scientific validity of its result. Model-response intervals can include tool execution, so their durations can overlap.
+
+The list shows descriptive action names, human-readable outcomes, and the active project's model/provider names. **Needs review** isolates failed, interrupted and partially completed steps while retaining their request context. Step numbers describe order within the loaded request history; filtering preserves them, and loading earlier steps can extend that numbering. A request whose starting message is outside the loaded history is labelled accordingly.
+
+Select an action to inspect its outcome, token breakdown and recorded cost. **Recorded timestamps (UTC)** and **Technical identifiers** reveal exact timing and runtime IDs when needed for diagnosis. Narrow panels keep duration in the list; token details remain available in the inspector. Raw tool arguments, outputs, provider protocol state, synthetic system prompts, and reasoning text are excluded. Use the original conversation to review a tool's full inputs, outputs, or a provider error. A recorded zero cost can mean missing price metadata, not a free request.
 
 The first page contains the latest 50 messages. **Load earlier** adds older history; search only covers records already loaded. Search temporarily expands matching turns, preserving their previous folded state when cleared. **Follow latest** returns to current work. The timeline refreshes from persisted state after streaming events and reconnects; a failed request retains the last successful snapshot and shows an error.
 
-Use the overview's buttons or mouse wheel to zoom, Shift/right-drag to pan, and drag to filter by time. The exact-time controls provide a keyboard alternative. The action list supports arrow keys, Page Up/Down, Home, and End. Missing timing phases and unknown measurements display as unavailable rather than estimated zeroes.
+Expand **Timing overview & time filter** to use its buttons or mouse wheel to zoom, Shift/right-drag to pan, and drag to filter by time. The exact-time controls provide a keyboard alternative. The action list supports arrow keys, Page Up/Down, Home, and End. Missing timing phases and unknown measurements display as unavailable rather than estimated zeroes. **Session controls & recovery** contains the following existing workbench operations.
 
 **Save checkpoint** creates a research handoff document under `.openscience/checkpoints` and freezes a recovery recipe from the durable execution history. **Recovery plan** shows each step, source generation, code digest and whether it can be replayed safely. **Recover to new branch** copies the checkpoint conversation and replays verified literal state in separate Python/R kernels; the original session and kernels are preserved. This is conservative replay, not an arbitrary memory image: imports, unknown dependencies, file/network effects and nonliteral state require manual review. Such recipes are marked **partial**, never complete. Recovery logs survive reloads, show progress/failures, and allow review and retry in another fresh branch. Current permissions and interpreter availability still apply.
 
@@ -96,6 +104,10 @@ Open **Customize** to manage:
 
 ## Browser and terminal sessions
 
+Adding or updating model connections keeps existing terminal tabs and their shell state. Rotating or removing a key still interrupts requests and processes that used the previous credentials. Project access revocation and stopping the backend can still close terminals.
+
+Project conversation lists appear immediately when reopened after their first load, then refresh in the background. Local and remote projects keep separate caches. A failed refresh preserves the last loaded list and shows a retry action.
+
 The CLI prints a local workspace URL. If you close the browser tab while the command is still running, reopen that URL. Stopping the CLI stops that running workspace; saved conversations remain available next time.
 
 To choose a port:
@@ -123,3 +135,13 @@ See [Sessions](/openscience/sessions) for continuing, exporting, and importing c
 - [Saved Results](/openscience/results): retain verified outputs, download, rename, and recover from Trash.
 - [Context and handoffs](/openscience/context): compact long work and prepare a continuation.
 - [Keyboard shortcuts](/openscience/keyboard-shortcuts) and [Preferences](/openscience/preferences): navigate and configure the interface.
+
+## Messages while a task is running
+
+With a draft in the composer, **Guide now** sends a follow-up for the agent to read at its next step. It does not interrupt a running command. The separate Stop control (or Escape) cancels the current run.
+
+While a task runs, **Enter** sends guidance to its next step. Open the arrow beside Send and choose **Add to queue**, or press **Ctrl+Enter** (⌘+Enter on macOS), to save a separate task for execution after the current run. Selecting either menu action sends the current draft immediately. Queued messages retain their attachments, selected model and reasoning settings on the connected backend, including remote projects. You can edit their text, reorder or remove them, and pause or resume the queue. Stopping a run, a failed run, or a backend restart pauses pending work; review it before resuming. A stopped backend does not silently replay work whose effects may already have occurred.
+
+Permission buttons show a pending state immediately and prevent duplicate decisions. Connection failures keep the request available for retry. Waiting for approval is labelled separately from command execution. Shell timeouts show their configured limit instead of hiding the reason in diagnostic metadata. Action Timeline keeps its loaded history when you switch modules; workbench summaries update separately.
+
+Shell activity cards distinguish environment preparation, process startup, command execution, and result collection. Ordinary commands use the host shell environment without installing a Python runtime. Conda/venv activation applies to commands in the same Shell call; it does not change other calls or an already-open interactive terminal. The optional `environment: "python"` setting selects an existing OpenScience Python runtime and its project packages explicitly.

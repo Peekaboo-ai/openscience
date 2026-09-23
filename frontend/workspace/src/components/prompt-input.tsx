@@ -91,6 +91,8 @@ import { canRestoreFailedSubmission } from "./prompt-submission"
 import { getNodeLength, isPillNode, setCursorPosition } from "./prompt-editor-cursor"
 import { applyHighlight, clearHighlight, slashTokenRanges } from "./prompt-highlight"
 import { submitComposerPrompt, type ComposerPromptInput } from "./prompt-runtime"
+import { PromptQueue } from "./prompt-queue"
+import { PromptSendOptions } from "./prompt-send-options"
 import { requestFailure, requestStatus } from "@/utils/request-error"
 import {
   slashBlurb,
@@ -551,6 +553,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     applyingHistory: boolean
     bootstrapID?: string
     bootstrapDirectory?: string
+    queueAvailable: boolean
+    queueVersion: number
   }>({
     popover: null,
     historyIndex: -1,
@@ -562,9 +566,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     applyingHistory: false,
     bootstrapID: undefined,
     bootstrapDirectory: undefined,
+    queueAvailable: false,
+    queueVersion: 0,
   })
 
   const [submitting, setSubmitting] = createSignal(false)
+  const queueText = (en: string, zh: string) => (language.locale().startsWith("zh") ? zh : en)
+  const showStop = () => working() && !prompt.dirty()
 
   const placeholder = createMemo(() => {
     if (submitting()) return "Sending…"
@@ -1928,7 +1936,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
     // Note: Shift+Enter is handled earlier, before IME check
     if (event.key === "Enter" && !event.shiftKey) {
-      handleSubmit(event)
+      handleSubmit(event, undefined, (event.ctrlKey || event.metaKey) && store.queueAvailable ? "queue" : "guide")
     }
     if (event.key === "Escape") {
       if (store.popover) {
@@ -1939,7 +1947,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     }
   }
 
-  const handleSubmit = async (event: Event, action?: string) => {
+  const handleSubmit = async (event: Event, action?: string, delivery: "guide" | "queue" = "guide") => {
     event.preventDefault()
 
     // A first prompt may need to create its session (and sometimes a
@@ -1952,6 +1960,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     const images = action ? [] : imageAttachments().slice()
     const mode = action ? "normal" : store.mode
     const intent = action ? null : store.intent
+    const wasWorking = working()
+    const queuedDelivery =
+      !action && !intent && mode === "normal" && delivery === "queue" && local.agent.current()?.name === "research"
 
     const typedIntent = !intent && images.length === 0 ? text.trim().match(/^\/(plan|goal)$/)?.[1] : undefined
     if (typedIntent === "plan" || typedIntent === "goal") {
@@ -2230,6 +2241,18 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       }
       const customCommand = commands.find((command) => command.name === commandName)
       if (customCommand) {
+        if (queuedDelivery) {
+          setSubmitting(false)
+          restoreInputAfterFailure()
+          showToast({
+            title: queueText("Use Send now for slash commands", "斜杠命令请使用立即发送"),
+            description: queueText(
+              "The queue accepts conversation messages and their attachments.",
+              "队列支持对话消息及其附件。",
+            ),
+          })
+          return
+        }
         const request = {
           sessionID: session.id,
           command: commandName,
@@ -2508,11 +2531,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       prompt.context.remove(item.key)
     }
 
-    addOptimisticMessage()
+    if (!queuedDelivery) addOptimisticMessage()
     setSubmitting(false)
 
     const restoreSubmission = () => {
-      if (sessionDirectory === projectDirectory) {
+      if (sessionDirectory === projectDirectory && !wasWorking && !queuedDelivery) {
         sync.set("session_status", session.id, { type: "idle" })
       }
       removeOptimisticMessage()
@@ -2589,10 +2612,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         variant,
         tier,
         context: contextLimit,
+        queued: queuedDelivery,
       }
       const controller = new AbortController()
       pending.set(session.id, { abort: controller, cleanup: restoreSubmission })
-      if (sessionDirectory === projectDirectory) {
+      if (sessionDirectory === projectDirectory && !queuedDelivery) {
         sync.set("session_status", session.id, { type: "busy" })
       }
       const submitted = () => {
@@ -2601,6 +2625,15 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       // Stop owns capability negotiation locally; once submission begins the
       // session's server cancellation path owns the running request.
       await submitComposerPrompt(client, request, controller.signal, submitted)
+        .then(() => {
+          setStore("queueVersion", (value) => value + 1)
+          if (queuedDelivery) showToast({ title: queueText("Message queued", "消息已加入队列") })
+          else if (wasWorking)
+            showToast({
+              title: queueText("Guidance sent", "引导消息已发送"),
+              description: queueText("The agent will read it at the next step.", "智能体将在下一步读取补充指令。"),
+            })
+        })
         .catch((error) => {
           if (!controller.signal.aborted) throw error
         })
@@ -2862,6 +2895,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           </button>
         </div>
       </Show>
+      <PromptQueue
+        client={sdk.client}
+        sessionID={params.id}
+        refresh={store.queueVersion}
+        working={working()}
+        locale={language.locale()}
+        onAvailable={(available) => setStore("queueAvailable", available)}
+      />
       <form
         onSubmit={handleSubmit}
         classList={{
@@ -3241,12 +3282,37 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               </Tooltip>
             </Show>
             <ModelSettingsPopover />
+            <Show
+              when={
+                working() &&
+                prompt.dirty() &&
+                store.queueAvailable &&
+                local.agent.current()?.name === "research" &&
+                store.mode === "normal" &&
+                !store.intent
+              }
+            >
+              <PromptSendOptions
+                disabled={submitting()}
+                locale={language.locale()}
+                send={(delivery) => void handleSubmit(new Event("submit"), undefined, delivery)}
+              />
+            </Show>
+            <Show when={working() && prompt.dirty()}>
+              <IconButton
+                type="button"
+                icon="stop"
+                variant="ghost"
+                aria-label={language.t("prompt.action.stop")}
+                onClick={() => void abort()}
+              />
+            </Show>
             <Tooltip
               placement="top"
               inactive={!prompt.dirty() && !working()}
               value={
                 <Switch>
-                  <Match when={working()}>
+                  <Match when={showStop()}>
                     <div class="flex items-center gap-2">
                       <span>{language.t("prompt.action.stop")}</span>
                       <span class="text-icon-base text-10-medium">{language.t("common.key.esc")}</span>
@@ -3254,7 +3320,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   </Match>
                   <Match when={true}>
                     <div class="flex items-center gap-2">
-                      <span>{language.t("prompt.action.send")}</span>
+                      <span>
+                        {working() ? queueText("Guide current task", "引导当前任务") : language.t("prompt.action.send")}
+                      </span>
                       <Icon name="enter" size="small" class="text-icon-base" />
                     </div>
                   </Match>
@@ -3263,16 +3331,21 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             >
               <IconButton
                 type="submit"
-                disabled={!prompt.dirty() && !working()}
-                icon={working() ? "stop" : "arrow-up"}
+                disabled={submitting() || (!prompt.dirty() && !working())}
+                icon={showStop() ? "stop" : "arrow-up"}
                 variant="primary"
                 class="workspace-composer__send rounded-full"
-                data-composer-action={working() ? "stop" : prompt.dirty() ? "send" : "idle"}
-                aria-label={working() ? language.t("prompt.action.stop") : language.t("prompt.action.send")}
+                data-composer-action={showStop() ? "stop" : prompt.dirty() ? "send" : "idle"}
+                aria-label={
+                  showStop()
+                    ? language.t("prompt.action.stop")
+                    : working()
+                      ? queueText("Guide current task", "引导当前任务")
+                      : language.t("prompt.action.send")
+                }
                 onClick={(event: MouseEvent) => {
-                  // The button is Stop while a response runs; Enter in the
-                  // editor still submits, so the draft joins the turn instead.
-                  if (!working()) return
+                  // 有草稿时主按钮发送；停止保留独立入口，不能把引导消息误当成中止。
+                  if (!showStop()) return
                   event.preventDefault()
                   void abort()
                 }}

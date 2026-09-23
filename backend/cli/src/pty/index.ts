@@ -13,15 +13,27 @@ import { AuthoritySignal } from "@/project/authority-signal"
 import { AuthorityProcessLedger } from "@/project/authority-process"
 import { Sandbox } from "@/sandbox/sandbox"
 import { OpenScience } from "@/openscience"
-import { terminalArgs, terminalEnv } from "./environment"
+import { terminalCommand, terminalEnv, terminalSpawnEnv } from "./environment"
 import { Replay } from "./replay"
 import { WindowsJobLauncher } from "@/process/windows-job-launcher"
 import { Filesystem } from "@/util/filesystem"
 import { UpdateQuiescence } from "@/process/update-quiescence"
+import { relayTerminalResize } from "./resize"
+import { createClusterQueries } from "./cluster-queries"
+import { terminalInitialization } from "./initialization"
+import { encodePtyReplay } from "@synsci/util/pty-replay"
 
 export namespace Pty {
   const log = Log.create({ service: "pty" })
   const REPLAY_REQUEST = "\0"
+
+  function closeSubscriber(ws: WSContext) {
+    try {
+      ws.close()
+    } catch (error) {
+      log.warn("terminal subscriber already closed", { error })
+    }
+  }
 
   const pty = lazy(async () => {
     const { spawn } = await import("bun-pty")
@@ -56,8 +68,8 @@ export namespace Pty {
     title: z.string().optional(),
     size: z
       .object({
-        rows: z.number(),
-        cols: z.number(),
+        rows: z.number().int().min(1).max(1000),
+        cols: z.number().int().min(1).max(1000),
       })
       .optional(),
   })
@@ -77,6 +89,8 @@ export namespace Pty {
     buffer: Replay.Ring
     subscribers: Map<WSContext, boolean>
     releaseUpdate: () => void
+    releaseQueries: () => void
+    ready: Promise<void>
   }
 
   const state = Instance.state(
@@ -92,9 +106,10 @@ export namespace Pty {
       // are already gone when revoke resolves.
       await Promise.all([...projects].map((projectID) => AuthorityProcessLedger.revoke({ kind: "pty", projectID })))
       for (const session of sessions.values()) {
+        session.releaseQueries()
         session.releaseUpdate()
         for (const ws of session.subscribers.keys()) {
-          ws.close()
+          closeSubscriber(ws)
         }
       }
       sessions.clear()
@@ -112,11 +127,12 @@ export namespace Pty {
   export async function create(input: CreateInput) {
     const id = Identifier.create("pty", false)
     const command = Shell.preferred()
-    const args = terminalArgs(command)
     const spawn = await pty()
     return AuthoritySignal.exclusive(async () => {
       const releaseUpdate = UpdateQuiescence.enter("pty")
       let handedOff = false
+      let queries: Awaited<ReturnType<typeof createClusterQueries>>
+      let initialization: Awaited<ReturnType<typeof terminalInitialization>> | undefined
       try {
         const authority = await ExecutionAuthority.require({
           projectID: Instance.project.id,
@@ -127,30 +143,41 @@ export namespace Pty {
         // Local projects grant their real worktree as a writable root, so an
         // interactive terminal should open where the user expects. Hosted or
         // otherwise isolated sessions retain their private session workspace.
-        const cwd = authority.writable.some((root) => Filesystem.contains(root, project))
-          ? project
-          : authority.workspace
+        const cwd =
+          authority.workspace !== authority.scratch
+            ? authority.workspace
+            : authority.writable.some((root) => Filesystem.contains(root, project))
+              ? project
+              : authority.workspace
         // Interactive PTY output is not a redaction boundary. Keep provider/cloud
         // credentials on the host; terminals receive runtime discovery only.
         const source = OpenScience.kernelEnv(process.env)
         const env = terminalEnv(source, Instance.project.id, input.sessionID, command)
+        initialization = await terminalInitialization(command, env)
+        const args = initialization.args
+        if (authority.sandbox.enabled) queries = await createClusterQueries()
+        if (queries) env.PATH = `${queries.root}:${env.PATH ?? "/usr/bin:/bin"}`
         const sandbox = Sandbox.wrapArgv({
           file: command,
           args,
           workspace: authority.writable,
-          readable: authority.readable,
+          readable: [...authority.readable, ...initialization.readable, ...(queries?.readable ?? [])],
+          readOnly: [...initialization.readable, ...(queries?.readable ?? [])],
           unreadable: OpenScience.kernelSensitivePaths(),
           options: authority.sandbox,
+          terminal: { env },
         })
-        const launch = WindowsJobLauncher.wrap({ file: sandbox.file, args: sandbox.args })
+        const launch = WindowsJobLauncher.wrap(terminalCommand(sandbox.file, sandbox.args, env))
         log.info("creating session", { id, cmd: command, args, cwd })
 
         const ptyProcess = (() => {
           try {
             return spawn(launch.file, launch.args, {
               name: "xterm-256color",
+              cols: 80,
+              rows: 24,
               cwd,
-              env,
+              env: terminalSpawnEnv(env),
             })
           } catch (error) {
             Sandbox.cleanup(sandbox)
@@ -160,9 +187,11 @@ export namespace Pty {
 
         let session: ActiveSession | undefined
         let earlyExit: number | undefined
+        const ready = Promise.withResolvers<void>()
         const earlyBuffer = Replay.create()
         const sessions = state()
         ptyProcess.onData((data) => {
+          ready.resolve()
           const active = session
           if (!active) {
             Replay.append(earlyBuffer, data)
@@ -175,10 +204,18 @@ export namespace Pty {
               continue
             }
             if (!ready) continue
-            ws.send(data)
+            try {
+              ws.send(data)
+            } catch (error) {
+              active.subscribers.delete(ws)
+              log.warn("terminal subscriber disconnected during output", { id, error })
+            }
           }
         })
         ptyProcess.onExit(({ exitCode }) => {
+          ready.resolve()
+          queries?.close()
+          initialization?.close()
           Sandbox.cleanup(sandbox)
           if (!session) {
             earlyExit = exitCode
@@ -187,9 +224,13 @@ export namespace Pty {
           const active = session
           log.info("session exited", { id, exitCode })
           active.info.status = "exited"
-          for (const ws of active.subscribers.keys()) ws.close()
+          for (const ws of active.subscribers.keys()) {
+            closeSubscriber(ws)
+          }
           active.subscribers.clear()
-          void Bus.publish(Event.Exited, { id, exitCode })
+          void Bus.publish(Event.Exited, { id, exitCode }).catch((error) =>
+            log.error("terminal exit notification failed", { id, error }),
+          )
           void AuthorityProcessLedger.complete(id)
             .then((completed) => {
               if (!completed) throw new Error(`Terminal ${id} still has a live authority process`)
@@ -243,14 +284,25 @@ export namespace Pty {
           process: ptyProcess,
           buffer: earlyBuffer,
           subscribers: new Map(),
+          ready: sandbox.backend === "bubblewrap" ? ready.promise : Promise.resolve(),
           releaseUpdate,
+          releaseQueries: () => {
+            queries?.close()
+            initialization?.close()
+          },
         }
         sessions.set(id, session)
         handedOff = true
-        void Bus.publish(Event.Created, { info })
+        void Bus.publish(Event.Created, { info }).catch((error) =>
+          log.error("terminal creation notification failed", { id, error }),
+        )
         return info
       } finally {
-        if (!handedOff) releaseUpdate()
+        if (!handedOff) {
+          queries?.close()
+          initialization?.close()
+          releaseUpdate()
+        }
       }
     })
   }
@@ -262,9 +314,9 @@ export namespace Pty {
       session.info.title = input.title
     }
     if (input.size) {
-      session.process.resize(input.size.cols, input.size.rows)
+      await resize(id, input.size.cols, input.size.rows)
     }
-    Bus.publish(Event.Updated, { info: session.info })
+    await Bus.publish(Event.Updated, { info: session.info })
     return session.info
   }
 
@@ -273,12 +325,13 @@ export namespace Pty {
     if (!session) return
     log.info("removing session", { id })
     await AuthorityProcessLedger.revoke({ id, kind: "pty" })
+    session.releaseQueries()
     session.releaseUpdate()
     for (const ws of session.subscribers.keys()) {
-      ws.close()
+      closeSubscriber(ws)
     }
     state().delete(id)
-    Bus.publish(Event.Deleted, { id })
+    await Bus.publish(Event.Deleted, { id })
   }
 
   export async function releaseSession(sessionID: string) {
@@ -292,10 +345,27 @@ export namespace Pty {
     await Promise.all([...state().keys()].map((id) => remove(id)))
   }
 
-  export function resize(id: string, cols: number, rows: number) {
-    const session = state().get(id)
-    if (session && session.info.status === "running") {
+  export async function resize(id: string, cols: number, rows: number) {
+    const sessions = state()
+    const session = sessions.get(id)
+    if (!session || session.info.status !== "running") return
+    // bwrap 内的 script 尚未启动时，SIGWINCH 无接收者；先等到桥接器输出，
+    // 再确认尺寸并放行浏览器输入。否则前端已是 66 列而 readline 一直使用默认 80 列。
+    let timer: ReturnType<typeof setTimeout> | undefined
+    await Promise.race([
+      session.ready,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("Terminal startup timed out before window size synchronization")),
+          30_000,
+        )
+        timer.unref()
+      }),
+    ]).finally(() => clearTimeout(timer))
+    if (sessions.get(id) === session && session.info.status === "running") {
       session.process.resize(cols, rows)
+      Replay.resize(session.buffer, { cols, rows })
+      relayTerminalResize(session.process.pid)
     }
   }
 
@@ -306,10 +376,10 @@ export namespace Pty {
     }
   }
 
-  export function connect(id: string, ws: WSContext) {
+  export function connect(id: string, ws: WSContext, geometry = false) {
     const session = state().get(id)
     if (!session) {
-      ws.close()
+      closeSubscriber(ws)
       return
     }
     log.info("client connected to session", { id })
@@ -321,12 +391,20 @@ export namespace Pty {
           const buffer = session.buffer
           if (ws.readyState !== 1) return
           session.subscribers.set(ws, true)
-          if (buffer.length) {
+          if (buffer.length || geometry) {
             try {
-              for (const chunk of Replay.chunks(buffer)) ws.send(chunk)
+              if (geometry) {
+                // 文本仍是原始 PTY 字节；二进制控制帧仅用于显式协商的历史几何回放。
+                for (const frame of Replay.frames(buffer)) {
+                  ws.send(encodePtyReplay({ type: "resize", size: frame.size }))
+                  ws.send(frame.data)
+                }
+                ws.send(encodePtyReplay({ type: "resize", size: buffer.size }))
+                ws.send(encodePtyReplay({ type: "ready" }))
+              } else for (const chunk of Replay.chunks(buffer)) ws.send(chunk)
             } catch {
               session.subscribers.delete(ws)
-              ws.close()
+              closeSubscriber(ws)
               return
             }
           }
@@ -336,7 +414,7 @@ export namespace Pty {
           session.process.write(data)
         } catch {
           session.subscribers.delete(ws)
-          ws.close()
+          closeSubscriber(ws)
         }
       },
       onClose: () => {

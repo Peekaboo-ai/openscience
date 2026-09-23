@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test"
 import { spawnSync } from "node:child_process"
 import fs from "node:fs/promises"
+import net from "node:net"
+import { once } from "node:events"
 import os from "node:os"
 import path from "node:path"
 import { SshAdapter } from "../../src/compute/ssh/adapter"
@@ -100,6 +102,65 @@ test("Windows OpenSSH can fingerprint a real host key using the transport enviro
     )
     expect(await fs.readFile(known, "utf8")).toContain(publicKey)
   } finally {
+    await fs.rm(root, { recursive: true, force: true })
+  }
+})
+
+test("OpenSSH loads one pinned file from a Unicode path with spaces for direct and jump-host configuration", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "openscience ssh 用户 "))
+  // 只提供握手横幅，让真实 OpenSSH 读取本地密钥并生成协商列表；不依赖外网或安装 sshd。
+  const server = net.createServer((socket) => {
+    socket.on("error", () => {})
+    socket.write("SSH-2.0-OpenScienceFixture\r\n")
+    socket.on("data", (chunk) => {
+      if (chunk.includes(0)) socket.end()
+    })
+    socket.setTimeout(5_000, () => socket.destroy())
+  })
+  try {
+    server.listen(0, "127.0.0.1")
+    await once(server, "listening")
+    const address = server.address()
+    if (!address || typeof address === "string") throw new Error("Missing SSH fixture address")
+    const ssh = await SshAdapter.executable("ssh")
+    const keygen = await SshAdapter.executable("ssh-keygen")
+    const key = path.join(root, "host key")
+    expect(spawnSync(keygen, ["-q", "-t", "ed25519", "-N", "", "-f", key]).status).toBe(0)
+    const identified = spawnSync(keygen, ["-lf", `${key}.pub`, "-E", "sha256"], { encoding: "utf8" })
+    expect(identified.status).toBe(0)
+    const publicKey = (await fs.readFile(`${key}.pub`, "utf8")).trim().split(/\s+/).slice(0, 2).join(" ")
+    const host: SshAdapter.Host = {
+      id: "space-path",
+      label: "Path fixture",
+      host: "127.0.0.1",
+      port: address.port,
+      identity_file: key,
+      scheduler: "none",
+      host_key: `[127.0.0.1]:${address.port} ${publicKey}`,
+      fingerprint: identified.stdout.trim().split(/\s+/)[1]!,
+    }
+    const known = await SshAdapter.known(host, root)
+    const direct = SshAdapter.argv(host, known, "true", ssh)
+    // ProxyJump 子进程依赖生成的 -F 配置；分别检验配置路径和直接连接的 -o 覆盖路径。
+    const inherited = [ssh, "-F", `${known}.ssh_config`, "-p", String(address.port), host.host, "true"]
+    for (const argv of [direct, inherited]) {
+      const proc = Bun.spawn([argv[0]!, "-vvv", ...argv.slice(1)], {
+        env: SshAdapter.env(),
+        stdin: "ignore",
+        stdout: "ignore",
+        stderr: "pipe",
+        signal: AbortSignal.timeout(5_000),
+      })
+      const stderr = await new Response(proc.stderr).text()
+      expect(await proc.exited).toBe(255)
+      expect(stderr).toContain("record_hostkey: found key type ED25519 in file")
+      expect(stderr).toMatch(
+        new RegExp(`load_hostkeys(?:_file)?: loaded 1 keys from \\[127\\.0\\.0\\.1\\]:${address.port}`),
+      )
+      expect(stderr).not.toContain("No such file or directory")
+    }
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()))
     await fs.rm(root, { recursive: true, force: true })
   }
 })

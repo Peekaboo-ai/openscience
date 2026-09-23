@@ -46,7 +46,7 @@ export type PermissionRespondFn = (input: {
   sessionID: string
   permissionID: string
   response: "once" | "session" | "project" | "always" | "reject"
-}) => void
+}) => void | Promise<unknown>
 
 export type QuestionReplyFn = (input: { requestID: string; answers: QuestionAnswer[] }) => void
 

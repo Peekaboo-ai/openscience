@@ -21,9 +21,11 @@ export function createOpenScienceClient(
   }
 
   if (config?.directory) {
+    // 与 v2 保持一致：中文用户目录不能直接放进只接受字节值的 HTTP 请求头。
+    const directory = /[^\x00-\x7F]/.test(config.directory) ? encodeURIComponent(config.directory) : config.directory
     config.headers = {
       ...config.headers,
-      "x-openscience-directory": config.directory,
+      "x-openscience-directory": directory,
     }
   }
 

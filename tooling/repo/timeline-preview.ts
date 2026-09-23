@@ -51,7 +51,11 @@ const result = await Instance.provide({
         sessionID: session.id,
         messageID: userID,
         type: "text",
-        text: `Verification turn ${index + 1}: analyze the synthetic dataset.`,
+        text: [
+          "比较处理组与对照组的差异表达，检查统计显著性与结果可重复性。",
+          "检索相关研究文献，整理分析方法和实验限制。",
+          "检查数据质量，执行 Python 分析并保存研究结果。",
+        ][index % 3],
       })
       const messageID = Identifier.ascending("message")
       await Session.updateMessage({
@@ -83,7 +87,7 @@ const result = await Instance.provide({
         messageID,
         type: "tool",
         callID: `fixture-${index}`,
-        tool: index % 3 ? "python" : "research_search",
+        tool: ["python", "research_search", "skill", "bash", "read", "task"][index % 6],
         state: {
           status: "completed",
           input: { code: "PRIVATE_INPUT_MUST_NOT_APPEAR" },

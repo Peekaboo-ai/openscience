@@ -74,7 +74,7 @@ export namespace WindowsJobLauncher {
     if (process.platform === "linux" && input.linuxOwner) pendingLinuxLaunches.add(release)
     const executable = path.basename(process.execPath).toLowerCase()
     const sourceRuntime = executable === "bun" || executable === "bun.exe"
-    const entry = fileURLToPath(new URL("../index.ts", import.meta.url))
+    const entry = fileURLToPath(new URL("../bootstrap.ts", import.meta.url))
     return {
       file: process.execPath,
       args: [
@@ -110,9 +110,7 @@ export namespace WindowsJobLauncher {
     subreaper: LinuxSubreaper.Handle,
     control: LinuxControl,
   ): Promise<number> {
-    // Internal launchers enter through index.ts, whose static graph installs
-    // the server's signal handlers. Replace those with this supervisor's
-    // forwarding contract so a signal is not translated twice.
+    // 提前分派的助手独立处理信号，保留子进程回收与所有权约束。
     subreaper.blockingOutput()
     const child = spawn(file, commandArgs, {
       cwd: process.cwd(),

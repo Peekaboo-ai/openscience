@@ -63,6 +63,7 @@ import {
   loadedSkillName,
   skillActivity,
   stripBashMetadata,
+  bashTermination,
   taskOutcome,
   taskPhase,
   toolOutcome,
@@ -660,7 +661,7 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
   const respond = (response: PermissionReply) => {
     const perm = permission()
     if (!perm || !data.respondToPermission) return
-    data.respondToPermission({
+    return data.respondToPermission({
       sessionID: perm.sessionID,
       permissionID: perm.id,
       response,
@@ -675,7 +676,7 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
   const partMetadata = () => part.state?.metadata ?? emptyMetadata
   const metadata = () => {
     const perm = permission()
-    if (perm?.metadata) return { ...perm.metadata, ...partMetadata() }
+    if (perm) return { ...perm.metadata, ...partMetadata(), permissionPending: true }
     return partMetadata()
   }
   // @ts-expect-error - title only exists on the running/completed state variants
@@ -1480,7 +1481,7 @@ ToolRegistry.register({
     const respond = (response: PermissionReply) => {
       const perm = childPermission()
       if (!perm || !data.respondToPermission) return
-      data.respondToPermission({
+      return data.respondToPermission({
         sessionID: perm.sessionID,
         permissionID: perm.id,
         response,
@@ -1499,7 +1500,7 @@ ToolRegistry.register({
       if (!toolData) return null
       const { part } = toolData
       // @ts-expect-error
-      const metadata = part.state?.metadata ?? {}
+      const metadata = { ...part.state?.metadata, permissionPending: !!childPermission() }
       const render = ToolRegistry.render(part.tool, metadata) ?? GenericTool
       const input = part.state?.input ?? {}
       return (
@@ -1607,8 +1608,29 @@ ToolRegistry.register({
   name: "bash",
   render(props) {
     const i18n = useI18n()
+    const progress = () => {
+      const value = props.metadata.execution_progress
+      if (!value || typeof value !== "object" || props.status !== "running") return
+      const phases: Record<string, UiI18nKey> = {
+        preparing: "ui.shell.preparing",
+        environment: "ui.shell.environment",
+        observing: "ui.shell.observing",
+        launching: "ui.shell.launching",
+        running: "ui.shell.running",
+        collecting: "ui.shell.collecting",
+      }
+      const key = phases[String(value.phase)]
+      if (!key) return
+      const elapsed = typeof value.elapsedMs === "number" ? Math.max(0, Math.floor(value.elapsedMs / 1000)) : 0
+      return `${i18n.t(key)} · ${elapsed < 60 ? `${elapsed}s` : `${Math.floor(elapsed / 60)}m ${elapsed % 60}s`}`
+    }
     const command = () => String(props.input.command ?? props.metadata.command ?? "")
     const output = () => stripAnsi(stripBashMetadata(props.output ?? props.metadata.output))
+    const termination = () => {
+      const reason = bashTermination(props.output ?? props.metadata.output)
+      if (reason?.kind === "timeout") return i18n.t("ui.shell.timedOut", { seconds: reason.seconds })
+      if (reason?.kind === "cancelled") return i18n.t("ui.shell.cancelled")
+    }
     const transcript = () => [command() ? `$ ${command()}` : "", output()].filter(Boolean).join("\n\n")
     const [copy, setCopy] = createStore({ copied: false, error: false })
     const handleCopy = async () => {
@@ -1637,10 +1659,23 @@ ToolRegistry.register({
         {...props}
         icon="console"
         trigger={{
-          title: toolVerb(i18n, "bash", props.status, "ui.tool.shell"),
-          subtitle: subtitle(),
+          title: toolVerb(i18n, "bash", props.metadata.permissionPending ? "pending" : props.status, "ui.tool.shell"),
+          subtitle: [subtitle(), progress(), termination()].filter(Boolean).join(" · "),
         }}
       >
+        <Show when={termination()}>
+          <div data-slot="shell-execution-progress" role="status">
+            {termination()}
+          </div>
+        </Show>
+        <Show when={progress()}>
+          <div data-slot="shell-execution-progress">
+            <span>{progress()}</span>
+            <Show when={!output()}>
+              <span>{i18n.t("ui.shell.noOutput")}</span>
+            </Show>
+          </div>
+        </Show>
         <Show when={transcript()}>
           <div data-component="shell-output">
             <div data-slot="shell-output-actions">

@@ -12,6 +12,7 @@ import {
   type ParentProps,
 } from "solid-js"
 import { useLocation, useNavigate, useParams } from "@solidjs/router"
+import { useServer } from "@/context/server"
 import { SDKProvider, useSDK } from "@/context/sdk"
 import { SyncProvider, useSync } from "@/context/sync"
 import { LocalProvider } from "@/context/local"
@@ -54,6 +55,7 @@ export default function Layout(props: ParentProps) {
   const navigate = useNavigate()
   const language = useLanguage()
   const global = useGlobalSync()
+  const server = useServer()
   const layout = useLayout()
   const route = createMemo(() => resolveProjectRoute(params.dir, global.data.project))
   const aliasID = createMemo(() => {
@@ -109,7 +111,10 @@ export default function Layout(props: ParentProps) {
   // can synchronously build requests without the required project selector.
   const directory = createMemo(() => active()?.directory ?? "")
   const projectID = createMemo(() => active()?.projectID)
-  const scope = createMemo(() => active()?.segment ?? projectID() ?? directory())
+  const scope = createMemo(() => {
+    const project = active()?.segment ?? projectID() ?? directory()
+    return project && server.url.includes("/remote-workspaces/") ? `${server.url}::${project}` : project
+  })
 
   createComputed(() => {
     const project = scope()
@@ -176,7 +181,19 @@ export default function Layout(props: ParentProps) {
                   sessionID: string
                   permissionID: string
                   response: "once" | "session" | "project" | "always" | "reject"
-                }) => sdk.client.permission.respond(input)
+                }) => {
+                  const scope = sdk.scope
+                  return sdk.client.permission.respond(input, { throwOnError: true }).then((result) => {
+                    // 服务确认决定后立即收起卡片，不再等待较慢的事件流回送。
+                    if (sdk.scope === scope)
+                      sync.set(
+                        "permission",
+                        input.sessionID,
+                        (items) => items?.filter((item) => item.id !== input.permissionID) ?? [],
+                      )
+                    return result
+                  })
+                }
 
                 const replyToQuestion = (input: { requestID: string; answers: QuestionAnswer[] }) =>
                   sdk.client.question.reply(input)

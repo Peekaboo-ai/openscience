@@ -1,10 +1,11 @@
 import { afterAll, afterEach, beforeEach, expect, test } from "bun:test"
 import type { JSX } from "solid-js"
+import { fileURLToPath } from "node:url"
 import { createTestServer as createServer } from "../../test/vite"
 import solid from "vite-plugin-solid"
 
 const server = await createServer({
-  root: new URL("../..", import.meta.url).pathname,
+  root: fileURLToPath(new URL("../..", import.meta.url)),
   mode: "production",
   logLevel: "silent",
   plugins: [solid({ ssr: false, dev: false })],
@@ -91,6 +92,21 @@ test("parks a previously opened terminal when its parent tab closes", async () =
   expect(state.uiStore.open()).toBe(false)
   expect(host.querySelector('[aria-label="Research inspector"]')).toBe(inspector)
   expect(inspector?.parentElement?.dataset.open).toBe("false")
+})
+
+test("keeps the timeline inspector mounted across module changes and closing its tab", async () => {
+  const host = mountGate()
+  state.uiStore.openContext("timeline")
+  await Promise.resolve()
+  const inspector = host.querySelector('[aria-label="Research inspector"]')
+  expect(inspector).not.toBeNull()
+  state.uiStore.openContext("files")
+  await Promise.resolve()
+  expect(host.querySelector('[aria-label="Research inspector"]')).toBe(inspector)
+  state.uiStore.openContext("timeline")
+  state.uiStore.closeWorkTab("view:timeline")
+  await Promise.resolve()
+  expect(host.querySelector('[aria-label="Research inspector"]')).toBe(inspector)
 })
 
 test("migrates legacy Details requests to Files without coupling pane lifetime to artifact ownership", async () => {

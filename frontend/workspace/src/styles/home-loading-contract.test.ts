@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
 const css = await Bun.file(new URL("../pages/home-workbench.css", import.meta.url)).text()
-const app = await Bun.file(new URL("../app.tsx", import.meta.url)).text()
 
 const parsed = Array.from(css.matchAll(/(?<selector>[^{}]+)\{(?<body>[^{}]*)\}/g), (rule) => ({
   selectors: rule.groups!.selector.split(",").map((one) =>
@@ -33,10 +32,9 @@ const declared = (selector: string, property: string) =>
  * custom properties. A term the fallback alone knows about is a term that
  * drifts the next time the page's spacing moves.
  */
-describe("projects loading placement", () => {
-  test("the route fallback is offset by the page's own geometry, not by a number of its own", () => {
-    expect(app).toContain('class="science-home__fallback"')
-
+// 旧工作台仍有独立组件测试；新根路由直接打开任务，不再绑定旧主页的加载布局。
+describe("project workbench loading placement", () => {
+  test("the workbench fallback is offset by the component's own geometry", () => {
     const fallback = css.match(/\.science-home__fallback\s*\{(?<body>[^}]*)\}/)?.groups?.body
     expect(fallback).toBeDefined()
     expect(fallback).toContain("padding-top: var(--science-home-loader-top)")

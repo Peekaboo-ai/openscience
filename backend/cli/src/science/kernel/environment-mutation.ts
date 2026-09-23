@@ -126,14 +126,26 @@ export namespace KernelEnvironmentMutation {
       target: "local",
       cwd,
       profile: runtime.environmentName ?? "python",
-      python: { role: "selected_default", ...(runtime.binary ? { executable: runtime.binary } : {}) },
+      ...(runtime.environmentName === "shell"
+        ? {}
+        : { python: { role: "selected_default" as const, ...(runtime.binary ? { executable: runtime.binary } : {}) } }),
     }
   }
 
   /** Restore only resolver-owned Python paths after the ordinary subprocess
    * filter. Reuse this final overlay for both the launched command and its
    * runtime-version probe; arbitrary ambient PYTHONPATH remains excluded. */
-  export function subprocessEnv(runtime: Awaited<ReturnType<typeof pythonSubprocessRuntime>>, env: NodeJS.ProcessEnv) {
+  export function subprocessEnv(runtime: KernelStartOptions, env: NodeJS.ProcessEnv) {
+    // 普通 Shell 读取环境自带的字节码；按会话重定向缓存会在共享文件系统上重新编译 Conda 的全部依赖。
+    if (runtime.environmentName === "shell")
+      return {
+        ...OpenScience.filterEnvForKernel(env),
+        ...OpenScience.filterEnvForSubprocess(env),
+        PYTHONDONTWRITEBYTECODE: "1",
+        GIT_CONFIG_NOSYSTEM: env.GIT_CONFIG_NOSYSTEM,
+        GIT_CONFIG_GLOBAL: env.GIT_CONFIG_GLOBAL,
+        GIT_TERMINAL_PROMPT: env.GIT_TERMINAL_PROMPT,
+      }
     return {
       // Python run by the agent is headless and should leave no trace in the
       // person's project: bytecode goes to OpenScience's cache instead of a
@@ -142,7 +154,7 @@ export namespace KernelEnvironmentMutation {
       PYTHONPYCACHEPREFIX: env.PYTHONPYCACHEPREFIX ?? path.join(Global.Path.cache, "pycache"),
       MPLBACKEND: env.MPLBACKEND ?? "Agg",
       ...OpenScience.filterEnvForSubprocess({ ...env, ...runtime.env }),
-      PYTHONPATH: runtime.env.PYTHONPATH,
+      PYTHONPATH: runtime.env?.PYTHONPATH,
       GIT_CONFIG_NOSYSTEM: env.GIT_CONFIG_NOSYSTEM,
       GIT_CONFIG_GLOBAL: env.GIT_CONFIG_GLOBAL,
       GIT_TERMINAL_PROMPT: env.GIT_TERMINAL_PROMPT,
@@ -292,7 +304,11 @@ export namespace KernelEnvironmentMutation {
    * and HTTP runtime surface. The starter is read-only with a project package
    * overlay; approved named task environments own their packages directly and
    * are reusable across projects on this machine. */
-  export async function pythonRuntime(environment: string, allowMutation = false): Promise<KernelStartOptions> {
+  export async function pythonRuntime(
+    environment: string,
+    allowMutation = false,
+    provision = true,
+  ): Promise<KernelStartOptions> {
     if (environment !== "python" && allowMutation) await ManagedEnvironments.ensureTask(environment)
     // Preserve the project's conventional .venv as the explicit local
     // runtime. The app-managed starter is the clean-install fallback, not an
@@ -307,7 +323,7 @@ export namespace KernelEnvironmentMutation {
     const managed =
       environment === "python" && project?.binary
         ? project
-        : await ManagedEnvironments.runtime("python", environment).catch(async (error) => {
+        : await ManagedEnvironments.runtime("python", environment, provision).catch(async (error) => {
             // Existing project-scoped named environments remain readable for
             // backward compatibility. New approved environments are created
             // in the shared app-owned store above.
@@ -349,10 +365,10 @@ export namespace KernelEnvironmentMutation {
    * must not inherit arbitrary Python import paths from the server environment.
    * Keep this separate from kernel compatibility overlays: callers restore only
    * this derived path after their ordinary credential/environment filtering. */
-  export async function pythonSubprocessRuntime(): Promise<
-    KernelStartOptions & { env: Record<string, string> & { PYTHONPATH: string } }
-  > {
-    const runtime = await pythonRuntime("python")
+  export async function pythonSubprocessRuntime(
+    provision = true,
+  ): Promise<KernelStartOptions & { env: Record<string, string> & { PYTHONPATH: string } }> {
+    const runtime = await pythonRuntime("python", false, provision)
     const packages = path.join(managedRoot("python", "python"), "site-packages")
     return {
       ...runtime,

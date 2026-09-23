@@ -3,6 +3,18 @@ import { dict as en } from "./en"
 type Keys = keyof typeof en
 
 export const dict = {
+  "ui.permission.submitting": "正在提交…",
+  "ui.permission.applied": "决定已保存",
+  "ui.shell.timedOut": "已达到 {{seconds}} 秒执行时限并停止。请缩小命令范围，或明确延长超时时间。",
+  "ui.shell.cancelled": "命令已取消",
+  "ui.permission.failed": "未能提交本次决定，请重试。",
+  "ui.shell.preparing": "检查执行权限",
+  "ui.shell.environment": "解析所选运行环境",
+  "ui.shell.observing": "准备输出记录",
+  "ui.shell.launching": "启动 Shell 进程",
+  "ui.shell.running": "命令执行中",
+  "ui.shell.collecting": "收集命令结果",
+  "ui.shell.noOutput": "命令尚未产生输出",
   "ui.sessionTurn.sendAgain": "重新发送",
   "ui.sessionTurn.steps.show": "显示执行轨迹",
   "ui.sessionTurn.steps.hide": "隐藏执行轨迹",

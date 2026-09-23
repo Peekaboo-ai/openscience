@@ -1,18 +1,7 @@
 import { type ParentProps } from "solid-js"
+import { WorkspaceShell } from "@/workspaces/Sidebar"
 
-/**
- * Outer Router layout — passthrough.
- *
- * The original openscience Layout added its own top bar + left rail of icons
- * (folder/+/settings/external). Now that the home page (Conductor grid)
- * and the in-session view both render their own headers, the outer
- * chrome was just doubling up. This file used to be 2871 lines; the
- * project sidebar + workspace tab bar logic now lives in src/atlas/*.
- *
- * Returning `props.children` keeps the routing tree intact while letting
- * each page own its own visual chrome. Model setup lives in Customize →
- * Models and never interrupts first launch.
- */
+// 项目与普通任务共享同一个导航壳，切换后端时由上层重新挂载数据上下文。
 export default function Layout(props: ParentProps) {
-  return props.children
+  return <WorkspaceShell>{props.children}</WorkspaceShell>
 }

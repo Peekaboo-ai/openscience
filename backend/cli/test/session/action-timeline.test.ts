@@ -42,6 +42,43 @@ async function fixture(run: (sessionID: string) => Promise<void>) {
 }
 
 describe("durable action timeline", () => {
+  test("uses a bounded redacted user summary and excludes synthetic prompts from the public title", () => {
+    const user: MessageV2.User = {
+      id: "msg_user",
+      sessionID: "ses_preview",
+      role: "user",
+      time: { created: 1 },
+      agent: "research",
+      effort: "normal",
+      model: { providerID: "provider", modelID: "model" },
+    }
+    const part = (id: string, value: string, extra: Partial<MessageV2.TextPart> = {}): MessageV2.TextPart => ({
+      id,
+      sessionID: user.sessionID,
+      messageID: user.id,
+      type: "text",
+      text: value,
+      ...extra,
+    })
+    const parts = [
+      part("prt_hidden", "INTERNAL_PROMPT", { synthetic: true }),
+      part("prt_ignored", "IGNORED_PROMPT", { ignored: true }),
+      part(
+        "prt_request",
+        "Compare samples\nAPI_KEY=private123456 https://private.example.test/data " + "sample ".repeat(50), // gitleaks:allow 虚构凭据，用于验证时间线脱敏。
+      ),
+    ]
+    const title = ActionTimeline.project({ info: user, parts }, false)[0].title
+    expect(title).toStartWith("Compare samples ")
+    expect(title).toContain("[REDACTED]")
+    expect(title).not.toContain("private123456")
+    expect(title).not.toContain("private.example")
+    expect(title).not.toContain("INTERNAL_PROMPT")
+    expect(title).not.toContain("IGNORED_PROMPT")
+    expect(title.length).toBeLessThanOrEqual(160)
+    expect(ActionTimeline.project({ info: user, parts: parts.slice(0, 2) }, false)[0].title).toBe("User request")
+  })
+
   test("paginates by stable message cursor and refreshes tool outcomes without copying private data", () =>
     fixture(async (sessionID) => {
       for (const id of ["msg_001", "msg_002", "msg_003"]) await Session.updateMessage(assistant(sessionID, id))

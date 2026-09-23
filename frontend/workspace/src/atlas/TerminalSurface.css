@@ -388,7 +388,13 @@
   box-sizing: border-box;
   width: 100%;
   height: 100%;
-  padding: 12px 14px !important;
+  padding: 0 !important;
+}
+
+.terminal-surface__terminal .xterm {
+  box-sizing: border-box;
+  height: 100%;
+  padding: 12px 14px;
 }
 
 .terminal-surface button:focus-visible {

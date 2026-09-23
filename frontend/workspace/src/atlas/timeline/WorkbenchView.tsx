@@ -1,6 +1,7 @@
 import { Button } from "@synsci/ui/button"
 import { For, Show, type JSX } from "solid-js"
 import type { TimelineViewProps } from "./TimelineView"
+import { statusLabel } from "./presentation"
 
 export function TimelineWorkbenchView(props: TimelineViewProps): JSX.Element {
   const state = () => props.data.workbench
@@ -74,7 +75,7 @@ export function TimelineWorkbenchView(props: TimelineViewProps): JSX.Element {
               {(branch) => (
                 <div class="action-timeline__item">
                   <Button size="small" variant="ghost" onClick={() => props.openSession(branch.sourceID)}>
-                    {branch.sourceID.slice(-10)}
+                    {t("Source conversation", "来源会话")}
                   </Button>
                   <span aria-hidden="true">↓</span>
                   <Button
@@ -83,7 +84,9 @@ export function TimelineWorkbenchView(props: TimelineViewProps): JSX.Element {
                     disabled={branch.sessionID === props.sessionID}
                     onClick={() => props.openSession(branch.sessionID)}
                   >
-                    {branch.sessionID.slice(-10)}
+                    {branch.sessionID === props.sessionID
+                      ? t("Current conversation", "当前会话")
+                      : t("Open branch", "打开分支")}
                   </Button>
                 </div>
               )}
@@ -110,7 +113,8 @@ export function TimelineWorkbenchView(props: TimelineViewProps): JSX.Element {
                 {(step) => (
                   <div class="action-timeline__item">
                     <strong>
-                      {step.language} · {step.policy}
+                      {step.language.toUpperCase()} ·{" "}
+                      {step.policy === "safe" ? t("Safe to replay", "可安全重放") : t("Manual review", "需人工处理")}
                     </strong>
                     <small>
                       {step.id} · {t("Generation", "代次")} {step.generation ?? "—"}
@@ -139,7 +143,7 @@ export function TimelineWorkbenchView(props: TimelineViewProps): JSX.Element {
             {(run) => (
               <div class="action-timeline__item">
                 <strong>
-                  {run.status} · {run.completed}/{run.total}
+                  {statusLabel(run.status, t)} · {run.completed}/{run.total}
                 </strong>
                 <small>
                   {new Date(run.updatedAt).toLocaleString()} · {run.manual} {t("manual steps", "个人工步骤")}
@@ -175,7 +179,7 @@ export function TimelineWorkbenchView(props: TimelineViewProps): JSX.Element {
           <For each={state()?.runs}>
             {(run) => (
               <div class="action-timeline__item">
-                <strong>{run.status}</strong>
+                <strong title={run.status}>{statusLabel(run.status, t)}</strong>
                 <small>{run.id}</small>
                 <Button size="small" variant="ghost" disabled={!connected()} onClick={() => props.cancelRun?.(run.id)}>
                   {t("Cancel this run", "取消本次执行")}
@@ -191,7 +195,7 @@ export function TimelineWorkbenchView(props: TimelineViewProps): JSX.Element {
           {(kernel) => (
             <div class="action-timeline__item">
               <strong>
-                {kernel.language.toUpperCase()} · {kernel.state}
+                {kernel.language.toUpperCase()} · {statusLabel(kernel.state, t)}
               </strong>
               <small>
                 {t("Generation", "代次")} {kernel.incarnation ?? "—"} · {t("Queue", "排队")} {kernel.queued}
@@ -217,7 +221,7 @@ export function TimelineWorkbenchView(props: TimelineViewProps): JSX.Element {
               {(execution) => (
                 <div class="action-timeline__item">
                   <strong>
-                    {execution.language} · {execution.status}
+                    {execution.language.toUpperCase()} · {statusLabel(execution.status, t)}
                   </strong>
                   <small>
                     {execution.id} · {t("Generation", "代次")} {execution.generation ?? "—"}
@@ -242,7 +246,7 @@ export function TimelineWorkbenchView(props: TimelineViewProps): JSX.Element {
           {(child) => (
             <div class="action-timeline__item">
               <strong>
-                {child.agent} · {child.status}
+                {child.agent} · {statusLabel(child.status, t)}
               </strong>
               <small>
                 {child.toolCalls ?? "—"} {t("tool calls", "次工具调用")}
@@ -288,7 +292,7 @@ export function TimelineWorkbenchView(props: TimelineViewProps): JSX.Element {
             <div class="action-timeline__item">
               <strong>{job.name}</strong>
               <small>
-                {job.target} · {job.status} · {job.artifactCount} {t("artifacts", "个制品")}
+                {job.target} · {statusLabel(job.status, t)} · {job.artifactCount} {t("artifacts", "项成果")}
               </small>
               <Show
                 when={["pending", "queued", "running", "submitted", "staging", "provisioning"].includes(job.status)}
@@ -329,7 +333,19 @@ export function TimelineWorkbenchView(props: TimelineViewProps): JSX.Element {
                 <For each={["system", "text", "reasoning", "tool", "skills", "image", "document"] as const}>
                   {(key) => (
                     <>
-                      <dt>{key}</dt>
+                      <dt>
+                        {
+                          {
+                            system: t("System instructions", "系统指令"),
+                            text: t("Conversation text", "对话文本"),
+                            reasoning: t("Reasoning", "推理"),
+                            tool: t("Tools", "工具"),
+                            skills: t("Skills", "技能"),
+                            image: t("Images", "图像"),
+                            document: t("Documents", "文档"),
+                          }[key]
+                        }
+                      </dt>
                       <dd>{composition()[key]}</dd>
                     </>
                   )}
@@ -339,15 +355,15 @@ export function TimelineWorkbenchView(props: TimelineViewProps): JSX.Element {
           )}
         </Show>
         <dl>
-          <dt>Input</dt>
+          <dt>{t("Input", "输入")}</dt>
           <dd>{state()?.context.input ?? "—"}</dd>
-          <dt>Output</dt>
+          <dt>{t("Output", "输出")}</dt>
           <dd>{state()?.context.output ?? "—"}</dd>
-          <dt>Reasoning</dt>
+          <dt>{t("Reasoning", "推理")}</dt>
           <dd>{state()?.context.reasoning ?? "—"}</dd>
-          <dt>Cache read</dt>
+          <dt>{t("Cache read", "缓存读取")}</dt>
           <dd>{state()?.context.cacheRead ?? "—"}</dd>
-          <dt>Cache write</dt>
+          <dt>{t("Cache write", "缓存写入")}</dt>
           <dd>{state()?.context.cacheWrite ?? "—"}</dd>
           <dt>{t("Compactions", "压缩次数")}</dt>
           <dd>{state()?.context.compactions ?? "—"}</dd>

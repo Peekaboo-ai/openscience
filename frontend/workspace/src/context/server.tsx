@@ -179,6 +179,7 @@ function trimSlashes(value: string) {
 
 function projectsKey(url: string) {
   if (!url) return ""
+  if (url.includes("/remote-workspaces/")) return url
   const host = withoutProtocol(url).split(":")[0]
   if (host === "localhost" || host === "127.0.0.1") return "local"
   return url

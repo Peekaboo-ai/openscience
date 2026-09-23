@@ -49,5 +49,6 @@ export function hasDesktopUpdateCapability(search: string) {
  * hosted separately, while keeping compact relative URLs in bundled builds. */
 export function resolveServerRoute(path: string, server: string, pageOrigin: string) {
   const target = new URL(server, pageOrigin)
-  return target.origin === pageOrigin ? path : new URL(path, target).toString()
+  const endpoint = new URL(path.replace(/^\/+/, ""), `${target.toString().replace(/\/+$/, "")}/`)
+  return target.origin === pageOrigin ? endpoint.pathname + endpoint.search + endpoint.hash : endpoint.toString()
 }

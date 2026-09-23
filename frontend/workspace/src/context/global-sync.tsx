@@ -226,6 +226,7 @@ function createGlobalSync() {
     `${projectFor(directory, projectID) ?? directory}\n${directory}`
   const persistenceFor = (directory: string, projectID?: string) => {
     const scope = projectScope(globalStore.project, directory)
+    if (globalSDK.url.includes("/remote-workspaces/")) return `${globalSDK.url}::${projectID ?? scope}`
     if (scope !== directory) return scope
     if (projectID) return `${projectID}~${checksum(directory) ?? "worktree"}`
     return directory
@@ -501,8 +502,36 @@ function createGlobalSync() {
    * model picker and the composer all read it from here. Errors surface — a
    * silent failure here looks exactly like "the key was never saved".
    */
-  async function refreshProviders(options: { force?: boolean } = {}) {
+  let providerRefreshing: Promise<void> | undefined
+  let providerQueued = false
+  let providerForce = false
+  function refreshProviders(options: { force?: boolean } = {}) {
     providerRevision++
+    providerQueued = true
+    providerForce ||= !!options.force
+    if (providerRefreshing) return providerRefreshing
+    // 保存响应与配置事件合并刷新；请求途中发生的新变更必须再读一次，避免丢失后一次保存。
+    providerRefreshing = (async () => {
+      let failure: unknown
+      while (providerQueued) {
+        await new Promise((resolve) => setTimeout(resolve, 50))
+        providerQueued = false
+        const force = providerForce
+        providerForce = false
+        try {
+          await reloadProviders(force)
+          failure = undefined
+        } catch (error) {
+          failure = error
+        }
+      }
+      if (failure) throw failure
+    })().finally(() => {
+      providerRefreshing = undefined
+    })
+    return providerRefreshing
+  }
+  async function reloadProviders(force: boolean) {
     providerLoads.invalidate()
     const reload = async (
       directory: string,
@@ -510,7 +539,7 @@ function createGlobalSync() {
       apply: (value: ProviderListResponse) => void,
     ) => {
       if (!directory) return
-      await updateProvider(directory, projectID, apply, options.force)
+      await updateProvider(directory, projectID, apply, force)
     }
     await providerRefresh.notifyAfter(async () => {
       await Promise.all([
@@ -854,7 +883,7 @@ function createGlobalSync() {
       if (!meta) return
       const sdk = sdkFor(directory, projectID)
 
-      setStore("status", "loading")
+      // 首次打开已处于 loading；凭据更新后的后台重建保留已显示的会话，避免卸载输入框和滚动区域。
 
       // projectMeta is synced from persisted storage in ensureChild.
       // vcs is seeded from persisted storage in ensureChild.

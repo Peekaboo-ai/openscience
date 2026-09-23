@@ -187,6 +187,8 @@ import type {
   McpStatusResponses,
   ModelConnectionsDiscoverErrors,
   ModelConnectionsDiscoverResponses,
+  ModelConnectionsLimitsErrors,
+  ModelConnectionsLimitsResponses,
   ModelConnectionsListErrors,
   ModelConnectionsListResponses,
   ModelConnectionsRemoveErrors,
@@ -273,6 +275,13 @@ import type {
   QuestionRejectResponses,
   QuestionReplyErrors,
   QuestionReplyResponses,
+  RemoteWorkspaceConnectResponses,
+  RemoteWorkspaceCreateResponses,
+  RemoteWorkspaceDisconnectResponses,
+  RemoteWorkspaceListResponses,
+  RemoteWorkspaceOpenResponses,
+  RemoteWorkspaceOptionsResponses,
+  RemoteWorkspaceRemoveResponses,
   ResearchEffort,
   RuntimeCancelErrors,
   RuntimeCancelResponses,
@@ -280,10 +289,13 @@ import type {
   RuntimeDecideErrors,
   RuntimeDecideResponses,
   RuntimeDecisionInput,
+  RuntimeEnqueueErrors,
+  RuntimeEnqueueResponses,
   RuntimeGetRunErrors,
   RuntimeGetRunResponses,
   RuntimePromptErrors,
   RuntimePromptResponses,
+  RuntimeQueueResponses,
   RuntimeReplayErrors,
   RuntimeReplayResponses,
   RuntimeSnapshotErrors,
@@ -291,6 +303,8 @@ import type {
   RuntimeSubscribeErrors,
   RuntimeSubscribeResponse,
   RuntimeSubscribeResponses,
+  RuntimeUpdateQueueErrors,
+  RuntimeUpdateQueueResponses,
   SearchQueryResponses,
   SessionAbortErrors,
   SessionAbortResponses,
@@ -453,6 +467,12 @@ import type {
   ToolListErrors,
   ToolListResponses,
   VcsGetResponses,
+  WorkspaceCatalogResponses,
+  WorkspaceCreateDirectoryResponses,
+  WorkspaceDirectoriesResponses,
+  WorkspaceEnvironmentResponses,
+  WorkspaceOpenResponses,
+  WorkspaceTaskResponses,
   WorktreeCreateErrors,
   WorktreeCreateInput,
   WorktreeCreateResponses,
@@ -2516,6 +2536,236 @@ export class Settings extends HeyApiClient {
   }
 }
 
+export class Workspace extends HeyApiClient {
+  public environment<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<WorkspaceEnvironmentResponses, unknown, ThrowOnError>({
+      url: "/workspace/environment",
+      ...options,
+    })
+  }
+
+  public catalog<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<WorkspaceCatalogResponses, unknown, ThrowOnError>({
+      url: "/workspace/catalog",
+      ...options,
+    })
+  }
+
+  public task<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).post<WorkspaceTaskResponses, unknown, ThrowOnError>({
+      url: "/workspace/task",
+      ...options,
+    })
+  }
+
+  public directories<ThrowOnError extends boolean = false>(
+    parameters?: {
+      path?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "path" }] }])
+    return (options?.client ?? this.client).get<WorkspaceDirectoriesResponses, unknown, ThrowOnError>({
+      url: "/workspace/directories",
+      ...options,
+      ...params,
+    })
+  }
+
+  public createDirectory<ThrowOnError extends boolean = false>(
+    parameters: {
+      parent: string
+      name: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "parent" },
+            { in: "body", key: "name" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<WorkspaceCreateDirectoryResponses, unknown, ThrowOnError>({
+      url: "/workspace/directories",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  public open<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      name: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "directory" },
+            { in: "body", key: "name" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<WorkspaceOpenResponses, unknown, ThrowOnError>({
+      url: "/workspace/open",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class RemoteWorkspace extends HeyApiClient {
+  public list<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<RemoteWorkspaceListResponses, unknown, ThrowOnError>({
+      url: "/remote-workspaces",
+      ...options,
+    })
+  }
+
+  public create<ThrowOnError extends boolean = false>(
+    parameters: {
+      name: string
+      target:
+        | {
+            kind: "ssh"
+            host_id: string
+          }
+        | {
+            kind: "wsl"
+            distro: string
+            user?: string
+          }
+        | {
+            kind: "docker"
+            container: string
+          }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "name" },
+            { in: "body", key: "target" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<RemoteWorkspaceCreateResponses, unknown, ThrowOnError>({
+      url: "/remote-workspaces",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  public options<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<RemoteWorkspaceOptionsResponses, unknown, ThrowOnError>({
+      url: "/remote-workspaces/options",
+      ...options,
+    })
+  }
+
+  public connect<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "id" }] }])
+    return (options?.client ?? this.client).post<RemoteWorkspaceConnectResponses, unknown, ThrowOnError>({
+      url: "/remote-workspaces/{id}/connect",
+      ...options,
+      ...params,
+    })
+  }
+
+  public disconnect<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "id" }] }])
+    return (options?.client ?? this.client).post<RemoteWorkspaceDisconnectResponses, unknown, ThrowOnError>({
+      url: "/remote-workspaces/{id}/disconnect",
+      ...options,
+      ...params,
+    })
+  }
+
+  public remove<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "id" }] }])
+    return (options?.client ?? this.client).delete<RemoteWorkspaceRemoveResponses, unknown, ThrowOnError>({
+      url: "/remote-workspaces/{id}",
+      ...options,
+      ...params,
+    })
+  }
+
+  public open<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      name: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "body", key: "directory" },
+            { in: "body", key: "name" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<RemoteWorkspaceOpenResponses, unknown, ThrowOnError>({
+      url: "/remote-workspaces/{id}/open",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class ModelConnections extends HeyApiClient {
   /**
    * List custom model connections
@@ -2540,6 +2790,15 @@ export class ModelConnections extends HeyApiClient {
       models: Array<string>
       context?: number
       output?: number
+      limits?: {
+        [key: string]: {
+          context: number
+          output: number
+          input?: number
+          mode: "auto" | "manual"
+          source: "catalog" | "endpoint" | "fallback" | "manual"
+        }
+      }
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2555,6 +2814,7 @@ export class ModelConnections extends HeyApiClient {
             { in: "body", key: "models" },
             { in: "body", key: "context" },
             { in: "body", key: "output" },
+            { in: "body", key: "limits" },
           ],
         },
       ],
@@ -2565,6 +2825,32 @@ export class ModelConnections extends HeyApiClient {
       ThrowOnError
     >({
       url: "/settings/model-connections",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Resolve per-model token limits
+   */
+  public limits<ThrowOnError extends boolean = false>(
+    parameters: {
+      models: Array<string>
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "body", key: "models" }] }])
+    return (options?.client ?? this.client).post<
+      ModelConnectionsLimitsResponses,
+      ModelConnectionsLimitsErrors,
+      ThrowOnError
+    >({
+      url: "/settings/model-connections/limits",
       ...options,
       ...params,
       headers: {
@@ -3212,6 +3498,7 @@ export class Pty extends HeyApiClient {
     parameters: {
       ptyID: string
       directory?: string
+      replay?: "geometry-v1"
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -3222,6 +3509,7 @@ export class Pty extends HeyApiClient {
           args: [
             { in: "path", key: "ptyID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "replay" },
           ],
         },
       ],
@@ -5081,6 +5369,158 @@ export class Permission extends HeyApiClient {
 
 export class Runtime extends HeyApiClient {
   /**
+   * Read queued prompts
+   */
+  public queue<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      sessionID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "sessionID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<RuntimeQueueResponses, unknown, ThrowOnError>({
+      url: "/runtime/queue",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Edit, reorder, pause or resume the prompt queue
+   */
+  public updateQueue<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      sessionID: string
+      revision: number
+      change:
+        | {
+            type: "pause"
+          }
+        | {
+            type: "resume"
+          }
+        | {
+            type: "remove"
+            id: string
+          }
+        | {
+            type: "move"
+            id: string
+            before: string | null
+          }
+        | {
+            type: "edit"
+            id: string
+            text: string
+          }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "sessionID" },
+            { in: "body", key: "revision" },
+            { in: "body", key: "change" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<RuntimeUpdateQueueResponses, RuntimeUpdateQueueErrors, ThrowOnError>({
+      url: "/runtime/queue",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Queue a complete prompt for the next turn
+   */
+  public enqueue<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      sessionID: string
+      messageID?: string
+      model?: {
+        providerID: string
+        modelID: string
+      }
+      variant?: string
+      tier?: string
+      context?: number
+      delegation?: boolean
+      delegationSettings?: {
+        level?: "off" | "light" | "standard" | "high"
+        workerModel?: {
+          providerID: string
+          modelID: string
+        }
+        autonomy?: "interactive" | "balanced" | "autonomous"
+      }
+      requestID?: string
+      message?: string
+      parts?: Array<TextPartInput | FilePartInput | AgentPartInput | ConversationPartInput | SubtaskPartInput>
+      effort: "normal" | "ultra"
+      delivery?: "guide" | "start"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "sessionID" },
+            { in: "body", key: "messageID" },
+            { in: "body", key: "model" },
+            { in: "body", key: "variant" },
+            { in: "body", key: "tier" },
+            { in: "body", key: "context" },
+            { in: "body", key: "delegation" },
+            { in: "body", key: "delegationSettings" },
+            { in: "body", key: "requestID" },
+            { in: "body", key: "message" },
+            { in: "body", key: "parts" },
+            { in: "body", key: "effort" },
+            { in: "body", key: "delivery" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<RuntimeEnqueueResponses, RuntimeEnqueueErrors, ThrowOnError>({
+      url: "/runtime/queue",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
    * Start a research run
    *
    * Accepts a prompt and returns immediately while the Research agent continues in the background.
@@ -5110,6 +5550,7 @@ export class Runtime extends HeyApiClient {
       message?: string
       parts?: Array<TextPartInput | FilePartInput | AgentPartInput | ConversationPartInput | SubtaskPartInput>
       effort: "normal" | "ultra"
+      delivery?: "guide" | "start"
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -5131,6 +5572,7 @@ export class Runtime extends HeyApiClient {
             { in: "body", key: "message" },
             { in: "body", key: "parts" },
             { in: "body", key: "effort" },
+            { in: "body", key: "delivery" },
           ],
         },
       ],
@@ -9585,6 +10027,16 @@ export class OpenScienceClient extends HeyApiClient {
   private _settings?: Settings
   get settings(): Settings {
     return (this._settings ??= new Settings({ client: this.client }))
+  }
+
+  private _workspace?: Workspace
+  get workspace(): Workspace {
+    return (this._workspace ??= new Workspace({ client: this.client }))
+  }
+
+  private _remoteWorkspace?: RemoteWorkspace
+  get remoteWorkspace(): RemoteWorkspace {
+    return (this._remoteWorkspace ??= new RemoteWorkspace({ client: this.client }))
   }
 
   private _modelConnections?: ModelConnections

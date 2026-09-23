@@ -1,5 +1,23 @@
 const updateSwap = "--desktop-update-swap"
 
+// 所有权助手只负责子进程生命周期；Linux 也不能为每条命令加载应用配置和迁移数据。
+if (process.argv[2] === "__openscience_windows_job_launcher__") {
+  const { WindowsJobLauncher } = await import("./process/windows-job-launcher")
+  process.exit(await WindowsJobLauncher.run(process.argv.slice(3)))
+}
+
+if (process.argv[2] === "--terminal-query") {
+  const { runQueryClient } = await import("./pty/query-client")
+  process.exit(await runQueryClient(process.argv.slice(3)))
+}
+
+if (process.argv[2] === "workspace-bridge") {
+  await import("./openscience/preload-env")
+  const { runRemoteWorker } = await import("./remote/worker")
+  await runRemoteWorker()
+  process.exit(0)
+}
+
 // Keep the signed updater exchange independent of normal CLI initialization.
 // In particular, do not preload account/provider configuration or import the
 // command graph before the already-verified application slots are exchanged.

@@ -8,6 +8,7 @@ import { Session } from "../../session"
 import { lazy } from "@synsci/util/lazy"
 
 import { RuntimeRuns } from "../../runtime/runs"
+import { RuntimeQueue } from "../../runtime/queue"
 import { RuntimeDecisions } from "../../runtime/decisions"
 import { PermissionNext } from "../../permission/next"
 import { Question } from "../../question"
@@ -69,6 +70,7 @@ export const RuntimeRoutes = lazy(() => {
       serverVersion: z.string(),
       idempotentPrompts: z.literal(true),
       richInputs: z.literal(true),
+      promptQueue: z.literal(true),
       runSnapshots: z.literal(true),
       eventRetention: z.number().int().positive(),
       crashRecovery: z.literal("interrupt"),
@@ -97,6 +99,69 @@ export const RuntimeRoutes = lazy(() => {
     .meta({ ref: "RuntimeEventReplay" })
 
   return new Hono()
+    .get(
+      "/queue",
+      describeRoute({
+        summary: "Read queued prompts",
+        operationId: "runtime.queue",
+        responses: {
+          200: {
+            description: "Durable prompt queue",
+            content: { "application/json": { schema: resolver(RuntimeQueue.Snapshot) } },
+          },
+        },
+      }),
+      validator("query", z.object({ sessionID: Identifier.schema("session") })),
+      async (c) => c.json(await RuntimeQueue.get(c.req.valid("query").sessionID)),
+    )
+    .post(
+      "/queue",
+      describeRoute({
+        summary: "Queue a complete prompt for the next turn",
+        operationId: "runtime.enqueue",
+        responses: {
+          202: {
+            description: "Queue accepted",
+            content: { "application/json": { schema: resolver(RuntimeQueue.Snapshot) } },
+          },
+          409: { description: "Conflicting request or full queue" },
+        },
+      }),
+      validator("json", RuntimeRuns.Input),
+      async (c) => {
+        try {
+          return c.json(await RuntimeQueue.enqueue(c.req.valid("json")), 202)
+        } catch (error) {
+          if (error instanceof RuntimeQueue.ConflictError)
+            return c.json({ error: "queue_conflict", message: error.message }, 409)
+          throw error
+        }
+      },
+    )
+    .patch(
+      "/queue",
+      describeRoute({
+        summary: "Edit, reorder, pause or resume the prompt queue",
+        operationId: "runtime.updateQueue",
+        responses: {
+          200: {
+            description: "Updated queue",
+            content: { "application/json": { schema: resolver(RuntimeQueue.Snapshot) } },
+          },
+          409: { description: "Queue was changed by another client" },
+        },
+      }),
+      validator("json", RuntimeQueue.Mutation),
+      async (c) => {
+        try {
+          return c.json(await RuntimeQueue.mutate(c.req.valid("json")))
+        } catch (error) {
+          if (error instanceof RuntimeQueue.ConflictError)
+            return c.json({ error: "queue_conflict", message: error.message }, 409)
+          throw error
+        }
+      },
+    )
     .post(
       "/prompt",
       describeRoute({
@@ -152,6 +217,7 @@ export const RuntimeRoutes = lazy(() => {
       validator("json", z.object({ sessionID: Identifier.schema("session"), runID: RuntimeRuns.RunID }).strict()),
       async (c) => {
         const input = c.req.valid("json")
+        await RuntimeQueue.pause(input.sessionID, "user", input.runID)
         return c.json(await RuntimeRuns.cancel(input.sessionID, input.runID))
       },
     )
@@ -205,6 +271,7 @@ export const RuntimeRoutes = lazy(() => {
           serverVersion: Installation.VERSION,
           idempotentPrompts: true as const,
           richInputs: true as const,
+          promptQueue: true as const,
           runSnapshots: true as const,
           eventRetention: RuntimeEvents.RETAINED_EVENTS,
           crashRecovery: "interrupt" as const,

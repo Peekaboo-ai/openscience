@@ -110,6 +110,8 @@ export function BasicTool(props: BasicToolProps) {
   })
   const detailed = () => !props.hideDetails && (!!props.error || !!content())
   const failed = () => outcome() === "error" || outcome() === "cancelled"
+  const statusLabel = () =>
+    props.metadata?.permissionPending ? i18n.t("ui.permission.required") : i18n.t(glyphLabel[outcome()])
 
   createEffect(() => {
     if (props.forceOpen) setOpen(true)
@@ -129,11 +131,11 @@ export function BasicTool(props: BasicToolProps) {
               data-slot="basic-tool-tool-status"
               data-outcome={props.status ? outcome() : undefined}
               role={props.status ? "img" : undefined}
-              aria-label={props.status ? i18n.t(glyphLabel[outcome()]) : undefined}
-              title={props.status ? [i18n.t(glyphLabel[outcome()]), detail()].filter(Boolean).join(" · ") : undefined}
+              aria-label={props.status ? statusLabel() : undefined}
+              title={props.status ? [statusLabel(), detail()].filter(Boolean).join(" · ") : undefined}
             >
               <Switch>
-                <Match when={props.status && outcome() === "pending"}>
+                <Match when={props.metadata?.permissionPending || (props.status && outcome() === "pending")}>
                   <Icon name="clock" size="small" />
                 </Match>
                 <Match when={props.status && outcome() === "running"}>
@@ -166,7 +168,7 @@ export function BasicTool(props: BasicToolProps) {
                         </span>
                         <Show when={props.status && (failed() || outcome() === "pending")}>
                           <span data-slot="basic-tool-tool-failure-label" title={detail()}>
-                            {i18n.t(glyphLabel[outcome()])}
+                            {statusLabel()}
                           </span>
                         </Show>
                         <Show when={trigger().subtitle}>

@@ -3,6 +3,7 @@ import { createStore } from "solid-js/store"
 import { useNavigate, useParams } from "@solidjs/router"
 import { useSDK } from "@/context/sdk"
 import { useLanguage } from "@/context/language"
+import { useSync } from "@/context/sync"
 import { useDialog } from "@synsci/ui/context/dialog"
 import { confirmDialog, promptDialog } from "@/atlas/dialogs"
 import type { TimelineRecoveryPlan, TimelineRevertPreview } from "@synsci/sdk/v2/client"
@@ -13,6 +14,7 @@ import { TimelineView } from "./TimelineView"
 export function ActionTimelinePane(props: { sessionID?: string; active: boolean }) {
   const sdk = useSDK()
   const language = useLanguage()
+  const sync = useSync()
   const dialog = useDialog()
   const navigate = useNavigate()
   const params = useParams()
@@ -71,7 +73,7 @@ export function ActionTimelinePane(props: { sessionID?: string; active: boolean 
           }),
         ]
         createEffect(() => {
-          if (props.active) void controller.refresh(true)
+          if (props.active) void controller.refresh()
         })
         const timer = setInterval(schedule, 5000)
         document.addEventListener("visibilitychange", schedule)
@@ -110,6 +112,7 @@ export function ActionTimelinePane(props: { sessionID?: string; active: boolean 
             active={props.active}
             data={state.data}
             t={t}
+            catalog={sync.data.provider.all}
             mutation={state.mutation}
             actionError={state.actionError}
             recoveryPlan={state.recoveryPlan}

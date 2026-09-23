@@ -63,6 +63,11 @@ describe("resolveDesktopServerUrl", () => {
 })
 
 describe("resolveServerRoute", () => {
+  test("preserves remote gateway authority on the same origin", () => {
+    expect(
+      resolveServerRoute("/api/resolve-folder/validate", `${base.origin}/remote-workspaces/fixture/api`, base.origin),
+    ).toBe("/remote-workspaces/fixture/api/api/resolve-folder/validate")
+  })
   test("uses the selected server for a separately hosted production UI", () => {
     expect(resolveServerRoute("/api/atlas/graphs", "http://127.0.0.1:4100", base.origin)).toBe(
       "http://127.0.0.1:4100/api/atlas/graphs",

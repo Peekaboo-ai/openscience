@@ -16,6 +16,10 @@ test("every synced-overlay revision is overlay-scoped while other revisions keep
     expect(CredentialRevocation.scope(reason)).toEqual({})
   }
   expect(CredentialRevocation.target("mcp-auth.migrate")).toBe("none")
+  for (const reason of ["provider-auth.set:custom", "provider-auth.remove:custom"]) {
+    expect(CredentialRevocation.target(reason)).toBe("provider")
+    expect(CredentialRevocation.scope(reason)).toEqual({})
+  }
 })
 
 test("a revocation names its cause on the recorded turn error", () => {

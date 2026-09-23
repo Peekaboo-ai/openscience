@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import { createAnthropic } from "@ai-sdk/anthropic"
 import { createOpenAI } from "@ai-sdk/openai"
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
+import { customReasoning } from "../../src/provider/custom-reasoning"
 import { createXai } from "@ai-sdk/xai"
 import { createOpenRouter } from "@openrouter/ai-sdk-provider"
 import { generateText } from "ai"
@@ -46,6 +48,30 @@ async function send(language: any, providerOptions: Record<string, any>) {
 }
 
 describe("reasoning options serialize onto provider request bodies", () => {
+  test("custom model effort reaches the OpenAI-compatible endpoint without Responses-only fields", async () => {
+    const capabilities = customReasoning("gpt-5.6-terra", [])
+    const target = model({
+      id: "gpt-5.6-terra",
+      providerID: "custom-test",
+      api: { id: "gpt-5.6-terra", url: "https://custom.test/v1", npm: "@ai-sdk/openai-compatible" },
+      reasoningOptions: capabilities.reasoningOptions,
+    })
+    const wire = recorder()
+    const sdk = createOpenAICompatible({
+      name: "custom-test",
+      apiKey: "test",
+      baseURL: "https://custom.test/v1",
+      fetch: wire.fetch,
+    })
+    await send(
+      sdk.chatModel(target.api.id),
+      ProviderTransform.providerOptions(target, ProviderTransform.variants(target).xhigh),
+    )
+    expect(wire.bodies).toHaveLength(1)
+    expect(wire.bodies[0].reasoning_effort).toBe("xhigh")
+    expect(wire.bodies[0].reasoning).toBeUndefined()
+    expect(wire.bodies[0].include).toBeUndefined()
+  })
   test("Codex OAuth max reaches the OpenAI Responses wire shape", async () => {
     const target = model({
       id: "gpt-5.6-sol",

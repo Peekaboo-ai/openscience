@@ -11,7 +11,7 @@ const response = (schema: z.ZodType) => ({
     content: { "application/json": { schema: resolver(z.object({ error: z.string() })) } },
   },
 })
-const models = z.object({ baseURL: z.string(), models: z.array(z.string()) })
+const models = z.object({ baseURL: z.string(), models: z.array(z.string()), limits: CustomConnections.Limits })
 
 async function handle<T>(c: Context, action: () => Promise<T>) {
   try {
@@ -43,6 +43,16 @@ export const ModelConnectionsRoutes = lazy(() =>
       (c) => handle(c, async () => ({ connections: await CustomConnections.list() })),
     )
     .post(
+      "/limits",
+      describeRoute({
+        operationId: "modelConnections.limits",
+        summary: "Resolve per-model token limits",
+        responses: response(z.object({ limits: CustomConnections.Limits })),
+      }),
+      validator("json", CustomConnections.Selection),
+      (c) => handle(c, async () => ({ limits: await CustomConnections.limits(c.req.valid("json").models) })),
+    )
+    .post(
       "/models",
       describeRoute({
         operationId: "modelConnections.discover",
@@ -57,7 +67,7 @@ export const ModelConnectionsRoutes = lazy(() =>
       describeRoute({
         operationId: "modelConnections.save",
         summary: "Save a custom connection and its selected models",
-        responses: response(models.extend({ id: z.string() })),
+        responses: response(CustomConnections.Connection),
       }),
       validator("json", CustomConnections.Input),
       (c) => handle(c, () => CustomConnections.save(c.req.valid("json"))),

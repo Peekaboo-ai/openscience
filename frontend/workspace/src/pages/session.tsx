@@ -13,7 +13,6 @@ import {
   type JSX,
 } from "solid-js"
 import { useLocation, useNavigate, useParams } from "@solidjs/router"
-import { createMediaQuery } from "@solid-primitives/media"
 import { SessionTurn } from "@synsci/ui/session-turn"
 import { isContinuationCarrier } from "@synsci/ui/session-turn-carrier"
 import { createAutoScroll } from "@synsci/ui/hooks"
@@ -33,13 +32,12 @@ import { FONT_SANS } from "@/styles/tokens"
 import { uiStore } from "@/atlas/store/ui"
 import { useGlobalKeys } from "@/atlas/useGlobalKeys"
 import { useDialog } from "@synsci/ui/context/dialog"
-import { DropdownMenu } from "@synsci/ui/dropdown-menu"
 import { useCommand, type CommandOption } from "@/context/command"
 import { useLanguage } from "@/context/language"
 import { useSettings } from "@/context/settings"
 import { confirmDialog } from "@/atlas/dialogs"
 import { DialogSettings } from "@/components/dialog-settings"
-import { SessionSidebarActions, SidebarAction, type SessionContext } from "@/pages/session-sidebar-action"
+import { SidebarAction, type SessionContext } from "@/pages/session-sidebar-action"
 import { DisconnectedPanel } from "@/atlas/DisconnectedPanel"
 import { CommandPalette } from "@/atlas/CommandPalette"
 import { HelpOverlay } from "@/atlas/HelpOverlay"
@@ -48,27 +46,17 @@ import {
   IconChevronDown,
   IconChevronLeft,
   IconChevronRight,
-  IconHome,
-  IconPlus,
-  IconSearch,
-  IconSettings,
   IconMessageSquare,
-  IconMoreH,
-  IconPin,
-  IconPinFilled,
-  IconArchive,
   IconShield,
   IconSplit,
   IconRefresh,
   IconX,
 } from "@/atlas/shared/Icon"
-import { StatusDot } from "@/atlas/shared/StatusDot"
-import { IconTrash } from "@/atlas/shared/Icon"
 import { toast } from "@/atlas/Toast"
 import { createSessionTabs } from "@/atlas/store/sessionTabs"
 import { terminalEndpointAvailable } from "@/atlas/terminal-endpoint"
 import { productPreferences, type ProductPreferences } from "@/context/product-preferences"
-import { SIDEBAR_WIDTH, clampSidebarWidth } from "@/pages/session-sidebar-size"
+import { useWorkspaces } from "@/workspaces/context"
 import { URLS } from "@/config/urls"
 import { SessionTabStrip, sessionTabID, type SessionTabItem } from "@/pages/session-tabs"
 import { sessionUnavailable } from "@/pages/session-availability"
@@ -96,46 +84,6 @@ function requestError(error: unknown) {
   return String(error)
 }
 
-/**
- * Session page — new visual identity (Synthetic Sciences wordmark + sessions
- * sidebar + conversation workspace + contextual files and research pane) wrapping
- * the unchanged openscience backend chat (SessionTurn rendering, PromptInput,
- * real SSE streaming, sub-task delegation, tool calls, TODOs, diff cards).
- */
-const sessionSidebarKey = "openscience-session-sidebar-v1"
-const sessionSidebarWidthKey = "openscience-session-sidebar-width-v1"
-
-function readSessionSidebar() {
-  if (typeof localStorage === "undefined") return false
-  try {
-    return localStorage.getItem(sessionSidebarKey) === "collapsed"
-  } catch {
-    return false
-  }
-}
-
-function writeSessionSidebar(collapsed: boolean) {
-  try {
-    localStorage.setItem(sessionSidebarKey, collapsed ? "collapsed" : "expanded")
-  } catch {}
-}
-
-function readSessionSidebarWidth() {
-  if (typeof localStorage === "undefined") return SIDEBAR_WIDTH.initial
-  try {
-    const value = Number.parseFloat(localStorage.getItem(sessionSidebarWidthKey) ?? "")
-    return Number.isFinite(value) ? clampSidebarWidth(value) : SIDEBAR_WIDTH.initial
-  } catch {
-    return SIDEBAR_WIDTH.initial
-  }
-}
-
-function writeSessionSidebarWidth(width: number) {
-  try {
-    localStorage.setItem(sessionSidebarWidthKey, clampSidebarWidth(width).toString())
-  } catch {}
-}
-
 export default function Page(): JSX.Element {
   const params = useParams()
   const location = useLocation()
@@ -151,12 +99,9 @@ export default function Page(): JSX.Element {
   const dialog = useDialog()
   const [creating, setCreating] = createSignal(false)
   const pending: { value?: Promise<string | undefined>; context?: SessionContext } = {}
-  const [mobileSessionsOpen, setMobileSessionsOpen] = createSignal(false)
   const [undoOperation, setUndoOperation] = createSignal<
     { type: "confirm" | "undo"; messageID: string } | { type: "restore" } | undefined
   >()
-  const [sessionsCollapsed, setSessionsCollapsed] = createSignal(readSessionSidebar())
-  const [sessionsWidth, setSessionsWidth] = createSignal(readSessionSidebarWidth())
   const [sessionListReady, setSessionListReady] = createSignal<string>()
   const sessionTabs = createSessionTabs()
   const hydration = new Map<string, Promise<void>>()
@@ -189,6 +134,16 @@ export default function Page(): JSX.Element {
     }
     return true
   }
+
+  onCleanup(
+    sdk.event.on("session.deleted", (event) => {
+      const id = event.properties.info.id
+      prewarmed.delete(id)
+      const target = sessionTabs.close(id)
+      if (params.id === id)
+        navigate(target ? `/${params.dir}/session/${target}` : `/${params.dir}/session/new`, { replace: true })
+    }),
+  )
 
   createEffect(
     on(
@@ -254,32 +209,8 @@ export default function Page(): JSX.Element {
     if (context !== "terminal") return
     void ensureSession()
   }
-
-  async function deleteSession(sessionID: string) {
-    const ok = await confirmDialog(dialog, {
-      title: "Delete this session?",
-      message: "This removes the conversation and its session workspace. Saved Results stay available.",
-      confirmLabel: "Delete session",
-      danger: true,
-    })
-    if (!ok) return
-    // Capture the next-active id BEFORE the optimistic splice so we
-    // know where to navigate.
-    const active = params.id === sessionID
-    const next = sessions().find((s) => s.id !== sessionID)?.id
-    try {
-      await sync.session.delete(sessionID)
-      const open = sessionTabs.close(sessionID)
-      toast.info("Session deleted")
-      if (active) {
-        const target = open ?? next
-        navigate(target ? `/${params.dir}/session/${target}` : `/${params.dir}/session/new`)
-      }
-    } catch (error: unknown) {
-      console.error("session.delete failed", error)
-      toast.error("Could not delete session", error instanceof Error ? error.message : String(error))
-    }
-  }
+  const workspaces = useWorkspaces()
+  onMount(() => onCleanup(workspaces.registerContext(openContext)))
 
   async function renameSession(sessionID: string, title: string): Promise<boolean> {
     const trimmed = title.trim()
@@ -291,40 +222,6 @@ export default function Page(): JSX.Element {
       console.error("session.rename failed", error)
       toast.error("Could not rename session", error instanceof Error ? error.message : String(error))
       return false
-    }
-  }
-
-  async function pinSession(sessionID: string, pinned: boolean) {
-    await sync.session.pin(sessionID, pinned).catch((error: unknown) => {
-      toast.error("Could not update pin", error instanceof Error ? error.message : String(error))
-    })
-  }
-
-  async function archiveSession(sessionID: string) {
-    const active = params.id === sessionID
-    const next = sessions().find((session) => session.id !== sessionID)?.id
-    try {
-      await sync.session.archive(sessionID)
-      await sync.session.fetch(50)
-      const open = sessionTabs.close(sessionID)
-      toast.success("Session archived", "Archived sessions remain available from project search.")
-      if (!active) return
-      const target = open ?? next
-      navigate(target ? `/${params.dir}/session/${target}` : `/${params.dir}/session/new`)
-    } catch (error: unknown) {
-      console.error("session.archive failed", error)
-      toast.error("Could not archive session", error instanceof Error ? error.message : String(error))
-    }
-  }
-
-  async function restoreSession(sessionID: string) {
-    try {
-      await sdk.client.session.update({ sessionID, time: { archived: 0 } })
-      await sync.session.fetch(50)
-      toast.success("Session restored")
-    } catch (error: unknown) {
-      console.error("session.restore failed", error)
-      toast.error("Could not restore session", error instanceof Error ? error.message : String(error))
     }
   }
 
@@ -342,12 +239,6 @@ export default function Page(): JSX.Element {
       console.error("session.fork failed", error)
       toast.error("Could not fork session", error instanceof Error ? error.message : String(error))
     }
-  }
-
-  function toggleSessions() {
-    const next = !sessionsCollapsed()
-    setSessionsCollapsed(next)
-    writeSessionSidebar(next)
   }
 
   // Force-load the session list into the sync store every time we land
@@ -438,11 +329,6 @@ export default function Page(): JSX.Element {
           (b.time?.pinned ?? 0) - (a.time?.pinned ?? 0) ||
           (b.time?.updated ?? 0) - (a.time?.updated ?? 0),
       ),
-  )
-  const archivedSessions = createMemo<SyncSession[]>(() =>
-    [...sync.data.session]
-      .filter((session) => !session.parentID && Boolean(session.time?.archived))
-      .toSorted((a, b) => (b.time?.archived ?? 0) - (a.time?.archived ?? 0)),
   )
 
   createEffect(
@@ -563,7 +449,10 @@ export default function Page(): JSX.Element {
   onMount(() => {
     const onOpenContext = (event: Event) => {
       const context = (event as CustomEvent).detail?.context
-      if (!(["files", "terminal", "kernels", "autoresearch", "trace", "timeline"] as SessionContext[]).includes(context)) return
+      if (
+        !(["files", "terminal", "kernels", "autoresearch", "trace", "timeline"] as SessionContext[]).includes(context)
+      )
+        return
       openContext(context)
     }
     document.addEventListener("openscience:open-context", onOpenContext)
@@ -1071,69 +960,6 @@ export default function Page(): JSX.Element {
           position: "relative",
         }}
       >
-        <Show when={mobileSessionsOpen()}>
-          <button
-            type="button"
-            class="session-sidebar-backdrop"
-            aria-label="Close sessions"
-            onClick={() => setMobileSessionsOpen(false)}
-          />
-        </Show>
-        <SessionsSidebar
-          projectName={projectName()}
-          sessions={sessions()}
-          archivedSessions={archivedSessions()}
-          activeId={params.id}
-          dirParam={params.dir ?? ""}
-          creating={creating()}
-          collapsed={sessionsCollapsed()}
-          width={sessionsWidth()}
-          mobileOpen={mobileSessionsOpen()}
-          onCloseMobile={() => setMobileSessionsOpen(false)}
-          onNew={() => {
-            setMobileSessionsOpen(false)
-            newSession()
-          }}
-          onBack={() => navigate("/")}
-          onCollapse={toggleSessions}
-          onResize={(width, done) => {
-            const next = clampSidebarWidth(width)
-            setSessionsWidth(next)
-            if (done) writeSessionSidebarWidth(next)
-          }}
-          onSearch={() => {
-            setMobileSessionsOpen(false)
-            uiStore.setPaletteOpen(true)
-          }}
-          onCustomize={() => {
-            setMobileSessionsOpen(false)
-            dialog.show(() => <DialogSettings />)
-          }}
-          onContext={(context) => {
-            setMobileSessionsOpen(false)
-            openContext(context)
-          }}
-          context={uiStore.context()}
-          contextOpen={uiStore.open()}
-          onSelect={(id) => {
-            setMobileSessionsOpen(false)
-            sessionTabs.open(id)
-            navigate(`/${params.dir}/session/${id}`)
-          }}
-          onWarm={(id) => {
-            if (id === params.id || prewarmed.has(id)) return
-            prewarmed.add(id)
-            void hydrateSession(id).catch((error) => {
-              if (!discardUnavailableSession(id, error)) prewarmed.delete(id)
-            })
-          }}
-          onDelete={(id) => void deleteSession(id)}
-          onArchive={(id) => void archiveSession(id)}
-          onRestore={(id) => void restoreSession(id)}
-          onRename={(id, title) => void renameSession(id, title)}
-          onPin={(id, pinned) => void pinSession(id, pinned)}
-        />
-
         <div
           class="session-main"
           style={{
@@ -1165,8 +991,8 @@ export default function Page(): JSX.Element {
                 if (!discardUnavailableSession(id, error)) prewarmed.delete(id)
               })
             }}
-            onBack={() => navigate("/")}
-            onToggleSessions={() => setMobileSessionsOpen((open) => !open)}
+            onBack={() => workspaces.open("")}
+            onToggleSessions={() => workspaces.mobile(true)}
           />
           <div
             style={{
@@ -1616,12 +1442,13 @@ function Header(props: {
       <button
         class="workspace-header__back"
         onClick={props.onBack}
-        title="Back to projects"
-        aria-label="Back to projects"
+        title="Back to local tasks"
+        aria-label="Back to local tasks"
       >
         <IconChevronLeft size={14} strokeWidth={1.5} />
       </button>
       <h1 class="sr-only">{props.title}</h1>
+      <ProjectTrustControl />
       <SessionTabStrip
         tabs={props.tabs}
         active={props.active}
@@ -1633,229 +1460,6 @@ function Header(props: {
       />
       <SessionContextUsage variant="header" sample={props.context} />
     </AppHeader>
-  )
-}
-
-function SessionsSidebar(props: {
-  projectName: string
-  sessions: SyncSession[]
-  archivedSessions: SyncSession[]
-  activeId: string | undefined
-  dirParam: string
-  creating: boolean
-  collapsed: boolean
-  width: number
-  mobileOpen: boolean
-  onCloseMobile: () => void
-  onNew: () => void
-  onBack: () => void
-  onCollapse: () => void
-  onResize: (width: number, done: boolean) => void
-  onSearch: () => void
-  onCustomize: () => void
-  onContext: (context: SessionContext) => void
-  context: SessionContext
-  contextOpen: boolean
-  onSelect: (id: string) => void
-  onWarm: (id: string) => void
-  onDelete: (id: string) => void
-  onArchive: (id: string) => void
-  onRestore: (id: string) => void
-  onRename: (id: string, title: string) => void
-  onPin: (id: string, pinned: boolean) => void
-}): JSX.Element {
-  const compact = createMediaQuery("(max-width: 719px)")
-  const mobileHidden = () => compact() && !props.mobileOpen
-  let sidebar: HTMLElement | undefined
-
-  createEffect(() => {
-    if (!compact() || !props.mobileOpen || !sidebar) return
-    const previous = document.activeElement as HTMLElement | null
-    const selector =
-      'button:not(:disabled), input:not(:disabled), [href], [tabindex]:not([tabindex="-1"]), [role="button"]'
-    queueMicrotask(() => sidebar?.querySelector<HTMLElement>(selector)?.focus())
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault()
-        props.onCloseMobile()
-        return
-      }
-      if (event.key !== "Tab" || !sidebar) return
-      const items = Array.from(sidebar.querySelectorAll<HTMLElement>(selector)).filter(
-        (item) => !item.hasAttribute("disabled") && item.getClientRects().length > 0,
-      )
-      if (items.length === 0) return
-      const first = items[0]
-      const last = items[items.length - 1]
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault()
-        last.focus()
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault()
-        first.focus()
-      }
-    }
-
-    document.addEventListener("keydown", onKeyDown, true)
-    onCleanup(() => {
-      document.removeEventListener("keydown", onKeyDown, true)
-      if (previous?.isConnected) previous.focus()
-    })
-  })
-
-  return (
-    <aside
-      ref={sidebar}
-      id="session-sidebar"
-      class="atlas-scroll session-sidebar"
-      data-mobile-open={props.mobileOpen ? "true" : "false"}
-      data-collapsed={props.collapsed ? "true" : "false"}
-      aria-label="Research sessions"
-      aria-hidden={mobileHidden() ? "true" : undefined}
-      aria-modal={compact() && props.mobileOpen ? "true" : undefined}
-      role={compact() && props.mobileOpen ? "dialog" : undefined}
-      inert={mobileHidden()}
-      style={{
-        "--session-sidebar-width": `${props.width}px`,
-        "--session-sidebar-collapsed-width": `${SIDEBAR_WIDTH.collapsed}px`,
-      }}
-    >
-      <div class="session-sidebar__top">
-        <button
-          type="button"
-          class="session-sidebar__project"
-          aria-label="Back to projects"
-          data-tooltip="Projects"
-          onClick={props.onBack}
-        >
-          <IconHome size={16} strokeWidth={1.5} />
-          <strong>{props.projectName}</strong>
-        </button>
-        <button
-          type="button"
-          class="session-sidebar__collapse"
-          aria-label={
-            compact() ? "Close sessions" : props.collapsed ? "Expand sessions sidebar" : "Collapse sessions sidebar"
-          }
-          aria-controls="session-sidebar"
-          aria-expanded={compact() ? props.mobileOpen : !props.collapsed}
-          data-tooltip={compact() ? "Close sessions" : props.collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          onClick={() => (compact() ? props.onCloseMobile() : props.onCollapse())}
-        >
-          <Show
-            when={compact()}
-            fallback={
-              <Show when={props.collapsed} fallback={<IconChevronLeft size={14} strokeWidth={1.5} />}>
-                <IconChevronRight size={14} strokeWidth={1.5} />
-              </Show>
-            }
-          >
-            <IconX size={14} strokeWidth={1.5} />
-          </Show>
-        </button>
-      </div>
-
-      <nav class="session-sidebar__actions" aria-label="Research navigation">
-        <div class="session-sidebar__action-list session-sidebar__primary-actions">
-          <SidebarAction
-            class="session-sidebar__new"
-            label={props.creating ? "Creating…" : "New"}
-            detail="Start a session"
-            ariaLabel="New research"
-            shortcut="⌘N"
-            disabled={props.creating}
-            onClick={props.onNew}
-          >
-            <IconPlus size={16} strokeWidth={1.5} />
-          </SidebarAction>
-          <SidebarAction
-            label="Search"
-            detail="Files, messages, and actions"
-            ariaLabel="Search this project"
-            shortcut="⌘K"
-            onClick={props.onSearch}
-          >
-            <IconSearch size={16} strokeWidth={1.5} />
-          </SidebarAction>
-          <SidebarAction
-            label="Customize"
-            detail="Open settings"
-            ariaLabel="Customize OpenScience"
-            onClick={props.onCustomize}
-          >
-            <IconSettings size={16} strokeWidth={1.5} />
-          </SidebarAction>
-          <ProjectTrustControl />
-        </div>
-
-        <SessionSidebarActions context={props.context} contextOpen={props.contextOpen} onContext={props.onContext} />
-      </nav>
-
-      <Show when={!props.collapsed && !compact()}>
-        <PaneResizer
-          owner={props.dirParam}
-          controls="session-sidebar"
-          class="session-sidebar__resize"
-          label="Resize sessions sidebar"
-          title="Drag or use arrow keys to resize. Shift resizes faster. Home/End sets the minimum/maximum. Double-click to reset sidebar width. Escape cancels a drag."
-          edge="right"
-          disabled={props.collapsed || compact()}
-          min={SIDEBAR_WIDTH.min}
-          max={SIDEBAR_WIDTH.max}
-          width={props.width}
-          onResize={(width) => props.onResize(width, false)}
-          onCommit={(width) => props.onResize(width, true)}
-          onReset={() => props.onResize(SIDEBAR_WIDTH.initial, true)}
-        />
-      </Show>
-
-      <div class="session-sidebar__label" id="session-sidebar-sessions">
-        Sessions
-      </div>
-
-      <nav class="session-sidebar__list" aria-labelledby="session-sidebar-sessions">
-        <For each={props.sessions}>
-          {(s) => (
-            <SessionRow
-              session={s}
-              active={props.activeId === s.id}
-              onSelect={() => props.onSelect(s.id)}
-              onWarm={() => props.onWarm(s.id)}
-              onDelete={() => props.onDelete(s.id)}
-              onArchive={() => props.onArchive(s.id)}
-              onRename={(title) => props.onRename(s.id, title)}
-              onPin={(pinned) => props.onPin(s.id, pinned)}
-            />
-          )}
-        </For>
-        <Show when={props.sessions.length === 0}>
-          <div class="session-sidebar__empty">No sessions yet.</div>
-        </Show>
-      </nav>
-      <Show when={props.archivedSessions.length > 0}>
-        <details class="session-sidebar__archived">
-          <summary>
-            <IconArchive size={12} strokeWidth={1.5} />
-            Archived
-            <span>{props.archivedSessions.length}</span>
-            <IconChevronDown size={12} strokeWidth={1.5} />
-          </summary>
-          <div class="session-sidebar__archived-list">
-            <For each={props.archivedSessions}>
-              {(session) => (
-                <div class="session-sidebar__archived-row">
-                  <span title={session.title || "Session"}>{session.title || "Session"}</span>
-                  <button type="button" onClick={() => props.onRestore(session.id)}>
-                    Restore
-                  </button>
-                </div>
-              )}
-            </For>
-          </div>
-        </details>
-      </Show>
-    </aside>
   )
 }
 
@@ -1893,158 +1497,5 @@ function ProjectTrustControl(): JSX.Element {
         <IconShield size={16} strokeWidth={1.5} />
       </SidebarAction>
     </Show>
-  )
-}
-
-function SessionRow(props: {
-  session: SyncSession
-  active: boolean
-  onSelect: () => void
-  onWarm: () => void
-  onDelete: () => void
-  onArchive: () => void
-  onRename: (title: string) => void
-  onPin: (pinned: boolean) => void
-}): JSX.Element {
-  const [hover, setHover] = createSignal(false)
-  const [menu, setMenu] = createSignal(false)
-  const [editing, setEditing] = createSignal(false)
-  const [draft, setDraft] = createSignal("")
-  let tab: HTMLButtonElement | undefined
-  const startEdit = () => {
-    setDraft(props.session.title || "")
-    setEditing(true)
-  }
-  const finishEditing = (restoreFocus: boolean) => {
-    setEditing(false)
-    if (restoreFocus) queueMicrotask(() => tab?.focus())
-  }
-  const commit = (restoreFocus = false) => {
-    if (!editing()) return
-    const next = draft().trim()
-    finishEditing(restoreFocus)
-    if (next && next !== (props.session.title || "")) props.onRename(next)
-  }
-  const cancel = (restoreFocus = false) => {
-    finishEditing(restoreFocus)
-    setDraft("")
-  }
-  return (
-    <div
-      class="session-sidebar__session"
-      role="presentation"
-      data-active={props.active ? "true" : undefined}
-      data-pinned={props.session.time?.pinned ? "true" : undefined}
-      data-actions={(hover() || menu()) && !editing() ? "true" : undefined}
-      data-menu-open={menu() ? "true" : undefined}
-      data-editing={editing() ? "true" : undefined}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      onFocusIn={() => setHover(true)}
-      onFocusOut={(e) => {
-        if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
-        setHover(false)
-      }}
-    >
-      <Show
-        when={editing()}
-        fallback={
-          <button
-            ref={tab}
-            type="button"
-            class="session-sidebar__session-main"
-            aria-current={props.active ? "page" : undefined}
-            aria-label={props.session.title || "Session"}
-            data-session-id={props.session.id}
-            onPointerEnter={props.onWarm}
-            onFocus={props.onWarm}
-            onClick={props.onSelect}
-            onDblClick={(event) => {
-              event.preventDefault()
-              startEdit()
-            }}
-          >
-            <span class="session-sidebar__session-status" aria-hidden="true">
-              <Show
-                when={props.session.time?.pinned}
-                fallback={
-                  <span class="session-sidebar__session-dot">
-                    <StatusDot status={props.active ? "active" : "muted"} size={7} />
-                  </span>
-                }
-              >
-                <IconPinFilled size={10} strokeWidth={1.5} />
-              </Show>
-            </span>
-            <span class="session-sidebar__session-title" title="Double-click to rename">
-              {props.session.title || "Session"}
-            </span>
-          </button>
-        }
-      >
-        <input
-          ref={(el) =>
-            queueMicrotask(() => {
-              el.focus()
-              el.select()
-            })
-          }
-          class="session-sidebar__session-input"
-          aria-label="Rename session"
-          value={draft()}
-          onInput={(e) => setDraft(e.currentTarget.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault()
-              commit(true)
-            } else if (e.key === "Escape") {
-              e.preventDefault()
-              cancel(true)
-            }
-          }}
-          onBlur={() => commit()}
-          spellcheck={false}
-          autocomplete="off"
-        />
-      </Show>
-      <Show when={!editing()}>
-        {/* Uncontrolled on purpose: the row mirrors the menu's state for its
-            styling, but does not drive it. A controlled `open` raced the
-            trigger's pointerdown/click pair under load and the menu could
-            close in the same gesture that opened it. */}
-        <DropdownMenu onOpenChange={setMenu}>
-          <DropdownMenu.Trigger
-            class="session-sidebar__session-menu-button"
-            title="Session actions"
-            aria-label={`Session actions for ${props.session.title || "Session"}`}
-            tabindex={props.active || hover() || menu() ? 0 : -1}
-          >
-            <IconMoreH size={12} strokeWidth={1.5} />
-          </DropdownMenu.Trigger>
-          <DropdownMenu.Portal>
-            <DropdownMenu.Content class="session-sidebar__session-menu-popover">
-              <DropdownMenu.Item onSelect={() => props.onPin(!props.session.time?.pinned)}>
-                <Show when={props.session.time?.pinned} fallback={<IconPin size={12} strokeWidth={1.5} />}>
-                  <IconPinFilled size={12} strokeWidth={1.5} />
-                </Show>
-                <DropdownMenu.ItemLabel>{props.session.time?.pinned ? "Unpin" : "Pin"}</DropdownMenu.ItemLabel>
-              </DropdownMenu.Item>
-              <DropdownMenu.Item onSelect={startEdit}>
-                <DropdownMenu.ItemLabel>Rename</DropdownMenu.ItemLabel>
-              </DropdownMenu.Item>
-              <DropdownMenu.Item onSelect={props.onArchive}>
-                <IconArchive size={12} strokeWidth={1.5} />
-                <DropdownMenu.ItemLabel>Archive</DropdownMenu.ItemLabel>
-              </DropdownMenu.Item>
-              <DropdownMenu.Separator />
-              <DropdownMenu.Item class="session-sidebar__session-menu-danger" onSelect={props.onDelete}>
-                <IconTrash size={12} strokeWidth={1.5} />
-                <DropdownMenu.ItemLabel>Delete</DropdownMenu.ItemLabel>
-              </DropdownMenu.Item>
-            </DropdownMenu.Content>
-          </DropdownMenu.Portal>
-        </DropdownMenu>
-      </Show>
-    </div>
   )
 }

@@ -1744,6 +1744,7 @@ export namespace ManagedEnvironments {
   export async function runtime(
     language: ManagedEnvironmentLanguage,
     environment: string = language,
+    provision = true,
   ): Promise<KernelStartOptions> {
     if (process.env.OPENSCIENCE_TEST_HOME && process.env.OPENSCIENCE_TEST_MANAGED_ENVIRONMENTS !== "1") {
       if (environment !== language) {
@@ -1751,13 +1752,13 @@ export namespace ManagedEnvironments {
       }
       return { environmentName: environment }
     }
-    if (environment === language) await ensureLanguage(language)
+    if (environment === language && provision) await ensureLanguage(language)
     const prefix = environmentPath(environment)
     let binary =
       language === "python"
         ? path.join(prefix, process.platform === "win32" ? "python.exe" : "bin/python")
         : path.join(prefix, process.platform === "win32" ? "Scripts/Rscript.exe" : "bin/Rscript")
-    if (environment === language && !(await executable(binary))) {
+    if (environment === language && provision && !(await executable(binary))) {
       delete starterSetup[language]
       await ensureLanguage(language)
       binary =

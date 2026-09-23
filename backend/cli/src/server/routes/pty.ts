@@ -149,13 +149,14 @@ export const PtyRoutes = lazy(() =>
         },
       }),
       validator("param", z.object({ ptyID: z.string() })),
+      validator("query", z.object({ replay: z.enum(["geometry-v1"]).optional() })),
       upgradeWebSocket((c) => {
         const id = c.req.param("ptyID")
         let handler: ReturnType<typeof Pty.connect>
         if (!id || !Pty.get(id)) throw new Error("Session not found")
         return {
           onOpen(_event, ws) {
-            handler = Pty.connect(id, ws)
+            handler = Pty.connect(id, ws, c.req.query("replay") === "geometry-v1")
           },
           onMessage(event) {
             handler?.onMessage(String(event.data))

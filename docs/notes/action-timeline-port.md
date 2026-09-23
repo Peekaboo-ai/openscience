@@ -6,6 +6,47 @@ and the Action Timeline screenshot supplied for this task. The reference daemon
 on port 8760 requires a browser access-token cookie; the source and screenshot
 were used without changing its authentication or data.
 
+## Readability revision (2026-09-22)
+
+The follow-up audit compared OpenAI4S's `openai4s/storage/actions.py`, public
+projection helpers `_title`/`_status` in `openai4s/server/action_timeline.py`, and
+the ledger/inspector in `frontend/src/features/timeline/island.ts`.
+OpenAI4S persists action groups, ordered action events, and execution attempts
+separately. Its public view uses content titles, kind labels and ordinals instead
+of making protocol IDs the primary description.
+
+OpenScience retains its existing MessageV2 projection and durable kernel execution
+records. It does not invent an equivalent ledger or an execution attempt for a
+message without one. The UI distinguishes a request (group anchor), an action
+(observable response or execution step), and an execution record (technical
+identity for an actual persisted attempt). Request titles are bounded, redacted
+user text; synthetic/ignored text and all tool input/output remain excluded.
+The existing API schema is unchanged.
+
+`presentation.ts` owns bilingual action/outcome labels and uses only the active
+project's already-loaded provider catalog. Deleted custom providers fall back to
+“Custom provider”, never their UUID. Unknown tools retain their identifier as a
+secondary label without guessing their behavior. Model-response titles do not
+claim to contain the model's private reasoning.
+
+The 68px virtual rows preserve pagination, follow, folding, keyboard navigation
+and time filtering. Search also matches displayed names, keeps request context,
+and temporarily expands matching groups. The review filter preserves step
+ordinals from the full loaded history. Request anchors are excluded from action
+counts. Both counts and ordinals describe loaded history, not a global database
+sequence. Timings and workbench controls use progressive disclosure; action
+identifiers live in a separate diagnostics disclosure. The UI uses the workspace
+font, semantic colors, shared icons and buttons, with no additional design library.
+
+Validation includes controller/geometry/presentation/DOM tests (16), backend
+projection and privacy/integration tests (10), and both package typechecks.
+The synthetic preview uses an isolated temporary data root and makes no model
+calls. Browser checks cover the narrow inspector, expanded layout, localized
+search, review filter, failure details, dark/light themes and a 375px viewport
+without horizontal overflow. The installed Windows UI and both SCNet/WSL
+backends report `2.0.127-workspaces.20260922.5`. The previous launcher is retained
+as `E:/Sugon/OpenScience-Workspaces/Start-OpenScience.pre-readable-timeline.ps1`.
+
 ## Mapping
 
 | OpenAI4S behavior                    | OpenScience implementation                                                                                                                                         |

@@ -1,4 +1,5 @@
 import { Button } from "@synsci/ui/button"
+import { Icon } from "@synsci/ui/icon"
 import { For, Show, createEffect, createMemo, onCleanup, onMount, type JSX } from "solid-js"
 import { createStore } from "solid-js/store"
 import type { Snapshot } from "./controller"
@@ -17,15 +18,18 @@ import {
   type Window,
 } from "./model"
 import { TimelineWorkbenchView } from "./WorkbenchView"
+import { ActionDetails } from "./ActionDetails"
+import { present, requestTitle, statusLabel, type Catalog, type Translate } from "./presentation"
 import type { TimelineRecoveryPlan } from "@synsci/sdk/v2/client"
 import "./timeline.css"
 
-export type Translate = (en: string, zh: string) => string
+export type { Translate } from "./presentation"
 export type TimelineViewProps = {
   sessionID: string
   active?: boolean
   data: Snapshot
   t: Translate
+  catalog?: Catalog
   mutation?: string
   actionError?: string
   refresh: () => void
@@ -47,7 +51,6 @@ export type TimelineViewProps = {
 }
 
 const exact = (value?: number) => (value === undefined ? "—" : new Date(value).toISOString().replace("T", " "))
-const cost = (value?: number) => (value === undefined ? "—" : `$${value.toFixed(6)}`)
 
 export function TimelineView(props: TimelineViewProps): JSX.Element {
   const [view, setView] = createStore({
@@ -61,35 +64,50 @@ export function TimelineView(props: TimelineViewProps): JSX.Element {
     window: undefined as Window | undefined,
     filter: undefined as Window | undefined,
     follow: true,
+    issuesOnly: false,
   })
   const refs: {
     list?: HTMLDivElement
     graph?: SVGSVGElement
     drag?: { x: number; window: Window; pan: boolean }
     observer?: ResizeObserver
+    details?: HTMLElement
   } = {}
   const entries = createMemo(() => props.data.entries)
+  const labels = createMemo(() => new Map(entries().map((entry) => [entry.id, present(entry, props.t, props.catalog)])))
+  const label = (entry: Entry) => labels().get(entry.id)!
+  const searchable = (entry: Entry) => {
+    const item = label(entry)
+    return `${item.title} ${item.subtitle} ${item.status}`
+  }
+  const issues = createMemo(() =>
+    entries().filter((entry) => ["error", "partial", "interrupted"].includes(entry.status)),
+  )
   const bounds = createMemo(() => domain(entries(), view.now))
   const window = () => view.window ?? bounds()
   const filtered = createMemo(() =>
     entries().filter(
       (entry) =>
-        !view.filter ||
-        (entry.startedAt !== undefined &&
-          entry.startedAt <= view.filter.end &&
-          (entry.completedAt ?? entry.startedAt) >= view.filter.start),
+        (!view.issuesOnly || ["error", "partial", "interrupted"].includes(entry.status)) &&
+        (!view.filter ||
+          (entry.startedAt !== undefined &&
+            entry.startedAt <= view.filter.end &&
+            (entry.completedAt ?? (entry.status === "running" ? view.now : entry.startedAt)) >= view.filter.start)),
     ),
   )
-  const ledger = createMemo(() => rows(filtered(), view.collapsed, view.query))
+  const ledger = createMemo(() => rows(filtered(), view.collapsed, view.query, searchable, entries()))
   const plotted = createMemo(() =>
-    entries().filter((entry) => matches(entry, view.query) && entry.startedAt !== undefined),
+    entries().filter((entry) => matches(entry, view.query, searchable(entry)) && entry.startedAt !== undefined),
   )
   const paths = createMemo(() => overviewPaths(plotted(), window(), view.now))
   const selection = createMemo(() => entries().find((entry) => entry.id === view.selected))
   const start = () => Math.max(0, Math.floor(view.scroll / ROW_HEIGHT) - 8)
   const visible = () => ledger().slice(start(), start() + Math.ceil(view.height / ROW_HEIGHT) + 16)
   const active = () => props.data.pages[0]?.status ?? "idle"
-  const select = (entry: Entry) => setView("selected", view.selected === entry.id ? "" : entry.id)
+  const select = (entry: Entry) => {
+    setView("selected", view.selected === entry.id ? "" : entry.id)
+    if (view.selected) queueMicrotask(() => refs.details?.scrollIntoView?.({ block: "nearest" }))
+  }
   const reset = () => setView({ window: undefined, filter: undefined })
   const x = (time: number) => ((time - window().start) / (window().end - window().start)) * 1000
 
@@ -109,7 +127,7 @@ export function TimelineView(props: TimelineViewProps): JSX.Element {
   })
   createEffect(() => {
     const length = ledger().length
-    if (view.follow && !view.query && !view.filter && refs.list) {
+    if (view.follow && !view.query && !view.filter && !view.issuesOnly && refs.list) {
       const target = Math.max(0, length * ROW_HEIGHT - view.height)
       refs.list.scrollTop = target
       setView("scroll", target)
@@ -145,7 +163,7 @@ export function TimelineView(props: TimelineViewProps): JSX.Element {
     setView(
       "hover",
       entry
-        ? `${entry.title} · ${entry.status} · ${exact(entry.startedAt)} → ${exact(entry.completedAt)} · ${formatDuration(duration(entry, view.now))}`
+        ? `${label(entry).title} · ${label(entry).status} · ${exact(entry.startedAt)} → ${exact(entry.completedAt)} · ${formatDuration(duration(entry, view.now))}`
         : "",
     )
     if (!refs.drag?.pan) return
@@ -207,7 +225,12 @@ export function TimelineView(props: TimelineViewProps): JSX.Element {
       <header class="action-timeline__heading">
         <div>
           <h2>{props.t("Action Timeline", "行动时间线")}</h2>
-          <p>{props.t("Execution progress, timing and recovery history", "执行进展、耗时与恢复历史")}</p>
+          <p>
+            {props.t(
+              "Model responses and execution steps, grouped by research request.",
+              "按研究请求，追踪模型响应与执行步骤。",
+            )}
+          </p>
         </div>
         <Button size="small" variant="ghost" disabled={props.data.loading} onClick={props.refresh}>
           {props.t("Refresh", "刷新")}
@@ -222,15 +245,17 @@ export function TimelineView(props: TimelineViewProps): JSX.Element {
             ? props.t("Disconnected", "连接异常")
             : props.data.loading
               ? props.t("Updating…", "更新中…")
-              : active()}
-        </span>
-        <span title={props.sessionID}>
-          {props.t("Session", "会话")} {props.sessionID.slice(-12)}
+              : statusLabel(active(), props.t)}
         </span>
         <span>
-          {props.t("Loaded", "已加载")} {entries().length} · {props.data.pages[0]?.totalMessages ?? 0}{" "}
-          {props.t("messages", "条消息")}
+          {new Set(entries().map((entry) => entry.turnID)).size} {props.t("requests", "次请求")} ·{" "}
+          {entries().filter((entry) => entry.kind !== "user").length} {props.t("steps loaded", "个已加载步骤")}
         </span>
+        <Show when={issues().length}>
+          <span class="action-timeline__badge" data-status="partial">
+            {issues().length} {props.t("need review", "项待检查")}
+          </span>
+        </Show>
         <Show when={props.data.updatedAt}>
           <span title={exact(props.data.updatedAt)}>
             {props.t("Updated", "更新于")} {new Date(props.data.updatedAt!).toLocaleTimeString()}
@@ -249,24 +274,34 @@ export function TimelineView(props: TimelineViewProps): JSX.Element {
       </Show>
       <div class="action-timeline__layout">
         <main class="action-timeline__main">
-          <div class="action-timeline__card">
+          <details class="action-timeline__definition">
+            <summary>{props.t("What counts as an action?", "什么是行动？")}</summary>
+            <p>
+              {props.t(
+                "An action is an observable step taken to carry out a request: a model response, tool call, analysis, retry or context update. Requests group these steps; one step may have its own recorded execution attempt. Completion describes the step, not the scientific validity of its result.",
+                "行动是完成请求时可观察到的一个步骤，如模型响应、工具调用、计算分析、重试或上下文更新。请求将这些步骤组织在一起；具体执行可有独立的执行记录。步骤完成不代表科研结论已经验证。",
+              )}
+            </p>
+          </details>
+          <div class="action-timeline__search-area">
             <label class="action-timeline__search">
-              {props.t("Search loaded actions", "搜索已加载行动")}
+              <span class="action-timeline__sr-only">{props.t("Search loaded actions", "搜索已加载行动")}</span>
               <input
                 type="search"
                 value={view.query}
                 onInput={(event) => search(event.currentTarget.value)}
-                placeholder={props.t("Title, type, resource, status…", "标题、类型、资源、状态…")}
+                placeholder={props.t("Request, action, model or status…", "搜索请求、行动、模型或状态…")}
               />
             </label>
             <small>
               {props.t(
                 "Search covers loaded records only. Load earlier history to include it. Matching turns expand temporarily.",
-                "仅搜索已加载记录；可加载更早历史。搜索时临时展开匹配的 Turn。",
+                "仅搜索已加载记录；匹配的请求将临时展开。",
               )}
             </small>
           </div>
-          <section class="action-timeline__card" aria-label={props.t("Timing overview", "耗时概览")}>
+          <details class="action-timeline__card action-timeline__timing">
+            <summary>{props.t("Timing overview & time filter", "耗时概览与时间筛选")}</summary>
             <div class="action-timeline__legend">
               <strong>{props.t("Timing overview", "耗时概览")}</strong>
               <span data-phase="response">{props.t("First response", "首响应")}</span>
@@ -390,7 +425,7 @@ export function TimelineView(props: TimelineViewProps): JSX.Element {
                 )}
               </For>
             </details>
-          </section>
+          </details>
           <div class="action-timeline__ledger-controls">
             <Button
               size="small"
@@ -406,20 +441,30 @@ export function TimelineView(props: TimelineViewProps): JSX.Element {
               aria-pressed={view.follow}
               onClick={() => {
                 search("")
-                setView({ follow: true, filter: undefined })
+                setView({ follow: true, filter: undefined, issuesOnly: false })
               }}
             >
               {props.t("Follow latest", "跟随最新")}
             </Button>
+            <Button
+              size="small"
+              variant="ghost"
+              aria-pressed={view.issuesOnly}
+              onClick={() => {
+                setView({ issuesOnly: !view.issuesOnly, follow: false, scroll: 0 })
+                if (refs.list) refs.list.scrollTop = 0
+              }}
+            >
+              {props.t("Needs review", "仅看待检查")}
+            </Button>
             <span>
-              {ledger().filter((row) => row.type === "entry").length} {props.t("visible actions", "条可见行动")}
+              {ledger().filter((row) => row.type === "entry").length} {props.t("visible records", "条可见记录")}
             </span>
           </div>
           <div class="action-timeline__columns" aria-hidden="true">
-            <span>{props.t("Type / action", "类型 / 行动")}</span>
+            <span>{props.t("Request / execution step", "研究请求 / 执行步骤")}</span>
             <span>{props.t("Duration", "耗时")}</span>
-            <span>Tokens</span>
-            <span>{props.t("Cost", "费用")}</span>
+            <span class="action-timeline__tokens">{props.t("Tokens", "Token 用量")}</span>
           </div>
           <div
             ref={(element) => {
@@ -434,7 +479,11 @@ export function TimelineView(props: TimelineViewProps): JSX.Element {
               const node = event.currentTarget
               setView({
                 scroll: node.scrollTop,
-                follow: node.scrollHeight - node.clientHeight - node.scrollTop <= 3 && !view.query && !view.filter,
+                follow:
+                  node.scrollHeight - node.clientHeight - node.scrollTop <= 3 &&
+                  !view.query &&
+                  !view.filter &&
+                  !view.issuesOnly,
               })
             }}
           >
@@ -442,7 +491,7 @@ export function TimelineView(props: TimelineViewProps): JSX.Element {
               <p class="action-timeline__empty">
                 {props.data.loading
                   ? props.t("Loading actions…", "正在加载行动…")
-                  : view.query || view.filter
+                  : view.query || view.filter || view.issuesOnly
                     ? props.t("No matching actions.", "没有匹配的行动。")
                     : props.t("No actions recorded in this session yet.", "此会话尚无行动记录。")}
               </p>
@@ -468,8 +517,42 @@ export function TimelineView(props: TimelineViewProps): JSX.Element {
                           aria-expanded={!view.collapsed[row.id] || !!view.query}
                           onClick={() => setView("collapsed", row.id, !view.collapsed[row.id])}
                         >
-                          {view.collapsed[row.id] && !view.query ? "▸" : "▾"} TURN · {row.id.slice(-8)} ·{" "}
-                          {row.type === "turn" ? row.count : 0}
+                          <Icon
+                            name={view.collapsed[row.id] && !view.query ? "chevron-right" : "chevron-down"}
+                            size="small"
+                          />
+                          <Show when={row.type === "turn" ? row : undefined}>
+                            {(turn) => (
+                              <>
+                                <span class="action-timeline__turn-copy">
+                                  <strong title={requestTitle(turn().request, props.t)}>
+                                    {requestTitle(turn().request, props.t)}
+                                  </strong>
+                                  <small>
+                                    {turn().startedAt === undefined
+                                      ? props.t("Time not recorded", "未记录时间")
+                                      : new Date(turn().startedAt!).toLocaleString()}
+                                    {" · "}
+                                    {turn().count} {props.t("steps", "个步骤")}
+                                    <Show when={!turn().request}>
+                                      {" · "}
+                                      {props.t("Request in earlier history", "请求位于更早记录")}
+                                    </Show>
+                                  </small>
+                                </span>
+                                <Show when={turn().issues || turn().active}>
+                                  <span
+                                    class="action-timeline__badge"
+                                    data-status={turn().active ? "running" : "partial"}
+                                  >
+                                    {turn().active
+                                      ? props.t("Running", "执行中")
+                                      : `${turn().issues} ${props.t("to review", "项待检查")}`}
+                                  </span>
+                                </Show>
+                              </>
+                            )}
+                          </Show>
                         </Button>
                       }
                     >
@@ -479,19 +562,41 @@ export function TimelineView(props: TimelineViewProps): JSX.Element {
                           variant="ghost"
                           class="action-timeline__entry"
                           aria-pressed={view.selected === entry().id}
+                          aria-expanded={view.selected === entry().id}
+                          aria-controls={view.selected === entry().id ? "timeline-action-details" : undefined}
                           onClick={() => select(entry())}
                           data-status={entry().status}
-                          title={`${entry().title} · ${entry().status}`}
+                          title={`${label(entry()).title} · ${label(entry()).subtitle} · ${label(entry()).status}`}
+                          aria-label={`${label(entry()).title} · ${label(entry()).subtitle} · ${label(entry()).status}`}
                         >
-                          <span>
-                            <small>
-                              {entry().kind} · {entry().status}
-                            </small>
-                            <strong>{entry().title}</strong>
+                          <span class="action-timeline__action">
+                            <span class="action-timeline__action-icon" data-kind={entry().kind}>
+                              <Icon name={label(entry()).icon} size="normal" />
+                            </span>
+                            <span class="action-timeline__action-copy">
+                              <span class="action-timeline__action-title">
+                                <strong>{label(entry()).title}</strong>
+                                <span class="action-timeline__badge" data-status={entry().status}>
+                                  {label(entry()).status}
+                                </span>
+                              </span>
+                              <small>
+                                {row.type === "entry" && row.ordinal > 0
+                                  ? `${props.t("Step", "步骤")} ${row.ordinal} · `
+                                  : ""}
+                                {label(entry()).subtitle}
+                              </small>
+                            </span>
                           </span>
                           <span>{formatDuration(duration(entry(), view.now))}</span>
-                          <span>{tokenTotal(entry())?.toLocaleString() ?? "—"}</span>
-                          <span>{cost(entry().cost)}</span>
+                          <span class="action-timeline__tokens" title={tokenTotal(entry())?.toLocaleString()}>
+                            {tokenTotal(entry()) === undefined
+                              ? "—"
+                              : new Intl.NumberFormat(undefined, {
+                                  notation: "compact",
+                                  maximumFractionDigits: 1,
+                                }).format(tokenTotal(entry())!)}
+                          </span>
                         </Button>
                       )}
                     </Show>
@@ -502,85 +607,25 @@ export function TimelineView(props: TimelineViewProps): JSX.Element {
           </div>
           <Show when={selection()}>
             {(entry) => (
-              <section
-                class="action-timeline__card action-timeline__details"
-                aria-label={props.t("Action details", "行动详情")}
+              <div
+                ref={(element) => {
+                  refs.details = element
+                }}
               >
-                <div class="action-timeline__heading">
-                  <strong>{entry().title}</strong>
-                  <Button size="small" variant="ghost" onClick={() => setView("selected", "")}>
-                    {props.t("Close details", "关闭详情")}
-                  </Button>
-                </div>
-                <dl>
-                  <dt>ID</dt>
-                  <dd>{entry().id}</dd>
-                  <dt>{props.t("Status", "状态")}</dt>
-                  <dd>{entry().status}</dd>
-                  <dt>{props.t("Owner", "执行者")}</dt>
-                  <dd>{entry().owner}</dd>
-                  <dt>{props.t("Cost", "费用")}</dt>
-                  <dd>{cost(entry().cost)}</dd>
-                  <dt>{props.t("Started", "开始")}</dt>
-                  <dd>{exact(entry().startedAt)}</dd>
-                  <dt>{props.t("First response", "首响应")}</dt>
-                  <dd>{exact(entry().responseAt)}</dd>
-                  <dt>{props.t("Finished", "结束")}</dt>
-                  <dd>{exact(entry().completedAt)}</dd>
-                  <dt>{props.t("Resources", "资源")}</dt>
-                  <dd>{entry().resources.join(", ") || "—"}</dd>
-                  <dt>{props.t("Artifacts", "制品")}</dt>
-                  <dd>{entry().artifacts.join(", ") || "—"}</dd>
-                </dl>
-                <Show when={entry().tokens}>
-                  {(tokens) => (
-                    <p>
-                      Input {tokens().input} · Output {tokens().output} · Reasoning {tokens().reasoning} · Cache{" "}
-                      {tokens().cacheRead}/{tokens().cacheWrite}
-                    </p>
-                  )}
-                </Show>
-                <Show when={entry().executionID}>
-                  <dl>
-                    <dt>{props.t("Execution", "执行")}</dt>
-                    <dd>{entry().executionID}</dd>
-                    <dt>{props.t("Queued", "入队")}</dt>
-                    <dd>{exact(entry().queuedAt)}</dd>
-                    <dt>{props.t("Generation", "代次")}</dt>
-                    <dd>{entry().generation ?? "—"}</dd>
-                  </dl>
-                </Show>
-                <Show when={entry().error}>
-                  <p class="action-timeline__error">{entry().error}</p>
-                </Show>
-                <Button
-                  size="small"
-                  variant="ghost"
-                  disabled={!!props.mutation || active() !== "idle"}
-                  onClick={() => props.fork(entry().messageID)}
-                >
-                  {props.t("Fork before this message", "从此消息之前分支")}
-                </Button>
-                <Button
-                  size="small"
-                  variant="ghost"
-                  disabled={!!props.mutation || active() !== "idle" || !!props.data.error}
-                  onClick={() => props.revert(entry().messageID)}
-                >
-                  {props.t("Undo from this message", "从此消息撤销")}
-                </Button>
-                <Show when={entry().childSessionID}>
-                  {(id) => (
-                    <Button size="small" variant="ghost" onClick={() => props.openSession(id())}>
-                      {props.t("Open child session", "打开子会话")}
-                    </Button>
-                  )}
-                </Show>
-              </section>
+                <ActionDetails {...props} entry={entry()} now={view.now} close={() => setView("selected", "")} />
+              </div>
             )}
           </Show>
         </main>
-        <TimelineWorkbenchView {...props} />
+        <details class="action-timeline__management" open={!!props.recoveryPlan || !!props.data.workbenchError}>
+          <summary>
+            {props.t("Session controls & recovery", "会话管理与恢复")}
+            <small>
+              {props.t("Checkpoints, branches, kernels, jobs and context", "检查点、分支、内核、计算任务与上下文")}
+            </small>
+          </summary>
+          <TimelineWorkbenchView {...props} />
+        </details>
       </div>
     </section>
   )

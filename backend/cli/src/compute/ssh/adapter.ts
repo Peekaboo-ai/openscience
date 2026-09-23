@@ -1475,7 +1475,8 @@ finally:
       "-o",
       "StrictHostKeyChecking=yes",
       "-o",
-      `UserKnownHostsFile=${known}`,
+      // -o 的值仍会由 OpenSSH 再解析；argv 的边界不能保护配置值中的空格。
+      `UserKnownHostsFile=${quoteConfig(known)}`,
       "-o",
       "GlobalKnownHostsFile=/dev/null",
       "-o",

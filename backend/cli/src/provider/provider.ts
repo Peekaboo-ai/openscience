@@ -25,6 +25,8 @@ import { CredentialLifecycle } from "../credentials/lifecycle"
 import { ProviderTokenCommand } from "./token-command"
 import { AsyncLocalStorage } from "node:async_hooks"
 import { MANAGED_OPENROUTER_MODEL_SET, managedModelDetails } from "./managed-catalog"
+import { customReasoning } from "./custom-reasoning"
+import { CustomModelLimits } from "./custom-model-limits"
 import { managedModelRoute } from "./managed-routing"
 import { ManagedPricing } from "./managed-pricing"
 import { gatewayTiming, type GatewayTiming } from "./gateway-timing"
@@ -2372,7 +2374,23 @@ export namespace Provider {
       for (const [modelID, model] of Object.entries(provider.models ?? {})) {
         if (isRemovedModel(modelID)) continue
         const existingModel = parsed.models[model.id ?? modelID]
+        const custom =
+          provider.options?.customConnection === true
+            ? customReasoning(
+                model.id ?? modelID,
+                Object.values(database).flatMap((entry) => Object.values(entry.models)),
+              )
+            : undefined
         const baseURL = typeof provider.options?.baseURL === "string" ? provider.options.baseURL : undefined
+        const customLimits =
+          provider.options?.customConnection === true
+            ? CustomModelLimits.configured(
+                model.id ?? modelID,
+                model.limit,
+                provider.options.customModelLimits?.[modelID],
+                modelsDev,
+              )
+            : undefined
         const name = iife(() => {
           if (model.name) return model.name
           if (model.id && model.id !== modelID) return modelID
@@ -2397,7 +2415,7 @@ export namespace Provider {
           providerID,
           capabilities: {
             temperature: model.temperature ?? existingModel?.capabilities.temperature ?? false,
-            reasoning: model.reasoning ?? existingModel?.capabilities.reasoning ?? false,
+            reasoning: model.reasoning ?? existingModel?.capabilities.reasoning ?? custom?.reasoning ?? false,
             attachment: model.attachment ?? existingModel?.capabilities.attachment ?? false,
             toolcall: model.tool_call ?? existingModel?.capabilities.toolcall ?? true,
             input: {
@@ -2430,14 +2448,15 @@ export namespace Provider {
           },
           options: mergeDeep(existingModel?.options ?? {}, model.options ?? {}),
           limit: {
-            context: model.limit?.context ?? existingModel?.limit?.context ?? 0,
-            output: model.limit?.output ?? existingModel?.limit?.output ?? 0,
+            context: customLimits?.context ?? model.limit?.context ?? existingModel?.limit?.context ?? 0,
+            output: customLimits?.output ?? model.limit?.output ?? existingModel?.limit?.output ?? 0,
+            input: customLimits ? customLimits.input : (model.limit?.input ?? existingModel?.limit?.input),
           },
           headers: mergeDeep(existingModel?.headers ?? {}, model.headers ?? {}),
           family: model.family ?? existingModel?.family ?? "",
           release_date: model.release_date ?? existingModel?.release_date ?? "",
           knowledge: model.knowledge ?? existingModel?.knowledge,
-          reasoningOptions: existingModel?.reasoningOptions,
+          reasoningOptions: existingModel?.reasoningOptions ?? custom?.reasoningOptions,
           contextOptions: existingModel?.contextOptions,
           variants: {},
           modes: directModes(providerID, modelID, model.experimental) ?? existingModel?.modes,

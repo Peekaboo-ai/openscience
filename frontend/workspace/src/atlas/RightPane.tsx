@@ -70,12 +70,13 @@ const labels: Record<ContextTab, string> = {
 }
 
 export function RightPaneGate(props: { children: JSX.Element }): JSX.Element {
-  const [terminal, setTerminal] = createSignal(uiStore.rightPaneOpen() && uiStore.context() === "terminal")
+  const persistent = () => uiStore.context() === "terminal" || uiStore.context() === "timeline"
+  const [visited, setVisited] = createSignal(uiStore.rightPaneOpen() && persistent())
   createEffect(() => {
-    if (!uiStore.rightPaneOpen() || uiStore.context() !== "terminal") return
-    setTerminal(true)
+    if (!uiStore.rightPaneOpen() || !persistent()) return
+    setVisited(true)
   })
-  const retained = () => terminal() || uiStore.workTabs().some((tab) => tab.kind === "file")
+  const retained = () => visited() || uiStore.workTabs().some((tab) => tab.kind === "file")
   return (
     <Show when={uiStore.rightPaneOpen() || retained()}>
       <div class="right-pane-gate" data-open={uiStore.rightPaneOpen() ? "true" : "false"}>
@@ -278,6 +279,11 @@ export function RightPane(
     if (terminal()) setTerminalSeen(true)
   })
   const terminalVisible = () => uiStore.rightPaneOpen() && terminal() && context() === "terminal"
+  const [timelineSeen, setTimelineSeen] = createSignal(context() === "timeline")
+  createEffect(() => {
+    if (context() === "timeline") setTimelineSeen(true)
+  })
+  const timelineVisible = () => uiStore.rightPaneOpen() && context() === "timeline"
   const selectedFile = (tab: Extract<WorkTab, { kind: "file" }>) => {
     const current = uiStore.file()
     return (
@@ -580,6 +586,21 @@ export function RightPane(
                 <TerminalSurface active={terminalVisible()} />
               </div>
             </Show>
+            <Show when={timelineSeen()}>
+              <div
+                data-component="timeline-context"
+                hidden={!timelineVisible()}
+                style={{
+                  flex: 1,
+                  "min-height": 0,
+                  "min-width": 0,
+                  display: timelineVisible() ? "flex" : "none",
+                  "flex-direction": "column",
+                }}
+              >
+                <ActionTimelinePane sessionID={props.session} active={timelineVisible()} />
+              </div>
+            </Show>
             <Switch>
               <Match when={context() === "files" && uiStore.saved()}>
                 {(current) => <StoredArtifactView artifact={current()} />}
@@ -589,9 +610,6 @@ export function RightPane(
               </Match>
               <Match when={context() === "autoresearch"}>
                 <AutoresearchPane />
-              </Match>
-              <Match when={context() === "timeline"}>
-                <ActionTimelinePane sessionID={props.session} active={uiStore.rightPaneOpen()} />
               </Match>
             </Switch>
           </Suspense>

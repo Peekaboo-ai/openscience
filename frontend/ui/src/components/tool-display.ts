@@ -141,6 +141,14 @@ export function stripBashMetadata(value?: string) {
   return (value ?? "").replace(/\s*<bash_metadata>[\s\S]*?<\/bash_metadata>\s*$/g, "")
 }
 
+export function bashTermination(value?: string) {
+  const trailer = value?.match(/<bash_metadata>([\s\S]*?)<\/bash_metadata>\s*$/)?.[1]
+  if (!trailer) return
+  const timeout = trailer.match(/exceeding timeout (\d+) ms/)
+  if (timeout) return { kind: "timeout" as const, seconds: Number(timeout[1]) / 1000 }
+  if (trailer.includes("User aborted the command")) return { kind: "cancelled" as const }
+}
+
 export type ToolSummary = { key: UiI18nKey; params: UiI18nParams }
 
 const plural = (name: "lines" | "matches" | "files", count: number): ToolSummary => ({

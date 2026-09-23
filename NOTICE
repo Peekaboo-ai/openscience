@@ -7,6 +7,18 @@ Licensed under the Apache License, Version 2.0.
 It bundles or accesses the following third-party software and services.
 
 --------------------------------------------------------------------------------
+ZCode — Projects/Tasks navigation and remote workspace lifecycle design reference
+https://github.com/zai-org/ZCode
+Reference revision: 872ad96
+Copyright ZCode contributors. Licensed under the Apache License, Version 2.0.
+http://www.apache.org/licenses/LICENSE-2.0
+Source areas: packages/ui/src/WorkspaceSidebar, RemoteConnectionDialogContent,
+RemoteConnectionWizardChrome, packages/server/src/remote, and remote workspace
+identity/ownership in packages/shared and packages/desktop.
+OpenScience implements these patterns using its own SolidJS components and
+HTTP/SSE/WebSocket backend rather than incorporating the ZCode application runtime.
+
+--------------------------------------------------------------------------------
 OpenAI4S — Action Timeline design and behavior adapted to OpenScience
 https://github.com/PKU-YuanGroup/OpenAI4S
 Reference revision: cfd297fe (local source used for this port)

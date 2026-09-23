@@ -534,6 +534,8 @@ export const SessionRoutes = lazy(() =>
         const sessionID = c.req.valid("param").sessionID
         await Session.assertDirectory(sessionID)
         const source = c.req.header("x-openscience-abort-source") === "runner_timeout" ? "runner_timeout" : "user"
+        const { RuntimeQueue } = await import("../../runtime/queue")
+        await RuntimeQueue.pause(sessionID)
         const controller = SessionPrompt.activeController(sessionID)
         try {
           const result = await RuntimeEvents.requestCancel({ sessionID, source })

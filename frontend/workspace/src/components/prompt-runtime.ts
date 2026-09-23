@@ -6,17 +6,20 @@ export type ComposerPromptInput = Omit<RuntimePrompt, "requestID" | "message" | 
   agent: string
   messageID: string
   parts: NonNullable<RuntimePrompt["parts"]>
+  queued?: boolean
 }
 
 /** Negotiate before sending: a failed POST may already have started the run. */
 export async function submitComposerPrompt(
   client: OpenScienceClient,
-  input: ComposerPromptInput,
+  value: ComposerPromptInput,
   signal?: AbortSignal,
   onSubmit?: () => void,
 ): Promise<void> {
+  const { queued, ...input } = value
   signal?.throwIfAborted()
   if (input.agent !== "research") {
+    if (queued) throw new Error("This agent does not support the prompt queue.")
     onSubmit?.()
     await client.session.prompt(input, { throwOnError: true, signal })
     return
@@ -28,6 +31,7 @@ export async function submitComposerPrompt(
   )
   signal?.throwIfAborted()
   if (capabilities.response?.status === 404) {
+    if (queued) throw new Error("Update the connected server to use queued prompts.")
     onSubmit?.()
     await client.session.prompt(input, { throwOnError: true, signal })
     return
@@ -49,5 +53,10 @@ export async function submitComposerPrompt(
   }
 
   onSubmit?.()
+  if (queued) {
+    if (capabilities.data.promptQueue !== true) throw new Error("Update the connected server to use queued prompts.")
+    await client.runtime.enqueue({ ...input, requestID: input.messageID }, { throwOnError: true, signal })
+    return
+  }
   await client.runtime.prompt({ ...input, requestID: input.messageID }, { throwOnError: true, signal })
 }

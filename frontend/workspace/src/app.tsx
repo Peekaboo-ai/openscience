@@ -24,7 +24,8 @@ import { ErrorPage } from "./pages/error"
 import { resolveDefaultServerUrl } from "@/config/server-url"
 import { LoadingScreen } from "@synsci/ui/atom-loader"
 import { DesktopOnboarding } from "@/atlas/DesktopOnboarding"
-import Home from "@/pages/home"
+import { WorkspaceProvider } from "@/workspaces/context"
+import { TaskLanding } from "@/workspaces/Sidebar"
 import { Session } from "@/pages/session-loader"
 import { DEFAULT_PANEL, preloadPanel } from "@/components/settings/registry"
 import { StartupUpdateCheck } from "@/components/settings/startup-update"
@@ -127,65 +128,60 @@ export function AppInterface(props: { defaultUrl?: string }) {
 
   return (
     <ServerProvider defaultUrl={defaultServerUrl()}>
-      <ServerKey>
-        <DesktopReadySignal />
-        <DesktopOnboarding>
-          <GlobalSDKProvider>
-            <GlobalSyncProvider>
-              <Router
-                root={(props) => (
-                  <SettingsProvider>
-                    <StartupUpdateCheck />
-                    <PermissionProvider>
-                      <LayoutProvider>
-                        <NotificationProvider>
-                          <ModelsProvider>
-                            <CommandProvider>
-                              <HighlightsProvider>
-                                <Layout>{props.children}</Layout>
-                              </HighlightsProvider>
-                            </CommandProvider>
-                          </ModelsProvider>
-                        </NotificationProvider>
-                      </LayoutProvider>
-                    </PermissionProvider>
-                  </SettingsProvider>
-                )}
-              >
-                <Route
-                  path="/"
-                  component={() => (
-                    // The projects page shows the same mark at 144 in its own card once
-                    // it renders, so the route fallback matches it instead of jumping
-                    // from a full-surface size -- and stands it where the card will,
-                    // rather than centred on a surface the page does not have
-                    // (--science-home-loader-top in pages/home-workbench.css).
-                    <Suspense
-                      fallback={<LoadingScreen class="science-home__fallback" caption="Loading projects" size={144} />}
-                    >
-                      <Home />
-                    </Suspense>
+      <WorkspaceProvider localUrl={defaultServerUrl()}>
+        <ServerKey>
+          <DesktopReadySignal />
+          <DesktopOnboarding>
+            <GlobalSDKProvider>
+              <GlobalSyncProvider>
+                <Router
+                  root={(props) => (
+                    <SettingsProvider>
+                      <StartupUpdateCheck />
+                      <PermissionProvider>
+                        <LayoutProvider>
+                          <NotificationProvider>
+                            <ModelsProvider>
+                              <CommandProvider>
+                                <HighlightsProvider>
+                                  <Layout>{props.children}</Layout>
+                                </HighlightsProvider>
+                              </CommandProvider>
+                            </ModelsProvider>
+                          </NotificationProvider>
+                        </LayoutProvider>
+                      </PermissionProvider>
+                    </SettingsProvider>
                   )}
-                />
-                <Route path="/:dir" component={DirectoryLayout}>
-                  <Route path="/" component={() => <Navigate href="session" />} />
+                >
                   <Route
-                    path="/session/:id?"
-                    component={(p) => (
-                      <Show when={p.params.id ?? "new"}>
-                        <CommentsProvider>
-                          <Session fallback={<LoadingScreen caption="Opening session" />} />
-                        </CommentsProvider>
-                      </Show>
+                    path="/"
+                    component={() => (
+                      <Suspense fallback={<LoadingScreen caption="Opening task" size={96} />}>
+                        <TaskLanding />
+                      </Suspense>
                     )}
                   />
-                </Route>
-                <Route path="*404" component={NotFound} />
-              </Router>
-            </GlobalSyncProvider>
-          </GlobalSDKProvider>
-        </DesktopOnboarding>
-      </ServerKey>
+                  <Route path="/:dir" component={DirectoryLayout}>
+                    <Route path="/" component={() => <Navigate href="session" />} />
+                    <Route
+                      path="/session/:id?"
+                      component={(p) => (
+                        <Show when={p.params.id ?? "new"}>
+                          <CommentsProvider>
+                            <Session fallback={<LoadingScreen caption="Opening session" />} />
+                          </CommentsProvider>
+                        </Show>
+                      )}
+                    />
+                  </Route>
+                  <Route path="*404" component={NotFound} />
+                </Router>
+              </GlobalSyncProvider>
+            </GlobalSDKProvider>
+          </DesktopOnboarding>
+        </ServerKey>
+      </WorkspaceProvider>
     </ServerProvider>
   )
 }

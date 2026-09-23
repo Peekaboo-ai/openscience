@@ -7,9 +7,37 @@ const inherited = new Set([
   "TERM_PROGRAM",
   "TERM_PROGRAM_VERSION",
   "TERM_SESSION_ID",
+  "COLUMNS",
+  "LINES",
 ])
 
-const shellName = (command: string) => command.replace(/\\/g, "/").split("/").at(-1)?.toLowerCase()
+const shellName = (command: string) =>
+  command
+    .replace(/\\/g, "/")
+    .split("/")
+    .at(-1)
+    ?.toLowerCase()
+    .replace(/\.exe$/, "")
+
+export function terminalSpawnEnv(env: Record<string, string>, parent: NodeJS.ProcessEnv = process.env) {
+  // bun-pty 的原生层合并环境而非替换。必须显式清空被过滤的键，
+  // 否则宿主 PROMPT_COMMAND、Python 覆盖项和凭据会重新进入终端。
+  return { ...Object.fromEntries(Object.keys(parent).map((key) => [key, ""])), ...env }
+}
+
+export function terminalCommand(
+  file: string,
+  args: string[],
+  env: Record<string, string>,
+  platform = process.platform,
+) {
+  if (platform === "win32") return { file, args }
+  // 空值仍算“存在”的 SSH/BASH 变量会触发启动脚本；POSIX exec 边界需真正删除它们。
+  return {
+    file: "/usr/bin/env",
+    args: ["-i", ...Object.entries(env).map(([key, value]) => `${key}=${value}`), file, ...args],
+  }
+}
 
 export function terminalEnv(
   source: NodeJS.ProcessEnv,
@@ -50,7 +78,7 @@ export function terminalArgs(command: string) {
   // job control before interactive startup so it does not print a false
   // `can't set tty pgrp` warning; foreground commands remain fully interactive.
   if (shell === "zsh") return ["-d", "-f", "+m", "-i"]
-  if (shell === "bash") return ["--noprofile", "--norc", "-i"]
+  if (shell === "bash") return ["--noprofile", "--norc", "-O", "checkwinsize", "-i"]
   if (shell === "fish") return ["--no-config", "--interactive"]
   if (shell === "sh" || shell === "dash" || shell === "ksh") return ["-i"]
   return []

@@ -123,13 +123,16 @@ export function DesktopOnboardingController(
     acePollMs?: number
   },
 ) {
-  const desktop = props.desktop ?? new URLSearchParams(window.location.search).get("desktop") === "1"
+  const query = new URLSearchParams(window.location.search)
+  const desktop = props.desktop ?? query.get("desktop") === "1"
+  // 定制版只关闭启动引导，不伪造登录状态、不写完成标记，也不影响桌面服务地址和原有账号验证。
+  const onboarding = desktop && query.get("desktop-onboarding") !== "optional"
   // A completed setup is remembered on this device so the shell paints before
   // the preferences round trip; the fetch still verifies it below and brings
   // setup back if the server says it is incomplete.
-  const seen = desktop && cachedVersion() > 0
-  const [complete, setComplete] = createSignal(!desktop || seen)
-  const [ready, setReady] = createSignal(!desktop || seen)
+  const seen = onboarding && cachedVersion() > 0
+  const [complete, setComplete] = createSignal(!onboarding || seen)
+  const [ready, setReady] = createSignal(!onboarding || seen)
   const [step, setStep] = createSignal<OnboardingStep>("account")
   const [error, setError] = createSignal<string>()
   const [account, setAccount] = createStore({ connected: false, pending: false, keyEntry: false, key: "" })
@@ -168,7 +171,7 @@ export function DesktopOnboardingController(
   }
 
   onMount(() => {
-    if (!desktop) return
+    if (!onboarding) return
     void withAccountDeadline(async (deadline) => {
       const signal = AbortSignal.any([deadline, lifetime.signal])
       const value = await api<Preferences>("/settings/preferences", { signal })

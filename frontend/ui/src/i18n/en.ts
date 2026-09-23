@@ -1,4 +1,17 @@
 export const dict = {
+  "ui.permission.submitting": "Applying…",
+  "ui.permission.applied": "Decision saved",
+  "ui.shell.timedOut":
+    "Stopped after the {{seconds}}s execution limit. Narrow the command or explicitly increase its timeout.",
+  "ui.shell.cancelled": "Command cancelled",
+  "ui.permission.failed": "Could not submit this decision. Please retry.",
+  "ui.shell.preparing": "Checking execution permissions",
+  "ui.shell.environment": "Resolving the selected environment",
+  "ui.shell.observing": "Preparing output tracking",
+  "ui.shell.launching": "Starting the shell process",
+  "ui.shell.running": "Command running",
+  "ui.shell.collecting": "Collecting command results",
+  "ui.shell.noOutput": "No command output yet",
   "ui.sessionTurn.sendAgain": "Send again",
   "ui.sessionTurn.steps.show": "Show reasoning and activity",
   "ui.sessionTurn.steps.hide": "Hide reasoning and activity",

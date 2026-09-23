@@ -24,6 +24,7 @@ import {
 } from "./updater.mjs"
 import { acknowledgedStartupResult, startupUpdateState } from "./update-state.mjs"
 import { disposeRuntime } from "./runtime-disposal.mjs"
+import { workspaceUrl } from "./workspace-url.mjs"
 import { readAppearance, resolveAppearance, saveAppearance, splashQuery, sweepAppearance } from "./appearance.mjs"
 
 const execute = promisify(execFile)
@@ -1011,7 +1012,12 @@ async function createWindow() {
     event.preventDefault()
     external(url)
   })
-  await window.loadURL(`${state.address}/?desktop=1${state.updateAddress ? "&desktop-update=1" : ""}`)
+  await window.loadURL(
+    workspaceUrl(state.address, {
+      onboarding: process.env.OPENSCIENCE_DESKTOP_ONBOARDING,
+      updates: Boolean(state.updateAddress),
+    }),
+  )
   const deadline = Date.now() + 30_000
   while (Date.now() < deadline) {
     const mounted = await window.webContents

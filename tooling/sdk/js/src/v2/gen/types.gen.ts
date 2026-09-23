@@ -2820,6 +2820,42 @@ export type SubtaskPartInput = {
   attachments?: Array<SubtaskAttachment>
 }
 
+export type RuntimeQueueSnapshot = {
+  sessionID: string
+  revision: number
+  paused: boolean
+  reason?: string
+  items: Array<{
+    id: string
+    input: {
+      sessionID: string
+      messageID?: string
+      model?: {
+        providerID: string
+        modelID: string
+      }
+      variant?: string
+      tier?: string
+      context?: number
+      delegation?: boolean
+      delegationSettings?: {
+        level?: "off" | "light" | "standard" | "high"
+        workerModel?: {
+          providerID: string
+          modelID: string
+        }
+        autonomy?: "interactive" | "balanced" | "autonomous"
+      }
+      requestID?: string
+      message?: string
+      parts?: Array<TextPartInput | FilePartInput | AgentPartInput | ConversationPartInput | SubtaskPartInput>
+      effort: "normal" | "ultra"
+      delivery?: "guide" | "start"
+    }
+    createdAt: number
+  }>
+}
+
 export type RuntimePromptAccepted = {
   runID: string
   acceptedAt: number
@@ -2873,6 +2909,7 @@ export type RuntimeCapabilities = {
   serverVersion: string
   idempotentPrompts: true
   richInputs: true
+  promptQueue: true
   runSnapshots: true
   eventRetention: number
   crashRecovery: "interrupt"
@@ -9348,6 +9385,445 @@ export type SettingsComputeJobsCancelResponses = {
 export type SettingsComputeJobsCancelResponse =
   SettingsComputeJobsCancelResponses[keyof SettingsComputeJobsCancelResponses]
 
+export type WorkspaceEnvironmentData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/workspace/environment"
+}
+
+export type WorkspaceEnvironmentResponses = {
+  /**
+   * Success
+   */
+  200: {
+    authority: "local" | "remote"
+    hostname: string
+    platform: string
+    arch: string
+    kind: "host" | "wsl" | "container"
+    sampledAt: number
+    cpu: {
+      logical: number
+      available: number
+    }
+    memory: {
+      total: number
+      available: number
+      limit?: number
+    }
+    schedulers: Array<{
+      id: string
+      command: string
+      status: "ready" | "not_installed" | "restricted" | "timeout" | "dependency_error" | "unavailable" | "error"
+      executable?: string
+      columns: string
+      output: string
+      detail?: string
+      truncated: boolean
+    }>
+    accelerators: Array<{
+      id: string
+      command: string
+      status: "ready" | "not_installed" | "restricted" | "timeout" | "dependency_error" | "unavailable" | "error"
+      executable?: string
+      columns: string
+      output: string
+      detail?: string
+      truncated: boolean
+    }>
+    runtimes: Array<{
+      name: string
+      executable: string
+    }>
+    notes: Array<string>
+  }
+}
+
+export type WorkspaceEnvironmentResponse = WorkspaceEnvironmentResponses[keyof WorkspaceEnvironmentResponses]
+
+export type WorkspaceCatalogData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/workspace/catalog"
+}
+
+export type WorkspaceCatalogResponses = {
+  /**
+   * Success
+   */
+  200: {
+    projects: Array<Project>
+    tasksProjectID?: string
+    remotes: Array<{
+      id: string
+      name: string
+      target:
+        | {
+            kind: "ssh"
+            host_id: string
+          }
+        | {
+            kind: "wsl"
+            distro: string
+            user?: string
+          }
+        | {
+            kind: "docker"
+            container: string
+          }
+      directory?: string
+      projectID?: string
+      created: number
+      state: "disconnected" | "connecting" | "connected" | "error"
+      progress: string
+      error?: string
+      home?: string
+    }>
+  }
+}
+
+export type WorkspaceCatalogResponse = WorkspaceCatalogResponses[keyof WorkspaceCatalogResponses]
+
+export type WorkspaceTaskData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/workspace/task"
+}
+
+export type WorkspaceTaskResponses = {
+  /**
+   * Success
+   */
+  200: Session
+}
+
+export type WorkspaceTaskResponse = WorkspaceTaskResponses[keyof WorkspaceTaskResponses]
+
+export type WorkspaceDirectoriesData = {
+  body?: never
+  path?: never
+  query?: {
+    path?: string
+  }
+  url: "/workspace/directories"
+}
+
+export type WorkspaceDirectoriesResponses = {
+  /**
+   * Success
+   */
+  200: {
+    directory: string
+    workingDirectory: string
+    parent: string
+    entries: Array<{
+      name: string
+      path: string
+    }>
+  }
+}
+
+export type WorkspaceDirectoriesResponse = WorkspaceDirectoriesResponses[keyof WorkspaceDirectoriesResponses]
+
+export type WorkspaceCreateDirectoryData = {
+  body?: {
+    parent: string
+    name: string
+  }
+  path?: never
+  query?: never
+  url: "/workspace/directories"
+}
+
+export type WorkspaceCreateDirectoryResponses = {
+  /**
+   * Success
+   */
+  200: {
+    directory: string
+  }
+}
+
+export type WorkspaceCreateDirectoryResponse =
+  WorkspaceCreateDirectoryResponses[keyof WorkspaceCreateDirectoryResponses]
+
+export type WorkspaceOpenData = {
+  body?: {
+    directory?: string
+    name: string
+  }
+  path?: never
+  query?: never
+  url: "/workspace/open"
+}
+
+export type WorkspaceOpenResponses = {
+  /**
+   * Success
+   */
+  200: {
+    project: Project
+    directory: string
+  }
+}
+
+export type WorkspaceOpenResponse = WorkspaceOpenResponses[keyof WorkspaceOpenResponses]
+
+export type RemoteWorkspaceListData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/remote-workspaces"
+}
+
+export type RemoteWorkspaceListResponses = {
+  /**
+   * Success
+   */
+  200: Array<{
+    id: string
+    name: string
+    target:
+      | {
+          kind: "ssh"
+          host_id: string
+        }
+      | {
+          kind: "wsl"
+          distro: string
+          user?: string
+        }
+      | {
+          kind: "docker"
+          container: string
+        }
+    directory?: string
+    projectID?: string
+    created: number
+    state: "disconnected" | "connecting" | "connected" | "error"
+    progress: string
+    error?: string
+    home?: string
+  }>
+}
+
+export type RemoteWorkspaceListResponse = RemoteWorkspaceListResponses[keyof RemoteWorkspaceListResponses]
+
+export type RemoteWorkspaceCreateData = {
+  body?: {
+    name: string
+    target:
+      | {
+          kind: "ssh"
+          host_id: string
+        }
+      | {
+          kind: "wsl"
+          distro: string
+          user?: string
+        }
+      | {
+          kind: "docker"
+          container: string
+        }
+  }
+  path?: never
+  query?: never
+  url: "/remote-workspaces"
+}
+
+export type RemoteWorkspaceCreateResponses = {
+  /**
+   * Success
+   */
+  200: {
+    id: string
+    name: string
+    target:
+      | {
+          kind: "ssh"
+          host_id: string
+        }
+      | {
+          kind: "wsl"
+          distro: string
+          user?: string
+        }
+      | {
+          kind: "docker"
+          container: string
+        }
+    directory?: string
+    projectID?: string
+    created: number
+    state: "disconnected" | "connecting" | "connected" | "error"
+    progress: string
+    error?: string
+    home?: string
+  }
+}
+
+export type RemoteWorkspaceCreateResponse = RemoteWorkspaceCreateResponses[keyof RemoteWorkspaceCreateResponses]
+
+export type RemoteWorkspaceOptionsData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/remote-workspaces/options"
+}
+
+export type RemoteWorkspaceOptionsResponses = {
+  /**
+   * Success
+   */
+  200: {
+    hosts: Array<{
+      id: string
+      label: string
+      ready: boolean
+    }>
+    configs: Array<{
+      alias: string
+      hostname?: string
+      user?: string
+      port?: number
+      identity_file?: string
+      proxy_jump?: string
+    }>
+    wsl: Array<string>
+    docker: Array<string>
+  }
+}
+
+export type RemoteWorkspaceOptionsResponse = RemoteWorkspaceOptionsResponses[keyof RemoteWorkspaceOptionsResponses]
+
+export type RemoteWorkspaceConnectData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: never
+  url: "/remote-workspaces/{id}/connect"
+}
+
+export type RemoteWorkspaceConnectResponses = {
+  /**
+   * Success
+   */
+  200: {
+    id: string
+    name: string
+    target:
+      | {
+          kind: "ssh"
+          host_id: string
+        }
+      | {
+          kind: "wsl"
+          distro: string
+          user?: string
+        }
+      | {
+          kind: "docker"
+          container: string
+        }
+    directory?: string
+    projectID?: string
+    created: number
+    state: "disconnected" | "connecting" | "connected" | "error"
+    progress: string
+    error?: string
+    home?: string
+  }
+}
+
+export type RemoteWorkspaceConnectResponse = RemoteWorkspaceConnectResponses[keyof RemoteWorkspaceConnectResponses]
+
+export type RemoteWorkspaceDisconnectData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: never
+  url: "/remote-workspaces/{id}/disconnect"
+}
+
+export type RemoteWorkspaceDisconnectResponses = {
+  /**
+   * Success
+   */
+  200: boolean
+}
+
+export type RemoteWorkspaceDisconnectResponse =
+  RemoteWorkspaceDisconnectResponses[keyof RemoteWorkspaceDisconnectResponses]
+
+export type RemoteWorkspaceRemoveData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: never
+  url: "/remote-workspaces/{id}"
+}
+
+export type RemoteWorkspaceRemoveResponses = {
+  /**
+   * Success
+   */
+  200: boolean
+}
+
+export type RemoteWorkspaceRemoveResponse = RemoteWorkspaceRemoveResponses[keyof RemoteWorkspaceRemoveResponses]
+
+export type RemoteWorkspaceOpenData = {
+  body?: {
+    directory?: string
+    name: string
+  }
+  path: {
+    id: string
+  }
+  query?: never
+  url: "/remote-workspaces/{id}/open"
+}
+
+export type RemoteWorkspaceOpenResponses = {
+  /**
+   * Success
+   */
+  200: {
+    id: string
+    name: string
+    target:
+      | {
+          kind: "ssh"
+          host_id: string
+        }
+      | {
+          kind: "wsl"
+          distro: string
+          user?: string
+        }
+      | {
+          kind: "docker"
+          container: string
+        }
+    directory?: string
+    projectID?: string
+    created: number
+    state: "disconnected" | "connecting" | "connected" | "error"
+    progress: string
+    error?: string
+    home?: string
+  }
+}
+
+export type RemoteWorkspaceOpenResponse = RemoteWorkspaceOpenResponses[keyof RemoteWorkspaceOpenResponses]
+
 export type SettingsPreferencesGetData = {
   body?: never
   path?: never
@@ -9607,6 +10083,15 @@ export type ModelConnectionsListResponses = {
       hasKey: boolean
       context: number
       output: number
+      limits: {
+        [key: string]: {
+          context: number
+          output: number
+          input?: number
+          mode: "auto" | "manual"
+          source: "catalog" | "endpoint" | "fallback" | "manual"
+        }
+      }
     }>
   }
 }
@@ -9622,6 +10107,15 @@ export type ModelConnectionsSaveData = {
     models: Array<string>
     context?: number
     output?: number
+    limits?: {
+      [key: string]: {
+        context: number
+        output: number
+        input?: number
+        mode: "auto" | "manual"
+        source: "catalog" | "endpoint" | "fallback" | "manual"
+      }
+    }
   }
   path?: never
   query?: never
@@ -9644,13 +10138,65 @@ export type ModelConnectionsSaveResponses = {
    * Success
    */
   200: {
+    id: string
+    name: string
     baseURL: string
     models: Array<string>
-    id: string
+    hasKey: boolean
+    context: number
+    output: number
+    limits: {
+      [key: string]: {
+        context: number
+        output: number
+        input?: number
+        mode: "auto" | "manual"
+        source: "catalog" | "endpoint" | "fallback" | "manual"
+      }
+    }
   }
 }
 
 export type ModelConnectionsSaveResponse = ModelConnectionsSaveResponses[keyof ModelConnectionsSaveResponses]
+
+export type ModelConnectionsLimitsData = {
+  body?: {
+    models: Array<string>
+  }
+  path?: never
+  query?: never
+  url: "/settings/model-connections/limits"
+}
+
+export type ModelConnectionsLimitsErrors = {
+  /**
+   * Connection error
+   */
+  400: {
+    error: string
+  }
+}
+
+export type ModelConnectionsLimitsError = ModelConnectionsLimitsErrors[keyof ModelConnectionsLimitsErrors]
+
+export type ModelConnectionsLimitsResponses = {
+  /**
+   * Success
+   */
+  200: {
+    limits: {
+      [key: string]: {
+        context: number
+        output: number
+        input?: number
+        mode: "auto" | "manual"
+        source: "catalog" | "endpoint" | "fallback" | "manual"
+      }
+    }
+  }
+}
+
+export type ModelConnectionsLimitsResponse = ModelConnectionsLimitsResponses[keyof ModelConnectionsLimitsResponses]
 
 export type ModelConnectionsDiscoverData = {
   body?: {
@@ -9681,6 +10227,15 @@ export type ModelConnectionsDiscoverResponses = {
   200: {
     baseURL: string
     models: Array<string>
+    limits: {
+      [key: string]: {
+        context: number
+        output: number
+        input?: number
+        mode: "auto" | "manual"
+        source: "catalog" | "endpoint" | "fallback" | "manual"
+      }
+    }
   }
 }
 
@@ -11026,6 +11581,7 @@ export type PtyConnectData = {
   }
   query?: {
     directory?: string
+    replay?: "geometry-v1"
   }
   url: "/pty/{ptyID}/connect"
 }
@@ -13300,6 +13856,123 @@ export type PermissionRespondResponses = {
 
 export type PermissionRespondResponse = PermissionRespondResponses[keyof PermissionRespondResponses]
 
+export type RuntimeQueueData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    sessionID: string
+  }
+  url: "/runtime/queue"
+}
+
+export type RuntimeQueueResponses = {
+  /**
+   * Durable prompt queue
+   */
+  200: RuntimeQueueSnapshot
+}
+
+export type RuntimeQueueResponse = RuntimeQueueResponses[keyof RuntimeQueueResponses]
+
+export type RuntimeUpdateQueueData = {
+  body?: {
+    sessionID: string
+    revision: number
+    change:
+      | {
+          type: "pause"
+        }
+      | {
+          type: "resume"
+        }
+      | {
+          type: "remove"
+          id: string
+        }
+      | {
+          type: "move"
+          id: string
+          before: string | null
+        }
+      | {
+          type: "edit"
+          id: string
+          text: string
+        }
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/runtime/queue"
+}
+
+export type RuntimeUpdateQueueErrors = {
+  /**
+   * Queue was changed by another client
+   */
+  409: unknown
+}
+
+export type RuntimeUpdateQueueResponses = {
+  /**
+   * Updated queue
+   */
+  200: RuntimeQueueSnapshot
+}
+
+export type RuntimeUpdateQueueResponse = RuntimeUpdateQueueResponses[keyof RuntimeUpdateQueueResponses]
+
+export type RuntimeEnqueueData = {
+  body?: {
+    sessionID: string
+    messageID?: string
+    model?: {
+      providerID: string
+      modelID: string
+    }
+    variant?: string
+    tier?: string
+    context?: number
+    delegation?: boolean
+    delegationSettings?: {
+      level?: "off" | "light" | "standard" | "high"
+      workerModel?: {
+        providerID: string
+        modelID: string
+      }
+      autonomy?: "interactive" | "balanced" | "autonomous"
+    }
+    requestID?: string
+    message?: string
+    parts?: Array<TextPartInput | FilePartInput | AgentPartInput | ConversationPartInput | SubtaskPartInput>
+    effort: "normal" | "ultra"
+    delivery?: "guide" | "start"
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/runtime/queue"
+}
+
+export type RuntimeEnqueueErrors = {
+  /**
+   * Conflicting request or full queue
+   */
+  409: unknown
+}
+
+export type RuntimeEnqueueResponses = {
+  /**
+   * Queue accepted
+   */
+  202: RuntimeQueueSnapshot
+}
+
+export type RuntimeEnqueueResponse = RuntimeEnqueueResponses[keyof RuntimeEnqueueResponses]
+
 export type RuntimePromptData = {
   body?: {
     sessionID: string
@@ -13324,6 +13997,7 @@ export type RuntimePromptData = {
     message?: string
     parts?: Array<TextPartInput | FilePartInput | AgentPartInput | ConversationPartInput | SubtaskPartInput>
     effort: "normal" | "ultra"
+    delivery?: "guide" | "start"
   }
   path?: never
   query?: {

@@ -26,7 +26,10 @@ afterEach(() => {
 afterAll(() => server.close())
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
 
-function mount(entries = [entry("msg_a"), entry("msg_b", { title: "R analysis", status: "error" })]) {
+function mount(
+  entries = [entry("msg_a"), entry("msg_b", { title: "R analysis", status: "error" })],
+  options: Partial<import("./TimelineView").TimelineViewProps> = {},
+) {
   const host = document.createElement("div")
   document.body.append(host)
   const data: Snapshot = {
@@ -52,6 +55,7 @@ function mount(entries = [entry("msg_a"), entry("msg_b", { title: "R analysis", 
           restart: () => {},
           revert: () => {},
           restore: () => {},
+          ...options,
         }),
       host,
     ),
@@ -62,7 +66,7 @@ function mount(entries = [entry("msg_a"), entry("msg_b", { title: "R analysis", 
 test("renders real statuses, opens details, and searches with temporary turn expansion", async () => {
   const host = mount()
   await settle()
-  expect(host.textContent).toContain("error")
+  expect(host.querySelector(".action-timeline__ledger")?.textContent).toContain("Failed")
   host.querySelector<HTMLButtonElement>(".action-timeline__entry")!.click()
   await settle()
   expect(host.querySelector('[aria-label="Action details"]')?.textContent).toContain("msg_a")
@@ -89,6 +93,58 @@ test("large history uses a bounded DOM and zoom controls work without a pointer 
   await settle()
   expect(host.querySelector("time")!.getAttribute("title")).not.toBe(before)
   expect(host.querySelectorAll('[aria-label="Action ledger"]').length).toBe(1)
+})
+
+test("Chinese ledger hides internal IDs, searches provider labels, and exposes diagnostics only in details", async () => {
+  const host = mount(
+    [
+      entry("request_internal", { kind: "user", title: "比较处理组与对照组的差异表达" }),
+      entry("model_internal", { provider: "custom-private-uuid", model: "research-model", status: "error" }),
+      entry("tool_internal", { kind: "tool", tool: "skill" }),
+    ],
+    {
+      t: (_en, zh) => zh,
+      catalog: [{ id: "custom-private-uuid", name: "科研网关", models: { "research-model": { name: "研究模型" } } }],
+    },
+  )
+  await settle()
+  const ledger = host.querySelector(".action-timeline__ledger")!
+  expect(ledger.textContent).toContain("比较处理组与对照组")
+  expect(ledger.textContent).toContain("研究模型 · 科研网关")
+  expect(ledger.textContent).toContain("加载研究技能")
+  expect(ledger.textContent).not.toContain("custom-private-uuid")
+  expect(ledger.textContent).not.toContain("TURN")
+  const search = host.querySelector<HTMLInputElement>('input[type="search"]')!
+  search.value = "科研网关"
+  search.dispatchEvent(new Event("input", { bubbles: true }))
+  await settle()
+  expect(host.querySelectorAll(".action-timeline__entry")).toHaveLength(1)
+  host.querySelector<HTMLButtonElement>(".action-timeline__entry")!.click()
+  await settle()
+  const details = host.querySelector('[aria-label="行动详情"]')!
+  expect(details.textContent).toContain("本次模型请求失败")
+  const diagnostics = [...details.querySelectorAll("details")].find((item) => item.textContent?.includes("技术标识"))!
+  expect(diagnostics.open).toBe(false)
+  expect(diagnostics.textContent).toContain("custom-private-uuid")
+})
+
+test("review filter retains request context and keyboard navigation focuses actual steps", async () => {
+  const host = mount([
+    entry("request", { kind: "user", title: "Analyze samples" }),
+    entry("ok"),
+    entry("failed", { status: "error" }),
+  ])
+  await settle()
+  ;[...host.querySelectorAll<HTMLButtonElement>("button")].find((node) => node.textContent === "Needs review")!.click()
+  await settle()
+  expect(host.querySelectorAll(".action-timeline__entry")).toHaveLength(1)
+  expect(host.querySelector(".action-timeline__turn")?.textContent).toContain("Analyze samples")
+  expect(host.querySelector(".action-timeline__entry")?.textContent).toContain("Step 2")
+  host
+    .querySelector(".action-timeline__ledger")!
+    .dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }))
+  await settle()
+  expect(document.activeElement?.classList.contains("action-timeline__entry")).toBe(true)
 })
 
 test("workbench binds checkpoint, recovery and exact run controls to their displayed identities", async () => {

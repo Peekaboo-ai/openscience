@@ -1,5 +1,32 @@
 # OpenScience desktop
 
+## Windows Workspaces installer
+
+Build the customized workspace as a self-contained Windows x64 NSIS installer:
+
+```powershell
+$env:OPENSCIENCE_VERSION = '2.0.127-workspaces.20260923.5'
+bun run tooling/repo/build-windows-installer.ts
+```
+
+Run from the repository root after dependencies are installed. `--reuse-runtimes` skips compilation only when the matching Windows runtime and all four remote runtimes have already been built. The script checks the Windows runtime version and writes the installer and SHA-256 file under `frontend/desktop/dist/workspaces/`. No user config, credentials or sessions are included.
+
+The English/Chinese installer runs per user without administrator access, supports choosing the installation folder, creates desktop/Start menu shortcuts, and registers an uninstaller. Launch **OpenScience Workspaces** to start the native window and its private loopback backend; Node.js and Bun are not required on the destination PC. Linux x64/ARM64 and macOS x64/ARM64 remote backends are included. SSH, WSL or Docker connections still require their respective client/host facilities. Scientific runtimes and model services are configured when needed.
+
+The NSIS include stages an old installation alongside its original directory during upgrades. The upstream template's file-by-file rename into the system temporary directory fails when the application and temporary directory are on different drives. A failed directory rename leaves the previous installation intact; incomplete cleanup leaves the explicitly named backup for inspection.
+
+The installer uses ZIP extraction directly into the installation directory, with extraction errors checked by the upstream NSIS template. `differentialPackage: false` must accompany `useZip: true`: electron-builder otherwise generates a 7z payload but selects the ZIP extractor. This custom Windows build uses full installer updates. Direct extraction avoids staging the entire unpacked application on the system drive. Allow at least 2 GB free on the installation drive and 1 GB for temporary files and the installer cache. When building on a machine with a nearly full system drive, set `TEMP` and `TMP` to an existing directory on a drive with enough free space for that build process.
+
+Data, configuration, logs and browser state are stored under `%LOCALAPPDATA%\OpenScience Workspaces`, outside the installation folder. `OPENSCIENCE_WORKSPACES_HOME` can select an alternate profile. This build does not import existing development-service data automatically. Installing a new Workspaces EXE updates the application; uninstalling preserves its user data. The customized app has a distinct application ID and profile from upstream OpenScience; use matching Workspaces installers for upgrades.
+
+Local EXE builds are unsigned unless Windows signing credentials are configured. Windows may display an unknown-publisher/SmartScreen prompt. A public trusted publisher signature requires the signing setup described below.
+
+Before distributing an installer, install it into a disposable empty directory, then run `node frontend/desktop/script/verify-windows-install.mjs frontend/desktop/dist/workspaces/win-unpacked <installed-directory>` from the repository root. This compares every installed package file by size and SHA-256; an installer exit code alone is insufficient. Also verify desktop startup, an in-place installer update, and uninstall with profile data retained.
+
+## Upstream desktop releases
+
+Workspaces launches with `desktop=1&desktop-onboarding=optional` to enter the local workspace immediately, without writing onboarding completion or account state. Models and remote projects remain configured through the existing settings. Official account sign-in is optional in Settings; cloud APIs still require their own credentials. The upstream desktop entry retains its original onboarding.
+
 The desktop shell starts the bundled OpenScience runtime on a random loopback port and opens the existing workspace in a native window. It never exposes Node APIs to the workspace.
 
 Release builds produce:

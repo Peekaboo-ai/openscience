@@ -2,6 +2,8 @@ Run a shell command in the session workspace. Set `workdir` instead of changing 
 
 Use Bash for builds, tests, packages, Git, utilities, and scripts. Prefer file tools for reading, searching, creating, or editing files; do not write through shell redirection when a file tool fits.
 
+The default `environment: "shell"` uses the host's environment without provisioning Python. Activate an existing Conda/venv environment and run its commands in the SAME call; activation does not persist across Bash calls or change an already-open terminal. Use `environment: "python"` only for OpenScience's existing Python runtime and shared project packages, not when activating a user environment. Missing runtimes must be installed explicitly through environment management. Preparation and execution share the timeout (default 120000 ms); use a bounded timeout appropriate to the work.
+
 Use the web and literature tools for internet retrieval, not curl or wget.
 
 All Bash children stop when the call ends; `&`, `nohup`, `disown`, and `setsid` are not durable. For work that must outlive the call, use the durable job tool when it is offered (start a local job, then wait for it); never poll with Bash.

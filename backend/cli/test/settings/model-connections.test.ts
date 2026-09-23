@@ -7,6 +7,7 @@ import { Auth } from "../../src/auth"
 import { Provider } from "../../src/provider/provider"
 import { Instance } from "../../src/project/instance"
 import { tmpdir } from "../fixture/fixture"
+import { SessionCompaction } from "../../src/session/compaction"
 
 const requests: { url: string; key: string | null; body?: unknown }[] = []
 const server = Bun.serve({
@@ -61,9 +62,10 @@ test("normalizes base URLs without changing gateway prefixes", () => {
 })
 
 test("discovers and deduplicates models, rejects redirects and sanitizes upstream errors", async () => {
-  expect(await CustomConnections.discover({ url: base, key: "fixture-key" })).toEqual({
+  expect(await CustomConnections.discover({ url: base, key: "fixture-key" })).toMatchObject({
     baseURL: `${base}/v1`,
     models: ["lab/alpha", "lab/beta"],
+    limits: { "lab/alpha": { context: 128_000, output: 32_000, source: "fallback" } },
   })
   expect(requests.at(-1)?.key).toBe("Bearer fixture-key")
   for (const suffix of ["denied", "redirect", "invalid", "large"]) {
@@ -165,4 +167,68 @@ test("catalog metadata alone does not connect an unconfigured provider", async (
       expect((await Provider.list()).anthropic).toBeUndefined()
     },
   })
+})
+
+test("per-model limits reach runtime and compaction without disposing a live project", async () => {
+  await using tmp = await tmpdir()
+  const created = await CustomConnections.save({
+    name: "Limits fixture",
+    url: base,
+    key: "fixture-key",
+    models: ["gpt-5.6-terra", "lab/small"],
+    limits: { "lab/small": { context: 16384, output: 2048, input: 12000, mode: "manual", source: "manual" } },
+  })
+  const sentinel = Instance.state(() => ({ id: crypto.randomUUID() }))
+  try {
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const state = sentinel()
+        const model = await Provider.getModel(created.id, "gpt-5.6-terra")
+        expect(model.limit).toEqual({ context: 1_050_000, input: 922_000, output: 128_000 })
+        const budget = SessionCompaction.usableContext(model, {})
+        expect(Math.floor(budget.usable * 0.9)).toBeGreaterThan(23_951)
+        expect(budget.usable).toBeLessThan(model.limit.input!)
+        expect(
+          await SessionCompaction.isOverflow({
+            model,
+            tokens: {
+              input: budget.usable,
+              output: 0,
+              reasoning: 0,
+              cache: { read: 0, write: 0 },
+            },
+          }),
+        ).toBe(true)
+        const saved = await CustomConnections.save({
+          id: created.id,
+          name: "Edited",
+          url: base,
+          models: created.models,
+        })
+        expect(saved.limits["lab/small"].input).toBe(12000)
+        expect(sentinel()).toBe(state)
+        expect((await Provider.getModel(created.id, "lab/small")).limit.input).toBe(12000)
+        // 旧版本固定值在运行时升级，不需要覆盖用户文件才能解除错误预算。
+        const block = (await Config.getGlobal()).provider![created.id]
+        await Config.setProvider(
+          created.id,
+          {
+            ...block,
+            options: { baseURL: block.options!.baseURL, customConnection: true },
+            models: { "gpt-5.6-terra": { limit: { context: 32768, output: 8192 } } },
+            whitelist: ["gpt-5.6-terra"],
+          },
+          "global",
+          { preserveInstances: true },
+        )
+        expect((await Provider.getModel(created.id, "gpt-5.6-terra")).limit.context).toBe(1_050_000)
+        expect(
+          (await CustomConnections.list()).find((item) => item.id === created.id)?.limits["gpt-5.6-terra"].input,
+        ).toBe(922_000)
+      },
+    })
+  } finally {
+    await CustomConnections.remove(created.id)
+  }
 })

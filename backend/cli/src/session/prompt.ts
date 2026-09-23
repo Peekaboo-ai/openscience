@@ -395,7 +395,8 @@ export namespace SessionPrompt {
 
   export const prompt = fn(RuntimePromptInput, async (input) => {
     const reservation = pending().get(input.sessionID)
-    if (reservation && reservation !== preparation(input.sessionID)) throw new Session.BusyError(input.sessionID)
+    if (reservation && reservation !== preparation(input.sessionID) && !input.noReply)
+      throw new Session.BusyError(input.sessionID)
     assertPreparing(input.sessionID)
     const session = await Session.get(input.sessionID)
     assertPreparing(input.sessionID)

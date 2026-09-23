@@ -141,7 +141,17 @@ export namespace ActionTimeline {
       messageID: info.id,
       turnID: assistant?.parentID ?? info.id,
       kind: assistant ? "inference" : "user",
-      title: assistant ? `${text(assistant.providerID)} / ${text(assistant.modelID)}` : "User request",
+      // 仅展示用户主动提交的正文摘要；合成提示、工具输入输出和推理内容不进入请求标题。
+      title: assistant
+        ? "Model response"
+        : text(
+            message.parts
+              .filter((part): part is MessageV2.TextPart => part.type === "text" && !part.synthetic && !part.ignored)
+              .map((part) => part.text)
+              .join(" "),
+          )
+            .replace(/\s+/g, " ")
+            .trim() || "User request",
       owner: assistant ? text(assistant.agent) : "user",
       status: assistant?.error
         ? assistant.error.name === "MessageAbortedError"

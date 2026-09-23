@@ -68,8 +68,9 @@ export namespace CommandRuntime {
     input: Omit<CommandStatus, "id" | "state" | "process_id" | "started_at" | "resources">,
     process: ChildProcess,
     stop: (reason?: string) => Promise<void>,
-    options: { authorityGeneration?: string; windowsRelease?: string; overlay?: string } = {},
+    options: { authorityGeneration?: string; windowsRelease?: string; overlay?: string; signal?: AbortSignal } = {},
   ) {
+    options.signal?.throwIfAborted()
     if (!process.pid) throw new Error("Shell command started without a process id")
     const bound = WindowsJobLauncher.bind(process, options.windowsRelease)
     const subreaper = globalThis.process.platform === "linux" && bound && WindowsJobLauncher.isLinuxSubreaper(process)
@@ -125,6 +126,7 @@ export namespace CommandRuntime {
     }
     if (globalThis.process.platform === "linux" && options.windowsRelease) {
       try {
+        options.signal?.throwIfAborted()
         await WindowsJobLauncher.release(options.windowsRelease, value.process_id)
       } catch (error) {
         const failures: unknown[] = []

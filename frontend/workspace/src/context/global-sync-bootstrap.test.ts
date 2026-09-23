@@ -61,6 +61,7 @@ type Hit = { path: string; directory?: string; project?: string; body?: Record<s
 function createFakeServer(projects: Project[], provider?: (directory?: string) => Promise<Response> | Response) {
   const hits: Hit[] = []
   const broken = new Set<string>()
+  const statuses: Record<string, Record<string, { type: "busy" }>> = {}
   const encoder = new TextEncoder()
   const events = { controller: undefined as ReadableStreamDefaultController<Uint8Array> | undefined }
   const frame = (event: unknown) => encoder.encode(`data: ${JSON.stringify(event)}\n\n`)
@@ -105,12 +106,13 @@ function createFakeServer(projects: Project[], provider?: (directory?: string) =
         return json(projects.find((item) => item.worktree === directory) ?? projects[0])
       case "/provider":
         return provider?.(directory) ?? json({ all: [], connected: [], default: {} })
+      case "/session/status":
+        return json(statuses[directory ?? cwd] ?? {})
       case "/vcs":
         return json({ branch: "main" })
       case "/global/config":
       case "/config":
       case "/provider/auth":
-      case "/session/status":
       case "/mcp":
         return json({})
       case "/agent":
@@ -132,6 +134,7 @@ function createFakeServer(projects: Project[], provider?: (directory?: string) =
   return {
     hits,
     broken,
+    statuses,
     fetch,
     emit(payload: unknown, directory = "global") {
       events.controller?.enqueue(frame({ directory, payload }))
@@ -205,6 +208,69 @@ const projects = [
 ]
 
 describe("project bootstrap", () => {
+  test("credential-triggered runtime disposal refreshes data without hiding a loaded session", async () => {
+    let release: (() => void) | undefined
+    let hold = false
+    const fake = createFakeServer(projects)
+    const fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(input, init)
+      const response = await fake.fetch(request)
+      if (
+        hold &&
+        new URL(request.url).pathname === "/config" &&
+        request.headers.get("x-openscience-directory") === "/research/a"
+      ) {
+        return new Promise<Response>((resolve) => {
+          release = () => resolve(response)
+        })
+      }
+      return response
+    }) as typeof globalThis.fetch
+    const sync = mount(fetch)
+    await until(() => !!sync())
+    const app = sync()!
+    const [store] = app.child("/research/a", { projectID: "prj_a" })
+    await until(() => app.ready && store.status === "complete")
+    await settle(250)
+    hold = true
+    fake.emit({ type: "server.instance.disposed", properties: { directory: "/research/a" } }, "/research/a")
+    await until(() => !!release)
+    expect(store.status).toBe("complete")
+    expect(app.ready).toBe(true)
+    hold = false
+    release!()
+    await until(() => store.status === "complete")
+  })
+
+  test("save and event refreshes coalesce and a change during loading gets a fresh catalog", async () => {
+    const pending: Array<(response: Response) => void> = []
+    let hold = false
+    const response = (name: string) =>
+      Response.json({ all: [{ id: "custom", name, models: {} }], connected: ["custom"], default: {} })
+    const fake = createFakeServer([], () =>
+      hold ? new Promise((resolve) => pending.push(resolve)) : response("Initial"),
+    )
+    const sync = mount(fake.fetch)
+    await until(() => !!sync()?.ready)
+    await settle(200)
+    const app = sync()!
+    const before = fake.hits.filter((hit) => hit.path === "/provider").length
+    hold = true
+    fake.emit({ type: "global.disposed", properties: {} })
+    const saving = app.refreshProviders()
+    await until(() => pending.length === 1)
+    expect(fake.hits.filter((hit) => hit.path === "/provider").length - before).toBe(1)
+    const later = app.refreshProviders({ force: true })
+    pending[0](response("Superseded"))
+    await until(() => pending.length === 2)
+    expect(app.data.provider.all[0]?.name).toBe("Initial")
+    pending[1](response("Latest"))
+    await Promise.all([saving, later])
+    expect(app.data.provider.all[0]?.name).toBe("Latest")
+    expect(fake.hits.filter((hit) => hit.path === "/provider").length - before).toBe(2)
+    expect(app.ready).toBe(true)
+  })
+
   test.each([false, true])(
     "a superseded provider bootstrap cannot replace the latest refresh (latest failed=%s)",
     async (failed) => {
@@ -293,6 +359,9 @@ describe("project bootstrap", () => {
     const [store] = app.child("/research/a", { projectID: "prj_a" })
     await until(() => app.ready && store.status === "complete")
 
+    // The initial connected event may still trigger a snapshot. Keep the
+    // server snapshot consistent with its event until the turn finishes.
+    fake.statuses["/research/a"] = { ses_busy: { type: "busy" } }
     fake.emit(
       { type: "session.status", properties: { sessionID: "ses_busy", status: { type: "busy" } } },
       "/research/a",
@@ -301,6 +370,7 @@ describe("project bootstrap", () => {
 
     // The server finished the turn while the stream was down, so its status
     // list (busy sessions only) comes back empty on reconnect.
+    fake.statuses["/research/a"] = {}
     fake.emit({ type: "server.connected", properties: {} })
     await until(() => store.session_status["ses_busy"] === undefined)
     expect(store.session_status["ses_busy"]).toBeUndefined()

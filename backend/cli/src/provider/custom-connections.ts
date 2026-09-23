@@ -4,6 +4,8 @@ import { Auth } from "../auth"
 import { Config } from "../config/config"
 import { Global } from "../global"
 import { FileLease } from "../util/file-lease"
+import { ModelsDev } from "./models"
+import { CustomModelLimits } from "./custom-model-limits"
 
 export namespace CustomConnections {
   const ID = z.string().regex(/^custom-[a-f0-9-]{36}$/)
@@ -21,9 +23,19 @@ export namespace CustomConnections {
   export const Input = Endpoint.extend({
     name: z.string().trim().min(1).max(80),
     models: z.array(ModelID).min(1).max(2000),
-    context: z.number().int().min(1024).max(2097152).default(32768),
-    output: z.number().int().min(1).max(262144).default(8192),
-  }).refine((input) => input.output <= input.context, { message: "Output limit must not exceed context limit." })
+    context: z.number().int().min(1024).max(2_147_483_647).optional(),
+    output: z.number().int().min(1).max(2_147_483_647).optional(),
+    limits: z.record(ModelID, CustomModelLimits.Choice).optional(),
+  }).refine(
+    (input) =>
+      (input.context === undefined && input.output === undefined) ||
+      (input.context !== undefined && input.output !== undefined && input.output <= input.context),
+    {
+      message: "Provide both context and output limits; output must not exceed context.",
+    },
+  )
+  export const Selection = z.object({ models: z.array(ModelID).max(2000) })
+  export const Limits = z.record(z.string(), CustomModelLimits.Choice)
   export const Connection = z.object({
     id: z.string(),
     name: z.string(),
@@ -32,6 +44,7 @@ export namespace CustomConnections {
     hasKey: z.boolean(),
     context: z.number(),
     output: z.number(),
+    limits: Limits,
   })
 
   export function normalizeURL(value: string) {
@@ -65,11 +78,18 @@ export namespace CustomConnections {
 
   export async function list() {
     const config = await Config.getGlobal()
+    const catalog = await ModelsDev.get()
     return Promise.all(
       Object.entries(config.provider ?? {})
         .filter(([, p]) => p.options?.customConnection === true)
         .map(async ([id, p]) => {
-          const first = Object.values(p.models ?? {})[0]
+          const limits = Object.fromEntries(
+            Object.entries(p.models ?? {}).map(([id, model]) => [
+              id,
+              CustomModelLimits.configured(id, model.limit, p.options?.customModelLimits?.[id], catalog),
+            ]),
+          )
+          const first = Object.values(limits)[0]
           const auth = await Auth.get(id)
           return {
             id,
@@ -77,11 +97,17 @@ export namespace CustomConnections {
             baseURL: String(p.options?.baseURL ?? p.api ?? ""),
             models: Object.keys(p.models ?? {}),
             hasKey: auth?.type === "api" && !!auth.key.trim(),
-            context: first?.limit?.context ?? 32768,
-            output: first?.limit?.output ?? 8192,
+            context: first?.context ?? 128_000,
+            output: first?.output ?? 32_000,
+            limits,
           }
         }),
     )
+  }
+
+  export async function limits(ids: string[]) {
+    const catalog = await ModelsDev.get()
+    return Object.fromEntries(ids.map((id) => [id, CustomModelLimits.defaults(id, catalog)]))
   }
 
   export function parseModels(body: unknown) {
@@ -140,7 +166,21 @@ export namespace CustomConnections {
     const models = parseModels(body)
     if (models.length > 2000)
       throw new Error("The endpoint returned more than 2,000 models. Add the required model IDs manually.")
-    return { baseURL, models }
+    const catalog = await ModelsDev.get()
+    const object = body && typeof body === "object" ? (body as Record<string, unknown>) : undefined
+    const entries = (Array.isArray(body) ? body : (object?.data ?? object?.models)) as unknown[]
+    const metadata = new Map(
+      entries.map((entry) => {
+        const value = entry && typeof entry === "object" ? (entry as Record<string, unknown>) : undefined
+        const parsed = ModelID.safeParse(typeof entry === "string" ? entry : (value?.id ?? value?.name))
+        return [parsed.success ? parsed.data : undefined, entry]
+      }),
+    )
+    return {
+      baseURL,
+      models,
+      limits: Object.fromEntries(models.map((id) => [id, CustomModelLimits.discovered(id, metadata.get(id), catalog)])),
+    }
   }
 
   export async function save(raw: z.input<typeof Input>) {
@@ -152,11 +192,37 @@ export namespace CustomConnections {
       const previous = input.id ? await existing(id) : undefined
       const auth = await Auth.get(id)
       const models = [...new Set(input.models)]
+      const catalog = await ModelsDev.get()
+      const limits = Object.fromEntries(
+        models.map((id) => {
+          const choice = input.limits?.[id]
+          if (choice?.mode === "manual" || choice?.source === "endpoint") return [id, choice]
+          if (choice) return [id, CustomModelLimits.defaults(id, catalog)]
+          if (input.context !== undefined && input.output !== undefined)
+            return [id, { context: input.context, output: input.output, mode: "manual", source: "manual" } as const]
+          const keep = previous?.options?.baseURL === baseURL
+          return [
+            id,
+            CustomModelLimits.configured(
+              id,
+              keep ? previous?.models?.[id]?.limit : undefined,
+              keep ? previous?.options?.customModelLimits?.[id] : undefined,
+              catalog,
+            ),
+          ]
+        }),
+      )
       const block: Config.Provider = {
         name: input.name,
         npm: "@ai-sdk/openai-compatible",
         api: baseURL,
-        options: { baseURL, customConnection: true },
+        options: {
+          baseURL,
+          customConnection: true,
+          customModelLimits: Object.fromEntries(
+            models.map((id) => [id, { mode: limits[id].mode, source: limits[id].source }]),
+          ),
+        },
         whitelist: models,
         models: Object.fromEntries(
           models.map((id) => [
@@ -166,13 +232,17 @@ export namespace CustomConnections {
               name: id,
               tool_call: true,
               modalities: { input: ["text"], output: ["text"] },
-              limit: { context: input.context, output: input.output },
+              limit: {
+                context: limits[id].context,
+                output: limits[id].output,
+                ...(limits[id].input ? { input: limits[id].input } : {}),
+              },
             },
           ]),
         ),
       }
       try {
-        await Auth.set(id, { type: "api", key })
+        if (auth?.type !== "api" || auth.key !== key) await Auth.set(id, { type: "api", key })
         await Config.setProvider(id, block, "global", { preserveInstances: true })
       } catch (error) {
         // 配置和凭据分开存储；任一步失败都恢复原连接，避免旧地址使用新密钥。
@@ -182,7 +252,17 @@ export namespace CustomConnections {
         else await Config.removeProvider(id, "global", { preserveInstances: true })
         throw error
       }
-      return { id, baseURL, models }
+      const first = limits[models[0]]
+      return {
+        id,
+        name: input.name,
+        baseURL,
+        models,
+        hasKey: true,
+        context: first.context,
+        output: first.output,
+        limits,
+      }
     })
   }
 

@@ -99,6 +99,63 @@ const values = (host: HTMLElement) =>
   )
 
 describe("host strip", () => {
+  test("environment discovery is lazy and a standalone remote host does not report an empty cluster", async () => {
+    const calls: Array<Promise<Response>> = []
+    const info = {
+      authority: "remote",
+      hostname: "research-node",
+      platform: "linux",
+      arch: "x64",
+      kind: "host",
+      sampledAt: 1,
+      cpu: { logical: 8, available: 4 },
+      memory: { total: 16 * 1024 ** 3, available: 8 * 1024 ** 3 },
+      schedulers: [],
+      accelerators: [],
+      runtimes: [{ name: "python3", executable: "/usr/bin/python3" }],
+      notes: [],
+    }
+    let queried = 0
+    const host = guard(() =>
+      subject.HostStrip({
+        request: track(async (route) => {
+          if (route !== "/workspace/environment") return serving()
+          queried++
+          return Response.json(info)
+        }, calls),
+      }),
+    )
+    await settle(calls)
+    expect(queried).toBe(0)
+    const details = host.querySelector<HTMLDetailsElement>(".host-strip__environment")!
+    details.open = true
+    details.dispatchEvent(new Event("toggle"))
+    await settle(calls)
+    expect(queried).toBe(1)
+    expect(host.textContent).toContain("research-node")
+    expect(host.textContent).toContain("No supported scheduler client detected")
+    expect(host.textContent).toContain("GPU availability is unknown")
+    expect(host.querySelector("[data-boundary]")).toBeNull()
+  })
+
+  test("environment query failures leave telemetry visible and offer a retry", async () => {
+    const calls: Array<Promise<Response>> = []
+    const host = guard(() =>
+      subject.HostStrip({
+        request: track((route) => (route === "/workspace/environment" ? erroring() : serving()), calls),
+      }),
+    )
+    await settle(calls)
+    const details = host.querySelector<HTMLDetailsElement>(".host-strip__environment")!
+    details.open = true
+    details.dispatchEvent(new Event("toggle"))
+    await settle(calls)
+    expect(values(host)).toEqual(["412.0 MB", "~0.4 of 8"])
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain("Check the connection and retry")
+    expect([...host.querySelectorAll("button")].some((button) => button.textContent?.includes("Refresh"))).toBe(true)
+    expect(host.querySelector("[data-boundary]")).toBeNull()
+  })
+
   test("shows unknown CPU while an active kernel awaits a measurable interval", async () => {
     const calls: Array<Promise<Response>> = []
     const response = async () =>
@@ -151,8 +208,8 @@ describe("host strip", () => {
     expect(host.textContent).toContain("/ 16.0 GB")
     expect(host.textContent).toContain("2 active · 1 running")
     expect(host.querySelector('[data-host-tile="kernels"]')).toBeNull()
-    expect(host.querySelector("details")).toBeNull()
-    expect(host.querySelector("summary")).toBeNull()
+    expect(host.querySelector<HTMLDetailsElement>(".host-strip__environment")?.open).toBe(false)
+    expect(host.querySelector("summary")?.textContent).toBe("Environment & cluster status")
   })
 
   test("asks the route the compute strip is served from, naming itself to the server", async () => {

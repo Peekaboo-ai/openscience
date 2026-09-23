@@ -36,6 +36,7 @@ export namespace RuntimeRuns {
       message: z.string().trim().min(1).max(1_000_000).optional(),
       parts: PromptInput.shape.parts.min(1).optional(),
       effort: z.enum(["normal", "ultra"]),
+      delivery: z.enum(["guide", "start"]).optional(),
     })
     .strict()
     .refine((value) => (value.message !== undefined) !== (value.parts !== undefined), {
@@ -207,6 +208,7 @@ export namespace RuntimeRuns {
       }
     })()
     if (active || busy) {
+      if (input.delivery === "start") throw new RuntimeEvents.ActiveRunError(input.sessionID)
       // A message sent while a run is live joins that run: the loop reads the
       // newest user message on its next step and answers both, so the reply
       // stays one run and Enter never has to mean Stop. Idempotent on the
@@ -225,7 +227,7 @@ export namespace RuntimeRuns {
           })
         : undefined
       if (!existing) {
-        const { requestID: _, message, effort: _effort, ...rest } = input
+        const { requestID: _, message, effort: _effort, delivery: _delivery, ...rest } = input
         await SessionPrompt.prompt({
           ...rest,
           agent,
@@ -310,7 +312,7 @@ export namespace RuntimeRuns {
         const record = await read(run.sessionID, run.runID)
         if (finished(await reconcile(record))) return
         await update(run.sessionID, run.runID, { state: "running" })
-        const { requestID: _, message, ...input } = record.input
+        const { requestID: _, message, delivery: _delivery, ...input } = record.input
         const promise = SessionPrompt.controlled({
           ...input,
           messageID: run.messageID,
@@ -367,6 +369,11 @@ export namespace RuntimeRuns {
       })
     } finally {
       local.delete(run.runID)
+      // 队列在运行收尾后推进；取消或失败会暂停，不能把停止误当成启动下一项。
+      await SessionPrompt.detached(async () => {
+        const { RuntimeQueue } = await import("./queue")
+        await RuntimeQueue.settled(run.sessionID, await get(run.sessionID, run.runID))
+      }).catch((error) => log.error("could not advance prompt queue", { sessionID: run.sessionID, error }))
     }
   }
 

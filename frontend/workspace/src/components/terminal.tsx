@@ -1,4 +1,6 @@
-import type { Ghostty, Terminal as Term, FitAddon } from "ghostty-web"
+import type { Terminal as Term } from "@xterm/xterm"
+import type { FitAddon } from "@xterm/addon-fit"
+import "@xterm/xterm/css/xterm.css"
 import { ComponentProps, createEffect, createSignal, onCleanup, onMount, splitProps } from "solid-js"
 import { useSDK } from "@/context/sdk"
 import { monoFontFamily, useSettings } from "@/context/settings"
@@ -8,6 +10,9 @@ import { resolveThemeVariant, useTheme, withAlpha, type HexColor } from "@synsci
 import { useLanguage } from "@/context/language"
 import { showToast } from "@synsci/ui/toast"
 import { terminalMatches, type TerminalMatch } from "./terminal-search"
+import { createTerminalGeometry } from "./terminal-geometry"
+import { terminalOptions } from "./terminal-options"
+import { decodePtyReplay } from "@synsci/util/pty-replay"
 
 export interface TerminalProps extends ComponentProps<"div"> {
   pty: LocalPTY
@@ -32,10 +37,6 @@ export type TerminalController = {
 }
 
 const REPLAY_REQUEST = "\0"
-// SGR reset, erase the screen, erase the scrollback, home the cursor. Sent through the VT stream
-// rather than Terminal.reset(): ghostty-web 0.3.0 frees and reallocates the wasm terminal there while
-// the selection manager keeps the freed handle, which silently breaks copy after every reconnect.
-const ERASE = "\x1b[0m\x1b[2J\x1b[3J\x1b[H"
 const RECONNECT_LIMIT = 5
 
 // Mirrors reconnectDelay in @/context/reconnecting-event-stream: 250 ms doubling to a 5 s cap.
@@ -43,12 +44,12 @@ const RECONNECT_LIMIT = 5
 export const backoff = (failures: number) =>
   failures > RECONNECT_LIMIT ? undefined : Math.min(250 * 2 ** Math.max(0, failures - 1), 5000)
 
-let shared: Promise<{ mod: typeof import("ghostty-web"); ghostty: Ghostty }> | undefined
+let shared: Promise<{ Terminal: typeof Term; FitAddon: typeof FitAddon }> | undefined
 
-const loadGhostty = () => {
+const loadTerminal = () => {
   if (shared) return shared
-  shared = import("ghostty-web")
-    .then(async (mod) => ({ mod, ghostty: await mod.Ghostty.load() }))
+  shared = Promise.all([import("@xterm/xterm"), import("@xterm/addon-fit")])
+    .then(([terminal, fit]) => ({ Terminal: terminal.Terminal, FitAddon: fit.FitAddon }))
     .catch((err) => {
       shared = undefined
       throw err
@@ -57,7 +58,7 @@ const loadGhostty = () => {
 }
 
 export const preloadTerminal = () => {
-  void loadGhostty().catch(() => {})
+  void loadTerminal().catch(() => {})
 }
 
 type TerminalColors = {
@@ -103,11 +104,11 @@ export const Terminal = (props: TerminalProps) => {
   let term: Term | undefined
   let fitAddon: FitAddon | undefined
   let fitFrame: number | undefined
-  let fitTimer: number | undefined
   let handleResize: () => void
   let handleTextareaFocus: () => void
   let handleTextareaBlur: () => void
   let disposed = false
+  let replaying = false
   const cleanups: VoidFunction[] = []
 
   const cleanup = () => {
@@ -122,27 +123,26 @@ export const Terminal = (props: TerminalProps) => {
     }
   }
 
-  const fitTerminal = () => {
+  const fitNow = () => {
     const fit = fitAddon
-    if (!fit || local.active === false) return
-    fit.fit()
-    if (fitFrame !== undefined) cancelAnimationFrame(fitFrame)
+    if (!fit || disposed || replaying || local.active === false) return
+    // 容器可能在同一帧多次改变，统一在布局完成后测量。
+    const size = fit.proposeDimensions()
+    if (size) term?.resize(size.cols, size.rows)
+  }
+  const fitTerminal = () => {
+    if (fitFrame !== undefined) return
     fitFrame = requestAnimationFrame(() => {
       fitFrame = undefined
+      fitNow()
       paintTerminal()
-      if (fitTimer !== undefined) window.clearTimeout(fitTimer)
-      fitTimer = window.setTimeout(() => {
-        fitTimer = undefined
-        fit.fit()
-        paintTerminal()
-      }, 75)
     })
   }
 
   const paintTerminal = () => {
     const t = term
-    if (!t?.renderer || !t.wasmTerm) return
-    t.renderer.render(t.wasmTerm, true, t.getViewportY(), t)
+    if (!t || disposed) return
+    t.refresh(0, t.rows - 1)
   }
 
   const getTerminalColors = (): TerminalColors => {
@@ -172,17 +172,13 @@ export const Terminal = (props: TerminalProps) => {
     const colors = getTerminalColors()
     setTerminalColors(colors)
     if (!term) return
-    const setOption = (term as unknown as { setOption?: (key: string, value: TerminalColors) => void }).setOption
-    if (!setOption) return
-    setOption("theme", colors)
+    term.options.theme = colors
   })
 
   createEffect(() => {
     const font = monoFontFamily(settings.appearance.font())
     if (!term) return
-    const setOption = (term as unknown as { setOption?: (key: string, value: string) => void }).setOption
-    if (!setOption) return
-    setOption("fontFamily", font)
+    term.options.fontFamily = font
     fitTerminal()
   })
 
@@ -212,23 +208,17 @@ export const Terminal = (props: TerminalProps) => {
 
   onMount(() => {
     const run = async () => {
-      const loaded = await loadGhostty()
+      const mod = await loadTerminal()
+      await document.fonts?.load(`14px ${monoFontFamily(settings.appearance.font())}`)
       if (disposed) return
-
-      const mod = loaded.mod
-      const g = loaded.ghostty
 
       const once = { value: false }
 
       const t = new mod.Terminal({
-        cursorBlink: true,
-        cursorStyle: "bar",
-        fontSize: 14,
+        ...terminalOptions,
         fontFamily: monoFontFamily(settings.appearance.font()),
         allowTransparency: true,
         theme: terminalColors(),
-        scrollback: 10_000,
-        ghostty: g,
       })
       cleanups.push(() => t.dispose())
       if (disposed) {
@@ -319,18 +309,18 @@ export const Terminal = (props: TerminalProps) => {
 
         if (event.ctrlKey && event.shiftKey && !event.metaKey && key === "c") {
           void write(t.getSelection())
-          return true
+          return false
         }
 
         if (event.metaKey && !event.ctrlKey && !event.altKey && key === "c") {
-          if (!t.hasSelection()) return true
+          if (!t.hasSelection()) return false
           void write(t.getSelection())
-          return true
+          return false
         }
 
         if (event.ctrlKey && !event.shiftKey && !event.metaKey && key === "insert") {
           void write(t.getSelection())
-          return true
+          return false
         }
 
         if (
@@ -338,20 +328,20 @@ export const Terminal = (props: TerminalProps) => {
           (event.ctrlKey && event.shiftKey && !event.metaKey && key === "f")
         ) {
           local.onOpenSearch?.()
-          return true
+          return false
         }
 
         if (event.metaKey && !event.ctrlKey && !event.altKey && key === "a") {
           t.selectAll()
-          return true
+          return false
         }
 
         // allow for ctrl-` to toggle terminal in parent
         if (event.ctrlKey && key === "`") {
-          return true
+          return false
         }
 
-        return false
+        return true
       })
 
       const fit = new mod.FitAddon()
@@ -394,39 +384,78 @@ export const Terminal = (props: TerminalProps) => {
         detach: () => {},
       }
       const replay = { painted: false }
+      let playback = Promise.resolve()
+      const geometry = createTerminalGeometry((size) =>
+        sdk.client.pty.update({ ptyID: local.pty.id, size }, { throwOnError: true }),
+      )
+      cleanups.push(() => geometry.dispose())
+      const resizeFailed = (error: unknown) => {
+        if (disposed) return
+        console.error("Terminal size synchronization failed", error)
+        link.socket?.close(4001, "Terminal size synchronization failed")
+      }
       const handleMessage = (event: MessageEvent) => {
         // Data proves the link works, so only now does the retry budget refill.
         link.failures = 0
-        t.write(event.data, () => {
-          if (replay.painted) return
-          replay.painted = true
-          fitTerminal()
-          paintTerminal()
-        })
+        if (event.data instanceof ArrayBuffer) {
+          const frame = decodePtyReplay(event.data)
+          if (!frame) return resizeFailed(new Error("Invalid terminal replay frame"))
+          replaying = true
+          t.options.disableStdin = true
+          playback = playback.then(() => {
+            if (disposed) return
+            if (frame.type === "resize") t.resize(frame.size.cols, frame.size.rows)
+            else {
+              replaying = false
+              t.options.disableStdin = false
+              fitNow()
+              paintTerminal()
+            }
+          })
+          return
+        }
+        playback = playback.then(
+          () =>
+            new Promise<void>((resolve) => {
+              if (disposed) return resolve()
+              t.write(event.data, () => {
+                resolve()
+                if (replay.painted) return
+                replay.painted = true
+                paintTerminal()
+              })
+            }),
+        )
       }
       const url = new URL(sdk.request.url(`/pty/${local.pty.id}/connect`))
+      url.searchParams.set("replay", "geometry-v1")
       const connect = () => {
         if (disposed) return
         link.timer = undefined
         // A superseded socket is closed and silent; drop its listeners anyway rather than leak them.
         link.detach()
         const socket = new WebSocket(url)
-        const handleOpen = () => {
+        socket.binaryType = "arraybuffer"
+        const handleOpen = async () => {
           // The server replays its whole buffer to every fresh subscriber, so erase the stale
           // screen and scrollback first or the scrollback doubles on each reconnect.
-          if (link.failures) t.write(ERASE)
-          local.onConnect?.()
-          fitTerminal()
-          socket.send(REPLAY_REQUEST)
-          sdk.client.pty
-            .update({
-              ptyID: local.pty.id,
-              size: {
-                cols: t.cols,
-                rows: t.rows,
-              },
-            })
-            .catch(() => {})
+          await playback
+          if (disposed || link.socket !== socket) return
+          if (link.failures) t.reset()
+          replaying = false
+          t.options.disableStdin = false
+          replay.painted = false
+          fitNow()
+          geometry.invalidate()
+          geometry.set({ cols: t.cols, rows: t.rows })
+          try {
+            await geometry.flush()
+            if (disposed || link.socket !== socket || socket.readyState !== WebSocket.OPEN) return
+            socket.send(REPLAY_REQUEST)
+            local.onConnect?.()
+          } catch (error) {
+            resizeFailed(error)
+          }
         }
         const handleError = (error: Event) => {
           if (disposed) return
@@ -470,32 +499,36 @@ export const Terminal = (props: TerminalProps) => {
       })
       connect()
 
-      const onResize = t.onResize(async (size) => {
+      const onResize = t.onResize((size) => {
+        if (replaying) return
+        geometry.set(size)
         if (link.socket?.readyState === WebSocket.OPEN) {
-          await sdk.client.pty
-            .update({
-              ptyID: local.pty.id,
-              size: {
-                cols: size.cols,
-                rows: size.rows,
-              },
-            })
-            .catch(() => {})
+          void geometry.flush().catch(resizeFailed)
         }
       })
       cleanups.push(() => (onResize as unknown as { dispose?: VoidFunction }).dispose?.())
-      fit.observeResize()
+      const observer = new ResizeObserver(fitTerminal)
+      observer.observe(container)
+      cleanups.push(() => observer.disconnect())
       handleResize = fitTerminal
       window.addEventListener("resize", handleResize)
       cleanups.push(() => window.removeEventListener("resize", handleResize))
       fitTerminal()
       const onData = t.onData((data) => {
+        if (replaying) return
         const socket = link.socket
-        if (socket?.readyState === WebSocket.OPEN) socket.send(data)
+        if (socket?.readyState !== WebSocket.OPEN) return
+        // 输入在已确认的尺寸之后发送，避免 readline 按旧列宽重画提示符。
+        void geometry
+          .flush()
+          .then(() => {
+            if (!disposed && link.socket === socket && socket.readyState === WebSocket.OPEN) socket.send(data)
+          })
+          .catch(resizeFailed)
       })
       cleanups.push(() => (onData as unknown as { dispose?: VoidFunction }).dispose?.())
       const onKey = t.onKey((key) => {
-        if (key.key == "Enter") {
+        if (key.domEvent.key === "Enter") {
           props.onSubmit?.()
         }
       })
@@ -516,7 +549,6 @@ export const Terminal = (props: TerminalProps) => {
   onCleanup(() => {
     disposed = true
     if (fitFrame !== undefined) cancelAnimationFrame(fitFrame)
-    if (fitTimer !== undefined) window.clearTimeout(fitTimer)
     const t = term
     if (props.onCleanup && t) {
       props.onCleanup({
@@ -541,7 +573,7 @@ export const Terminal = (props: TerminalProps) => {
       classList={{
         ...(local.classList ?? {}),
         "select-text": true,
-        "size-full px-6 py-3 font-mono": true,
+        "size-full font-mono": true,
         [local.class ?? ""]: !!local.class,
       }}
       {...others}

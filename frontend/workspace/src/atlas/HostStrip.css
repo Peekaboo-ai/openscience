@@ -139,6 +139,63 @@
   background: var(--color-success);
 }
 
+.host-strip__environment {
+  grid-column: 1 / -1;
+  min-width: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
+}
+
+.host-strip__environment summary {
+  cursor: pointer;
+  padding: 6px 0;
+}
+
+.host-strip__environment summary:focus-visible {
+  outline: 2px solid var(--color-text-muted);
+  outline-offset: 2px;
+  border-radius: var(--atlas-radius-xs);
+}
+
+.host-strip__environment-body {
+  display: grid;
+  gap: 8px;
+  padding-block: 6px;
+}
+
+.host-strip__environment-body p {
+  margin: 0;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.host-strip__environment-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.host-strip__check {
+  min-width: 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.host-strip__check summary span {
+  margin-left: 8px;
+  color: var(--color-text);
+}
+
+.host-strip__check pre {
+  max-height: 220px;
+  overflow: auto;
+  padding: 8px;
+  border-radius: var(--atlas-radius-xs);
+  background: var(--color-surface-solid);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-x-small);
+}
+
 .host-strip[data-health="loading"] .host-strip__health {
   background: var(--color-text-faint);
 }

@@ -1,4 +1,4 @@
-import { createStore, produce } from "solid-js/store"
+import { createStore, produce, reconcile } from "solid-js/store"
 import { createSimpleContext } from "@synsci/ui/context"
 import { batch, createEffect, createMemo, createRoot, createSignal, onCleanup, untrack } from "solid-js"
 import { useParams } from "@solidjs/router"
@@ -66,7 +66,6 @@ function createProjectTerminalSession(
   const refresh = () => {
     if (!persistenceReady()) return Promise.resolve()
     if (hydration) return hydration
-    setHydrated(false)
     hydration = client.pty
       .list()
       .then((response) => {
@@ -83,7 +82,7 @@ function createProjectTerminalSession(
           } satisfies LocalPTY
         })
         batch(() => {
-          setStore("all", next)
+          setStore("all", reconcile(next, { key: "id" }))
           if (!next.some((pty) => pty.id === store.active)) setStore("active", next[0]?.id)
         })
       })
@@ -200,11 +199,12 @@ function createProjectTerminalSession(
       if (index !== -1) {
         setStore("all", index, (existing) => ({ ...existing, ...pty }))
       }
+      // 尺寸由终端视图同步；卸载时只记忆尺寸，避免旧视图覆盖新视图的列宽。
+      if (pty.title === undefined) return
       client.pty
         .update({
           ptyID: pty.id,
           title: pty.title,
-          size: pty.cols && pty.rows ? { rows: pty.rows, cols: pty.cols } : undefined,
         })
         .catch((e) => {
           console.error("Failed to update terminal", e)

@@ -365,6 +365,8 @@ export namespace SystemPrompt {
           : [`    - none`]),
         `  Is directory a git repo: ${project.vcs === "git" ? "yes" : "no"}`,
         `  Platform: ${process.platform}`,
+        `  Execution host: ${process.env.OPENSCIENCE_REMOTE_WORKER === "1" ? "connected remote backend; local tools execute on that remote host" : "local backend"}`,
+        `  Resource discovery: use compute_job({action:"environment"}) for CPU, GPU, scheduler and cluster state. Missing Slurm/PBS is normal outside a cluster. Sandboxed shell failures are not proof that host software is missing; never disable isolation to diagnose them.`,
         `  Today's date: ${new Date().toDateString()}`,
         `  ${cutoff(model.knowledge)}`,
         `  ${await ImageRoute.line()}`,

@@ -301,6 +301,23 @@ export namespace MCP {
     return local.length
   }
 
+  export async function disposeCredentials(reason: string): Promise<void> {
+    // 不为未使用 MCP 的项目创建连接；失败项保留引用以供再次撤销。
+    if (!state.created()) return
+    const current = await state()
+    const results = await Promise.allSettled([
+      ...Object.entries(current.clients).map(async ([name, client]) => {
+        await closeClient(client)
+        delete current.clients[name]
+        current.status[name] = { status: "failed", error: reason }
+      }),
+      ...[...pendingOAuthTransports.keys()].map((name) => closePendingOAuthTransport(name)),
+    ])
+    const failures = results.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
+    if (failures.length)
+      throw new AggregateError(failures, "MCP transports holding previous credentials could not be stopped")
+  }
+
   export const Status = z
     .discriminatedUnion("status", [
       z

@@ -31,6 +31,7 @@ export function createTimelineController(sessionID: string, request: Transport, 
   let busy = false
   let pending = false
   let workbenchAt = 0
+  let workbenchPending: Promise<void> | undefined
   const emit = () => {
     if (!abort.signal.aborted) publish({ ...state })
   }
@@ -41,7 +42,7 @@ export function createTimelineController(sessionID: string, request: Transport, 
       throw new Error("Timeline response does not match this session.")
     return value
   }
-  const workbench = async () => {
+  const loadWorkbench = async () => {
     try {
       const value = await json<TimelineWorkbench>(await request(`${base}/workbench`, init()))
       if (value.sessionID !== sessionID) throw new Error("Workbench response does not match this session.")
@@ -50,7 +51,16 @@ export function createTimelineController(sessionID: string, request: Transport, 
       workbenchAt = Date.now()
     } catch (error) {
       state.workbenchError = error instanceof Error ? error.message : String(error)
+    } finally {
+      emit()
     }
+  }
+  const workbench = () => {
+    if (!workbenchPending)
+      workbenchPending = loadWorkbench().finally(() => {
+        workbenchPending = undefined
+      })
+    return workbenchPending
   }
   async function refresh(force = false) {
     if (abort.signal.aborted) return
@@ -59,7 +69,7 @@ export function createTimelineController(sessionID: string, request: Transport, 
       return
     }
     busy = true
-    state.loading = true
+    state.loading = state.updatedAt === undefined
     emit()
     try {
       const oldest = state.pages.at(-1)?.first
@@ -75,7 +85,8 @@ export function createTimelineController(sessionID: string, request: Transport, 
       state.entries = mergePages(next)
       state.error = ""
       state.updatedAt = Date.now()
-      if (force || Date.now() - workbenchAt > 15_000) await workbench()
+      // 行动列表先显示；工作台汇总独立刷新，慢请求不阻塞下一批行动。
+      if (force || Date.now() - workbenchAt > 15_000) void workbench()
     } catch (error) {
       state.error = error instanceof Error ? error.message : String(error)
     } finally {

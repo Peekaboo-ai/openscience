@@ -21590,6 +21590,1442 @@
         ]
       }
     },
+    "/workspace/environment": {
+      "get": {
+        "operationId": "workspace.environment",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "authority": {
+                      "type": "string",
+                      "enum": [
+                        "local",
+                        "remote"
+                      ]
+                    },
+                    "hostname": {
+                      "type": "string"
+                    },
+                    "platform": {
+                      "type": "string"
+                    },
+                    "arch": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "host",
+                        "wsl",
+                        "container"
+                      ]
+                    },
+                    "sampledAt": {
+                      "type": "number"
+                    },
+                    "cpu": {
+                      "type": "object",
+                      "properties": {
+                        "logical": {
+                          "type": "number"
+                        },
+                        "available": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "logical",
+                        "available"
+                      ]
+                    },
+                    "memory": {
+                      "type": "object",
+                      "properties": {
+                        "total": {
+                          "type": "number"
+                        },
+                        "available": {
+                          "type": "number"
+                        },
+                        "limit": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "total",
+                        "available"
+                      ]
+                    },
+                    "schedulers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "command": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "ready",
+                              "not_installed",
+                              "restricted",
+                              "timeout",
+                              "dependency_error",
+                              "unavailable",
+                              "error"
+                            ]
+                          },
+                          "executable": {
+                            "type": "string"
+                          },
+                          "columns": {
+                            "type": "string"
+                          },
+                          "output": {
+                            "type": "string"
+                          },
+                          "detail": {
+                            "type": "string"
+                          },
+                          "truncated": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "command",
+                          "status",
+                          "columns",
+                          "output",
+                          "truncated"
+                        ]
+                      }
+                    },
+                    "accelerators": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "command": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "ready",
+                              "not_installed",
+                              "restricted",
+                              "timeout",
+                              "dependency_error",
+                              "unavailable",
+                              "error"
+                            ]
+                          },
+                          "executable": {
+                            "type": "string"
+                          },
+                          "columns": {
+                            "type": "string"
+                          },
+                          "output": {
+                            "type": "string"
+                          },
+                          "detail": {
+                            "type": "string"
+                          },
+                          "truncated": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "command",
+                          "status",
+                          "columns",
+                          "output",
+                          "truncated"
+                        ]
+                      }
+                    },
+                    "runtimes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "executable": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "executable"
+                        ]
+                      }
+                    },
+                    "notes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "authority",
+                    "hostname",
+                    "platform",
+                    "arch",
+                    "kind",
+                    "sampledAt",
+                    "cpu",
+                    "memory",
+                    "schedulers",
+                    "accelerators",
+                    "runtimes",
+                    "notes"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.workspace.environment({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workspace/catalog": {
+      "get": {
+        "operationId": "workspace.catalog",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "projects": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Project"
+                      }
+                    },
+                    "tasksProjectID": {
+                      "type": "string"
+                    },
+                    "remotes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                          },
+                          "name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 100
+                          },
+                          "target": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "const": "ssh"
+                                  },
+                                  "host_id": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "host_id"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "const": "wsl"
+                                  },
+                                  "distro": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  },
+                                  "user": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "distro"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "const": "docker"
+                                  },
+                                  "container": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "container"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ]
+                          },
+                          "directory": {
+                            "type": "string"
+                          },
+                          "projectID": {
+                            "type": "string"
+                          },
+                          "created": {
+                            "type": "number"
+                          },
+                          "state": {
+                            "type": "string",
+                            "enum": [
+                              "disconnected",
+                              "connecting",
+                              "connected",
+                              "error"
+                            ]
+                          },
+                          "progress": {
+                            "type": "string"
+                          },
+                          "error": {
+                            "type": "string"
+                          },
+                          "home": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "target",
+                          "created",
+                          "state",
+                          "progress"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "projects",
+                    "remotes"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.workspace.catalog({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workspace/task": {
+      "post": {
+        "operationId": "workspace.task",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.workspace.task({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workspace/directories": {
+      "get": {
+        "operationId": "workspace.directories",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "directory": {
+                      "type": "string"
+                    },
+                    "workingDirectory": {
+                      "type": "string"
+                    },
+                    "parent": {
+                      "type": "string"
+                    },
+                    "entries": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "path": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "path"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "directory",
+                    "workingDirectory",
+                    "parent",
+                    "entries"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "path",
+            "schema": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.workspace.directories({\n  ...\n})"
+          }
+        ]
+      },
+      "post": {
+        "operationId": "workspace.createDirectory",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "directory": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "directory"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "parent": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  }
+                },
+                "required": [
+                  "parent",
+                  "name"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.workspace.createDirectory({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workspace/open": {
+      "post": {
+        "operationId": "workspace.open",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "project": {
+                      "$ref": "#/components/schemas/Project"
+                    },
+                    "directory": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "project",
+                    "directory"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "directory": {
+                    "type": "string",
+                    "maxLength": 4096
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.workspace.open({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/remote-workspaces": {
+      "get": {
+        "operationId": "remoteWorkspace.list",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                      },
+                      "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 100
+                      },
+                      "target": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "ssh"
+                              },
+                              "host_id": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 200
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "host_id"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "wsl"
+                              },
+                              "distro": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 200
+                              },
+                              "user": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 200
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "distro"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "docker"
+                              },
+                              "container": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 200
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "container"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "directory": {
+                        "type": "string"
+                      },
+                      "projectID": {
+                        "type": "string"
+                      },
+                      "created": {
+                        "type": "number"
+                      },
+                      "state": {
+                        "type": "string",
+                        "enum": [
+                          "disconnected",
+                          "connecting",
+                          "connected",
+                          "error"
+                        ]
+                      },
+                      "progress": {
+                        "type": "string"
+                      },
+                      "error": {
+                        "type": "string"
+                      },
+                      "home": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "target",
+                      "created",
+                      "state",
+                      "progress"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.remoteWorkspace.list({\n  ...\n})"
+          }
+        ]
+      },
+      "post": {
+        "operationId": "remoteWorkspace.create",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    },
+                    "target": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "ssh"
+                            },
+                            "host_id": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "host_id"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "wsl"
+                            },
+                            "distro": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "user": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "distro"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "docker"
+                            },
+                            "container": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "container"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ]
+                    },
+                    "directory": {
+                      "type": "string"
+                    },
+                    "projectID": {
+                      "type": "string"
+                    },
+                    "created": {
+                      "type": "number"
+                    },
+                    "state": {
+                      "type": "string",
+                      "enum": [
+                        "disconnected",
+                        "connecting",
+                        "connected",
+                        "error"
+                      ]
+                    },
+                    "progress": {
+                      "type": "string"
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "home": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "target",
+                    "created",
+                    "state",
+                    "progress"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "target": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "ssh"
+                          },
+                          "host_id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "host_id"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "wsl"
+                          },
+                          "distro": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          "user": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "distro"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "docker"
+                          },
+                          "container": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "container"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "name",
+                  "target"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.remoteWorkspace.create({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/remote-workspaces/options": {
+      "get": {
+        "operationId": "remoteWorkspace.options",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "hosts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "ready": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "label",
+                          "ready"
+                        ]
+                      }
+                    },
+                    "configs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "alias": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 253,
+                            "pattern": "^\\S+$"
+                          },
+                          "hostname": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 253,
+                            "pattern": "^\\S+$"
+                          },
+                          "user": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 120,
+                            "pattern": "^\\S+$"
+                          },
+                          "port": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 65535
+                          },
+                          "identity_file": {
+                            "type": "string"
+                          },
+                          "proxy_jump": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "alias"
+                        ]
+                      }
+                    },
+                    "wsl": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "docker": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "hosts",
+                    "configs",
+                    "wsl",
+                    "docker"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.remoteWorkspace.options({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/remote-workspaces/{id}/connect": {
+      "post": {
+        "operationId": "remoteWorkspace.connect",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    },
+                    "target": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "ssh"
+                            },
+                            "host_id": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "host_id"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "wsl"
+                            },
+                            "distro": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "user": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "distro"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "docker"
+                            },
+                            "container": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "container"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ]
+                    },
+                    "directory": {
+                      "type": "string"
+                    },
+                    "projectID": {
+                      "type": "string"
+                    },
+                    "created": {
+                      "type": "number"
+                    },
+                    "state": {
+                      "type": "string",
+                      "enum": [
+                        "disconnected",
+                        "connecting",
+                        "connected",
+                        "error"
+                      ]
+                    },
+                    "progress": {
+                      "type": "string"
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "home": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "target",
+                    "created",
+                    "state",
+                    "progress"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "required": true
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.remoteWorkspace.connect({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/remote-workspaces/{id}/disconnect": {
+      "post": {
+        "operationId": "remoteWorkspace.disconnect",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "required": true
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.remoteWorkspace.disconnect({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/remote-workspaces/{id}": {
+      "delete": {
+        "operationId": "remoteWorkspace.remove",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "required": true
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.remoteWorkspace.remove({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/remote-workspaces/{id}/open": {
+      "post": {
+        "operationId": "remoteWorkspace.open",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    },
+                    "target": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "ssh"
+                            },
+                            "host_id": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "host_id"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "wsl"
+                            },
+                            "distro": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "user": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "distro"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "docker"
+                            },
+                            "container": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "container"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ]
+                    },
+                    "directory": {
+                      "type": "string"
+                    },
+                    "projectID": {
+                      "type": "string"
+                    },
+                    "created": {
+                      "type": "number"
+                    },
+                    "state": {
+                      "type": "string",
+                      "enum": [
+                        "disconnected",
+                        "connecting",
+                        "connected",
+                        "error"
+                      ]
+                    },
+                    "progress": {
+                      "type": "string"
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "home": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "target",
+                    "created",
+                    "state",
+                    "progress"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "directory": {
+                    "type": "string",
+                    "maxLength": 4096
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.remoteWorkspace.open({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/settings/preferences": {
       "get": {
         "operationId": "settings.preferences.get",
@@ -22405,6 +23841,54 @@
                           },
                           "output": {
                             "type": "number"
+                          },
+                          "limits": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {
+                              "type": "object",
+                              "properties": {
+                                "context": {
+                                  "type": "integer",
+                                  "minimum": 1024,
+                                  "maximum": 2147483647
+                                },
+                                "output": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 2147483647
+                                },
+                                "input": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 2147483647
+                                },
+                                "mode": {
+                                  "type": "string",
+                                  "enum": [
+                                    "auto",
+                                    "manual"
+                                  ]
+                                },
+                                "source": {
+                                  "type": "string",
+                                  "enum": [
+                                    "catalog",
+                                    "endpoint",
+                                    "fallback",
+                                    "manual"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "context",
+                                "output",
+                                "mode",
+                                "source"
+                              ]
+                            }
                           }
                         },
                         "required": [
@@ -22414,7 +23898,8 @@
                           "models",
                           "hasKey",
                           "context",
-                          "output"
+                          "output",
+                          "limits"
                         ]
                       }
                     }
@@ -22463,6 +23948,12 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
                     "baseURL": {
                       "type": "string"
                     },
@@ -22472,14 +23963,73 @@
                         "type": "string"
                       }
                     },
-                    "id": {
-                      "type": "string"
+                    "hasKey": {
+                      "type": "boolean"
+                    },
+                    "context": {
+                      "type": "number"
+                    },
+                    "output": {
+                      "type": "number"
+                    },
+                    "limits": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                          "context": {
+                            "type": "integer",
+                            "minimum": 1024,
+                            "maximum": 2147483647
+                          },
+                          "output": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 2147483647
+                          },
+                          "input": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 2147483647
+                          },
+                          "mode": {
+                            "type": "string",
+                            "enum": [
+                              "auto",
+                              "manual"
+                            ]
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": [
+                              "catalog",
+                              "endpoint",
+                              "fallback",
+                              "manual"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "context",
+                          "output",
+                          "mode",
+                          "source"
+                        ]
+                      }
                     }
                   },
                   "required": [
+                    "id",
+                    "name",
                     "baseURL",
                     "models",
-                    "id"
+                    "hasKey",
+                    "context",
+                    "output",
+                    "limits"
                   ]
                 }
               }
@@ -22540,16 +24090,64 @@
                     }
                   },
                   "context": {
-                    "default": 32768,
                     "type": "integer",
                     "minimum": 1024,
-                    "maximum": 2097152
+                    "maximum": 2147483647
                   },
                   "output": {
-                    "default": 8192,
                     "type": "integer",
                     "minimum": 1,
-                    "maximum": 262144
+                    "maximum": 2147483647
+                  },
+                  "limits": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    },
+                    "additionalProperties": {
+                      "type": "object",
+                      "properties": {
+                        "context": {
+                          "type": "integer",
+                          "minimum": 1024,
+                          "maximum": 2147483647
+                        },
+                        "output": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 2147483647
+                        },
+                        "input": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 2147483647
+                        },
+                        "mode": {
+                          "type": "string",
+                          "enum": [
+                            "auto",
+                            "manual"
+                          ]
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "catalog",
+                            "endpoint",
+                            "fallback",
+                            "manual"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "context",
+                        "output",
+                        "mode",
+                        "source"
+                      ]
+                    }
                   }
                 },
                 "required": [
@@ -22565,6 +24163,124 @@
           {
             "lang": "js",
             "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.modelConnections.save({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/settings/model-connections/limits": {
+      "post": {
+        "operationId": "modelConnections.limits",
+        "summary": "Resolve per-model token limits",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "limits": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                          "context": {
+                            "type": "integer",
+                            "minimum": 1024,
+                            "maximum": 2147483647
+                          },
+                          "output": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 2147483647
+                          },
+                          "input": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 2147483647
+                          },
+                          "mode": {
+                            "type": "string",
+                            "enum": [
+                              "auto",
+                              "manual"
+                            ]
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": [
+                              "catalog",
+                              "endpoint",
+                              "fallback",
+                              "manual"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "context",
+                          "output",
+                          "mode",
+                          "source"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "limits"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Connection error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "models": {
+                    "maxItems": 2000,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    }
+                  }
+                },
+                "required": [
+                  "models"
+                ]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.modelConnections.limits({\n  ...\n})"
           }
         ]
       }
@@ -22589,11 +24305,60 @@
                       "items": {
                         "type": "string"
                       }
+                    },
+                    "limits": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                          "context": {
+                            "type": "integer",
+                            "minimum": 1024,
+                            "maximum": 2147483647
+                          },
+                          "output": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 2147483647
+                          },
+                          "input": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 2147483647
+                          },
+                          "mode": {
+                            "type": "string",
+                            "enum": [
+                              "auto",
+                              "manual"
+                            ]
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": [
+                              "catalog",
+                              "endpoint",
+                              "fallback",
+                              "manual"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "context",
+                          "output",
+                          "mode",
+                          "source"
+                        ]
+                      }
                     }
                   },
                   "required": [
                     "baseURL",
-                    "models"
+                    "models",
+                    "limits"
                   ]
                 }
               }
@@ -26367,10 +28132,14 @@
                     "type": "object",
                     "properties": {
                       "rows": {
-                        "type": "number"
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 1000
                       },
                       "cols": {
-                        "type": "number"
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 1000
                       }
                     },
                     "required": [
@@ -26459,6 +28228,16 @@
               "type": "string"
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "replay",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "geometry-v1"
+              ]
+            }
           }
         ],
         "summary": "Connect to PTY session",
@@ -33085,6 +34864,374 @@
         ]
       }
     },
+    "/runtime/queue": {
+      "get": {
+        "operationId": "runtime.queue",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Read queued prompts",
+        "responses": {
+          "200": {
+            "description": "Durable prompt queue",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeQueueSnapshot"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.runtime.queue({\n  ...\n})"
+          }
+        ]
+      },
+      "post": {
+        "operationId": "runtime.enqueue",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Queue a complete prompt for the next turn",
+        "responses": {
+          "202": {
+            "description": "Queue accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeQueueSnapshot"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicting request or full queue"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sessionID": {
+                    "type": "string",
+                    "pattern": "^ses.*"
+                  },
+                  "messageID": {
+                    "type": "string",
+                    "pattern": "^msg_[0-9a-fA-F]{12}[A-Za-z0-9]{14}$"
+                  },
+                  "model": {
+                    "type": "object",
+                    "properties": {
+                      "providerID": {
+                        "type": "string"
+                      },
+                      "modelID": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "providerID",
+                      "modelID"
+                    ]
+                  },
+                  "variant": {
+                    "type": "string"
+                  },
+                  "tier": {
+                    "type": "string"
+                  },
+                  "context": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "delegation": {
+                    "type": "boolean"
+                  },
+                  "delegationSettings": {
+                    "type": "object",
+                    "properties": {
+                      "level": {
+                        "default": "standard",
+                        "type": "string",
+                        "enum": [
+                          "off",
+                          "light",
+                          "standard",
+                          "high"
+                        ]
+                      },
+                      "workerModel": {
+                        "type": "object",
+                        "properties": {
+                          "providerID": {
+                            "type": "string"
+                          },
+                          "modelID": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "providerID",
+                          "modelID"
+                        ]
+                      },
+                      "autonomy": {
+                        "default": "balanced",
+                        "type": "string",
+                        "enum": [
+                          "interactive",
+                          "balanced",
+                          "autonomous"
+                        ]
+                      }
+                    }
+                  },
+                  "requestID": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "message": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000000
+                  },
+                  "parts": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/TextPartInput"
+                        },
+                        {
+                          "$ref": "#/components/schemas/FilePartInput"
+                        },
+                        {
+                          "$ref": "#/components/schemas/AgentPartInput"
+                        },
+                        {
+                          "$ref": "#/components/schemas/ConversationPartInput"
+                        },
+                        {
+                          "$ref": "#/components/schemas/SubtaskPartInput"
+                        }
+                      ]
+                    }
+                  },
+                  "effort": {
+                    "type": "string",
+                    "enum": [
+                      "normal",
+                      "ultra"
+                    ]
+                  },
+                  "delivery": {
+                    "type": "string",
+                    "enum": [
+                      "guide",
+                      "start"
+                    ]
+                  }
+                },
+                "required": [
+                  "sessionID",
+                  "effort"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.runtime.enqueue({\n  ...\n})"
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "runtime.updateQueue",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Edit, reorder, pause or resume the prompt queue",
+        "responses": {
+          "200": {
+            "description": "Updated queue",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeQueueSnapshot"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Queue was changed by another client"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sessionID": {
+                    "type": "string",
+                    "pattern": "^ses.*"
+                  },
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "change": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "const": "pause"
+                          }
+                        },
+                        "required": [
+                          "type"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "const": "resume"
+                          }
+                        },
+                        "required": [
+                          "type"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "const": "remove"
+                          },
+                          "id": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "id"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "const": "move"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "before": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "id",
+                          "before"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "const": "edit"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 1000000
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "id",
+                          "text"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "sessionID",
+                  "revision",
+                  "change"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.runtime.updateQueue({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/runtime/prompt": {
       "post": {
         "operationId": "runtime.prompt",
@@ -33237,6 +35384,13 @@
                     "enum": [
                       "normal",
                       "ultra"
+                    ]
+                  },
+                  "delivery": {
+                    "type": "string",
+                    "enum": [
+                      "guide",
+                      "start"
                     ]
                   }
                 },
@@ -64652,6 +66806,184 @@
           "agent"
         ]
       },
+      "RuntimeQueueSnapshot": {
+        "type": "object",
+        "properties": {
+          "sessionID": {
+            "type": "string",
+            "pattern": "^ses.*"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "input": {
+                  "type": "object",
+                  "properties": {
+                    "sessionID": {
+                      "type": "string",
+                      "pattern": "^ses.*"
+                    },
+                    "messageID": {
+                      "type": "string",
+                      "pattern": "^msg_[0-9a-fA-F]{12}[A-Za-z0-9]{14}$"
+                    },
+                    "model": {
+                      "type": "object",
+                      "properties": {
+                        "providerID": {
+                          "type": "string"
+                        },
+                        "modelID": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "providerID",
+                        "modelID"
+                      ]
+                    },
+                    "variant": {
+                      "type": "string"
+                    },
+                    "tier": {
+                      "type": "string"
+                    },
+                    "context": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "delegation": {
+                      "type": "boolean"
+                    },
+                    "delegationSettings": {
+                      "type": "object",
+                      "properties": {
+                        "level": {
+                          "default": "standard",
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "light",
+                            "standard",
+                            "high"
+                          ]
+                        },
+                        "workerModel": {
+                          "type": "object",
+                          "properties": {
+                            "providerID": {
+                              "type": "string"
+                            },
+                            "modelID": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "providerID",
+                            "modelID"
+                          ]
+                        },
+                        "autonomy": {
+                          "default": "balanced",
+                          "type": "string",
+                          "enum": [
+                            "interactive",
+                            "balanced",
+                            "autonomous"
+                          ]
+                        }
+                      }
+                    },
+                    "requestID": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 1000000
+                    },
+                    "parts": {
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/TextPartInput"
+                          },
+                          {
+                            "$ref": "#/components/schemas/FilePartInput"
+                          },
+                          {
+                            "$ref": "#/components/schemas/AgentPartInput"
+                          },
+                          {
+                            "$ref": "#/components/schemas/ConversationPartInput"
+                          },
+                          {
+                            "$ref": "#/components/schemas/SubtaskPartInput"
+                          }
+                        ]
+                      }
+                    },
+                    "effort": {
+                      "type": "string",
+                      "enum": [
+                        "normal",
+                        "ultra"
+                      ]
+                    },
+                    "delivery": {
+                      "type": "string",
+                      "enum": [
+                        "guide",
+                        "start"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "sessionID",
+                    "effort"
+                  ],
+                  "additionalProperties": false
+                },
+                "createdAt": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "id",
+                "input",
+                "createdAt"
+              ]
+            }
+          }
+        },
+        "required": [
+          "sessionID",
+          "revision",
+          "paused",
+          "items"
+        ]
+      },
       "RuntimePromptAccepted": {
         "type": "object",
         "properties": {
@@ -64886,6 +67218,10 @@
             "type": "boolean",
             "const": true
           },
+          "promptQueue": {
+            "type": "boolean",
+            "const": true
+          },
           "runSnapshots": {
             "type": "boolean",
             "const": true
@@ -64909,6 +67245,7 @@
           "serverVersion",
           "idempotentPrompts",
           "richInputs",
+          "promptQueue",
           "runSnapshots",
           "eventRetention",
           "crashRecovery",

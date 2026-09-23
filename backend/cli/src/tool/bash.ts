@@ -33,13 +33,16 @@ import { CommandRuntime } from "@/science/command/registry"
 import { AuthoritySignal } from "@/project/authority-signal"
 import { KernelEnvironmentMutation } from "@/science/kernel/environment-mutation"
 import { FileOutputReceipts } from "@/file/output-receipts"
+import { BashLifecycle } from "./bash-lifecycle"
+import { discoverRuntimeRoots } from "../sandbox/runtime-roots"
+import type { KernelStartOptions } from "@/science/kernel/types"
 
 const MAX_METADATA_LENGTH = 30_000
 /** How often the live output card is refreshed while a command runs. */
 const PREVIEW_INTERVAL = 200
 /** Characters of each stream kept for the provenance record (clip() adds the marker). */
 const PROVENANCE_HEAD = 2000
-const DEFAULT_TIMEOUT = Flag.OPENSCIENCE_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_MS || 0
+const DEFAULT_TIMEOUT = Flag.OPENSCIENCE_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_MS ?? 120_000
 
 export const log = Log.create({ service: "bash-tool" })
 
@@ -186,7 +189,19 @@ export const BashTool = Tool.define("bash", async () => {
       .replaceAll("${maxBytes}", String(Truncate.MAX_BYTES)),
     parameters: z.object({
       command: z.string().trim().min(1).describe("The command to execute"),
-      timeout: z.number().describe("Optional timeout in milliseconds").optional(),
+      timeout: z
+        .number()
+        .int()
+        .min(0)
+        .max(2_147_483_647)
+        .describe("Preparation and command timeout in milliseconds; default 120000, 0 disables it")
+        .optional(),
+      environment: z
+        .enum(["shell", "python"])
+        .optional()
+        .describe(
+          "Default shell preserves the host environment, including explicit Conda/venv activation. Select python only to reuse OpenScience's existing Python runtime and shared project packages; never installs a runtime.",
+        ),
       workdir: z
         .string()
         .describe("The working directory to run the command in. Defaults to the session workspace.")
@@ -202,6 +217,7 @@ export const BashTool = Tool.define("bash", async () => {
       return "Bash received incomplete input. No command was run. Retry once with a command, optional workdir/timeout, and short description."
     },
     async execute(params, ctx) {
+      ctx.abort.throwIfAborted()
       const authority = await ExecutionAuthority.require({
         projectID: Instance.project.id,
         sessionID: ctx.sessionID,
@@ -404,26 +420,42 @@ export const BashTool = Tool.define("bash", async () => {
         })
       }
 
+      ctx.abort.throwIfAborted()
+      const progress: {
+        output: string
+        execution_progress?: { phase: string; startedAt: number; phaseAt: number; elapsedMs: number }
+      } = { output: "" }
+      using lifecycle = new BashLifecycle(ctx.abort, timeout, (value) => {
+        progress.execution_progress = value
+        ctx.metadata({ metadata: { ...progress, description: params.description } })
+      })
+
       // Seed the BYOK secret cache so redact() below masks the user's own
       // provider keys (auth.json + shell env), not just synced managed ones.
-      await OpenScience.refreshByokSecrets(process.env).catch(() => {})
+      await lifecycle.read(OpenScience.refreshByokSecrets(process.env).catch(() => {}))
 
       // Permission callbacks may durably add the filesystem grant requested
       // above. Capture the post-prompt generation so that legitimate grant is
       // part of this launch while a later concurrent mutation still fails the
       // final check inside the authority lease.
-      const prepared = await ExecutionAuthority.require({
-        projectID: Instance.project.id,
-        sessionID: ctx.sessionID,
-        capability: "shell",
-      })
-      // Starter discovery/provisioning may take minutes on first use and does
-      // not execute project code. Resolve it before the global spawn lease;
-      // the generation check below still rejects any authority change before
-      // the subprocess is created. This keeps independent shell launches from
-      // timing out behind environment maintenance.
-      const runtime = await KernelEnvironmentMutation.pythonSubprocessRuntime()
+      const prepared = await lifecycle.read(
+        ExecutionAuthority.require({
+          projectID: Instance.project.id,
+          sessionID: ctx.sessionID,
+          capability: "shell",
+        }),
+      )
+      // 普通 Shell 由宿主环境选择解释器；激活 Conda 不应隐式安装科研包或被默认 Python 覆盖。
+      lifecycle.stage("environment")
+      const runtime: KernelStartOptions =
+        params.environment === "python"
+          ? await lifecycle.read(KernelEnvironmentMutation.pythonSubprocessRuntime(false))
+          : { environmentName: "shell" }
       if (runtime.env?.PIP_TARGET) readable.add(runtime.env.PIP_TARGET)
+      // Shell 与交互终端一样允许切换现有环境，仅挂载运行库和激活脚本的只读子树。
+      const environments =
+        params.environment === "python" ? [] : discoverRuntimeRoots(process.env, [], { condaEnvironments: true })
+      for (const root of environments) readable.add(root)
 
       const outputRoots = (decision: ExecutionAuthority.Decision) =>
         [
@@ -434,19 +466,15 @@ export const BashTool = Tool.define("bash", async () => {
             ),
           ]),
         ].filter((root) => decision.writable.some((allowed) => Filesystem.contains(allowed, root)))
-      const before = await FileOutputReceipts.observe({
-        roots: outputRoots(prepared),
-        unreadable: OpenScience.kernelSensitivePaths(),
-      }).catch(() => undefined)
+      lifecycle.stage("observing")
+      const before = await lifecycle.read(
+        FileOutputReceipts.observe({
+          roots: outputRoots(prepared),
+          unreadable: OpenScience.kernelSensitivePaths(),
+        }).catch(() => undefined),
+      )
 
-      const started = Date.now()
-
-      ctx.metadata({
-        metadata: {
-          output: "",
-          description: params.description,
-        },
-      })
+      const started = lifecycle.started
 
       const redact = (text: string) => {
         try {
@@ -467,7 +495,8 @@ export const BashTool = Tool.define("bash", async () => {
       // Annotated to break the publish ↔ capture inference cycle.
       const publish = (): void => {
         publishTimer = undefined
-        ctx.metadata({ metadata: { output: clipPreview(capture.current()), description: params.description } })
+        progress.output = clipPreview(capture.current())
+        ctx.metadata({ metadata: { ...progress, description: params.description } })
       }
       const capture: BashOutput.Capture = new BashOutput.Capture({
         redact,
@@ -511,7 +540,9 @@ export const BashTool = Tool.define("bash", async () => {
       let exited = false
       let aborted = false
       const stopped: { reason?: string } = {}
+      lifecycle.stage("launching")
       const { proc, command, kill, sandbox, completion, drain } = await AuthoritySignal.exclusive(async () => {
+        lifecycle.signal.throwIfAborted()
         const current = await ExecutionAuthority.require({
           projectID: Instance.project.id,
           sessionID: ctx.sessionID,
@@ -520,6 +551,7 @@ export const BashTool = Tool.define("bash", async () => {
         if (ExecutionAuthority.narrowed(prepared, current)) {
           throw new Error("Execution authority changed while the shell command was being prepared; retry it")
         }
+        lifecycle.signal.throwIfAborted()
         // Build the wrapper only after the final authority check, while trust
         // and filesystem mutations are excluded through durable registration.
         const sandbox = Sandbox.plan({
@@ -528,11 +560,15 @@ export const BashTool = Tool.define("bash", async () => {
           cwd,
           workspace: current.writable,
           readable: [...readable],
+          readOnly: environments,
           unreadable: OpenScience.kernelSensitivePaths(),
-          runtime: {
-            python: runtime.binary ?? Bun.which("python3") ?? Bun.which("python") ?? undefined,
-            path: runtime.env?.PATH,
-          },
+          runtime:
+            params.environment === "python"
+              ? {
+                  python: runtime.binary,
+                  path: runtime.env?.PATH,
+                }
+              : undefined,
           options: current.sandbox,
           escalateNetwork: !!network,
         })
@@ -550,13 +586,21 @@ export const BashTool = Tool.define("bash", async () => {
             shell: sandbox.sandboxed ? false : sandbox.useShell,
           })
           try {
+            lifecycle.signal.throwIfAborted()
             child = spawn(wrapped.file, wrapped.args, {
               shell: wrapped.spawnShell,
               cwd,
               // Re-sanitize at the final process boundary too: runtime/cache
               // overlays must never restore a managed token or re-pair a
               // user's key with the Ace managed proxy after subprocessEnv ran.
-              env: { ...KernelEnvironmentMutation.subprocessEnv(runtime, { ...env, ...cache }), ...credentialEnv },
+              env: {
+                ...KernelEnvironmentMutation.subprocessEnv(runtime, {
+                  ...(params.environment !== "python" ? OpenScience.kernelEnv(process.env) : {}),
+                  ...env,
+                  ...cache,
+                }),
+                ...credentialEnv,
+              },
               stdio: ["ignore", "pipe", "pipe"],
               detached: process.platform !== "win32",
             })
@@ -580,7 +624,12 @@ export const BashTool = Tool.define("bash", async () => {
             })
           })
           const stop = () => Shell.killTree(child, { exited: () => exited, detached: process.platform !== "win32" })
+          const stopPreparing = () => {
+            void stop().catch((error) => log.error("shell preparation cancellation failed", { error }))
+          }
+          lifecycle.signal.addEventListener("abort", stopPreparing, { once: true })
           try {
+            lifecycle.signal.throwIfAborted()
             const registered = await CommandRuntime.start(
               {
                 projectID: Instance.project.id,
@@ -599,7 +648,12 @@ export const BashTool = Tool.define("bash", async () => {
               // The runtime and cache overlays above never restore a synced
               // key that `env` lacked, so the snapshot's overlay is the one
               // this child can carry.
-              { authorityGeneration: current.generation, windowsRelease: wrapped.release, overlay },
+              {
+                authorityGeneration: current.generation,
+                windowsRelease: wrapped.release,
+                overlay,
+                signal: lifecycle.signal,
+              },
             )
             const kill = async () => {
               await CommandRuntime.stop(registered.id, registered.projectID, registered.sessionID)
@@ -609,36 +663,28 @@ export const BashTool = Tool.define("bash", async () => {
             await stop()
             Sandbox.cleanup(sandbox)
             throw error
+          } finally {
+            lifecycle.signal.removeEventListener("abort", stopPreparing)
           }
         })
-      })
+      }, lifecycle.signal)
 
-      let timedOut = false
-
-      if (ctx.abort.aborted) {
-        aborted = true
+      if (lifecycle.signal.aborted) {
+        aborted = ctx.abort.aborted
         await kill()
       }
 
       const abortHandler = () => {
-        aborted = true
-        void kill()
+        aborted = ctx.abort.aborted
+        void kill().catch((error) => log.error("shell cancellation failed", { error }))
       }
 
-      ctx.abort.addEventListener("abort", abortHandler, { once: true })
-
-      const timeoutTimer =
-        timeout > 0
-          ? setTimeout(() => {
-              timedOut = true
-              void kill()
-            }, timeout + 100)
-          : undefined
+      lifecycle.signal.addEventListener("abort", abortHandler, { once: true })
+      if (!lifecycle.signal.aborted) lifecycle.stage("running")
 
       const summary = await Promise.all([completion, drain])
         .finally(() => {
-          if (timeoutTimer) clearTimeout(timeoutTimer)
-          ctx.abort.removeEventListener("abort", abortHandler)
+          lifecycle.signal.removeEventListener("abort", abortHandler)
           CommandRuntime.finish(command.id)
           Sandbox.cleanup(sandbox)
           if (publishTimer) clearTimeout(publishTimer)
@@ -665,17 +711,20 @@ export const BashTool = Tool.define("bash", async () => {
         })
 
       const completed = Date.now()
+      lifecycle.stage("collecting", false)
       const files = before
-        ? await ExecutionAuthority.require({
-            projectID: Instance.project.id,
-            sessionID: ctx.sessionID,
-            capability: "shell",
-          })
-            .then((decision) =>
-              FileOutputReceipts.finish(before, {
-                roots: outputRoots(decision),
-                unreadable: OpenScience.kernelSensitivePaths(),
-              }),
+        ? await lifecycle
+            .read(
+              ExecutionAuthority.require({
+                projectID: Instance.project.id,
+                sessionID: ctx.sessionID,
+                capability: "shell",
+              }).then((decision) =>
+                FileOutputReceipts.finish(before, {
+                  roots: outputRoots(decision),
+                  unreadable: OpenScience.kernelSensitivePaths(),
+                }),
+              ),
             )
             .catch(() => ({
               outputFiles: [],
@@ -687,18 +736,22 @@ export const BashTool = Tool.define("bash", async () => {
       // The command spawned and ran to completion (or was killed) — record a
       // provenance run node so "what ran" is capturable for shell-produced
       // artifacts. Recording must never break the tool.
-      const node = await provenance({
-        sessionID: ctx.sessionID,
-        messageID: ctx.messageID,
-        callID: ctx.callID,
-        command: params.command,
-        cwd,
-        exit: proc.exitCode,
-        stdout: heads.stdout.current(),
-        stderr: heads.stderr.current(),
-        startedAt: started,
-        completedAt: completed,
-      }).catch(() => undefined)
+      const node = await lifecycle
+        .read(
+          provenance({
+            sessionID: ctx.sessionID,
+            messageID: ctx.messageID,
+            callID: ctx.callID,
+            command: params.command,
+            cwd,
+            exit: proc.exitCode,
+            stdout: heads.stdout.current(),
+            stderr: heads.stderr.current(),
+            startedAt: started,
+            completedAt: completed,
+          }),
+        )
+        .catch(() => undefined)
 
       const resultMetadata: string[] = []
 
@@ -706,11 +759,11 @@ export const BashTool = Tool.define("bash", async () => {
         resultMetadata.push(sandbox.warning)
       }
 
-      if (timedOut) {
+      if (lifecycle.timedOut) {
         resultMetadata.push(`bash tool terminated command after exceeding timeout ${timeout} ms`)
       }
 
-      if (aborted) {
+      if (aborted && !lifecycle.timedOut) {
         // A credential revocation names itself; anything else is the user.
         resultMetadata.push(stopped.reason ?? "User aborted the command")
       }
@@ -737,6 +790,7 @@ export const BashTool = Tool.define("bash", async () => {
           description: params.description,
           provenanceID: node?.id,
           execution_environment: KernelEnvironmentMutation.subprocessIdentity(runtime, cwd),
+          execution_progress: { ...progress.execution_progress, phase: "completed", elapsedMs: Date.now() - started },
           ...files,
         },
       })
@@ -748,6 +802,7 @@ export const BashTool = Tool.define("bash", async () => {
           description: params.description,
           provenanceID: node?.id,
           execution_environment: KernelEnvironmentMutation.subprocessIdentity(runtime, cwd),
+          execution_progress: { ...progress.execution_progress, phase: "completed", elapsedMs: Date.now() - started },
           ...files,
           // Truncation happened while streaming; the generic post-execute
           // pass must not materialize the output again.

@@ -7,10 +7,10 @@ A project groups conversations and research files. It can begin as a named works
 
 ## Create a project
 
-1. From the project home, choose **Create project**.
+1. In the sidebar's **Projects** section, choose **+ → Open folder / New project**.
 2. Enter a descriptive project name.
-3. Optionally choose **Add source folders** and select the folders you want to work with.
-4. Review the selected paths, then create the project.
+3. Optionally enter a **Working directory**, or use **Browse** to choose an existing folder.
+4. Review the path, then choose **Open project**. Leave it empty for an app-managed project.
 5. Start a conversation and ask for an inventory before making changes to unfamiliar material.
 
 ```text
@@ -19,7 +19,13 @@ scripts, protocols, and existing results. Save a short project guide with
 paths and suggest the first task. Ask before editing original inputs.
 ```
 
-The source-folder form supports up to ten selected folders. Connected folders are working material, so choose deliberately and keep backups of original inputs.
+The selected folder becomes the working directory for tools and terminals. Additional source folders can be connected from the conversation's filesystem controls. Connected folders are working material, so choose deliberately and keep backups of original inputs.
+
+## Tasks and remote projects
+
+The application opens directly into its conversation workspace. **New task** creates an ordinary conversation under **Tasks**, separately from named research projects. Existing projects and their conversations retain their IDs and files.
+
+Choose **Projects → + → Remote connection** to work through SSH, WSL, or Docker. Follow the four steps: choose method, enter settings, wait for a successful backend connection, and choose a remote working directory. See [Remote workspaces](/openscience/remote-workspaces) for setup and execution policy.
 
 ## Open an existing folder from the CLI
 
@@ -43,7 +49,7 @@ Separate conversations share access to project material, but they are not a sing
 
 ## Organize active and completed work
 
-Pin frequently used projects on the home page. Archive projects you want to remove from the active list and restore them from the archived view when needed.
+Use a project's action menu to archive it. Restore it from **Archived projects** in the sidebar when needed. Remote entries use a cloud icon; local projects use a folder icon. Disconnecting a remote project hides its conversations until you reconnect, and removing its bookmark does not delete remote files.
 
 Within a project, use descriptive session names, pin important conversations, and archive completed ones. Closing a conversation tab is different from deleting its saved history. Review the confirmation before using a deletion action.
 

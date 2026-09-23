@@ -36,6 +36,7 @@ test("advertises an object-rooted compute schema for strict providers", () => {
   expect(schema.type).toBe("object")
   expect(schema.properties.action.enum).toEqual([
     "targets",
+    "environment",
     "plan",
     "start",
     "list",
@@ -55,6 +56,22 @@ test("advertises an object-rooted compute schema for strict providers", () => {
   expect(ComputeJobParameters.safeParse({ action: "plan" }).success).toBe(false)
   expect(ComputeJobParameters.safeParse({ action: "targets", job_id: "wrong-action" }).success).toBe(false)
   expect(ComputeJobParameters.safeParse({ action: "wait", job_id: "job_long", seconds: 3_600 }).success).toBe(true)
+})
+
+test("environment action reads host inventory without dispatching a job or weakening project policy", async () => {
+  const tool = await createComputeJobTool().init()
+  const asked: Asked[] = []
+  const result = await tool.execute({ action: "environment" }, context("resource-inspection", asked))
+  const value = JSON.parse(result.output)
+  expect(result.metadata.compute_job.action).toBe("environment")
+  expect(value.hostname.length).toBeGreaterThan(0)
+  expect(Array.isArray(value.schedulers)).toBe(true)
+  expect(asked).toEqual([])
+  const extra = await tool.execute(
+    { action: "environment", command: "arbitrary command" },
+    context("resource-inspection", asked),
+  )
+  expect(extra.output).toBe(result.output)
 })
 
 test("normalizes only unambiguous action aliases and valid JSON-object targets", async () => {
