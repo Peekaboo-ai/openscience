@@ -208,20 +208,25 @@ export namespace RuntimeEvents {
   }
 
   async function notify(event: Event) {
+    const failed = (error: unknown) =>
+      log.error("runtime event subscriber delivery failed", {
+        sessionID: event.sessionID,
+        runID: event.runID,
+        sequence: event.sequence,
+        type: event.type,
+        error: logSafeError(error),
+      })
     for (const subscriber of [...(state().subscriptions.get(event.sessionID) ?? [])]) {
       try {
-        await subscriber(event)
+        // 事件已持久化；观察者的网络背压不能占有命令/权限/取消的控制路径。
+        // 同步按 sequence 调用，异步传输各自负责队列；重连可从持久游标恢复。
+        const delivered = subscriber(event)
+        if (delivered) void delivered.catch(failed)
       } catch (error) {
         // The journal is already durable at this point. A disconnected or
         // otherwise faulty stream consumer must not fail the runtime action
         // that produced the event or prevent delivery to healthy consumers.
-        log.error("runtime event subscriber delivery failed", {
-          sessionID: event.sessionID,
-          runID: event.runID,
-          sequence: event.sequence,
-          type: event.type,
-          error: logSafeError(error),
-        })
+        failed(error)
       }
     }
     return event
@@ -699,6 +704,11 @@ export namespace RuntimeEvents {
    * coordination uses it to ignore a request whose run is no longer active. */
   export function activeRunID(sessionID: string) {
     return state().active.get(sessionID)
+  }
+
+  export async function cancellationRequested(sessionID: string, runID: string) {
+    const journal = await read(sessionID)
+    return journal.activeRunID === runID && journal.cancelRequest?.runID === runID
   }
 
   /** Capture an internal event only while a public runtime run owns the

@@ -148,7 +148,7 @@ export namespace ExecutionAuthority {
     const mode = reason !== "allowed" ? "read_only" : sandbox.enforced ? "sandboxed" : "host"
     const message =
       reason === "sandbox_unavailable"
-        ? `A verified OS sandbox is required to ${action(input.capability)}, but OpenScience could not enforce one (${backend.reason}). Install the platform sandbox backend or update the global Sandbox settings.`
+        ? `Execution is blocked before any command starts: this project's access mode requires a verified OS sandbox to ${action(input.capability)}, but the backend is unavailable (${backend.reason}). Switching commands, kernels, compute jobs, or agents cannot resolve this restriction. Repair the server's sandbox, or explicitly select Full access for this project if your policy permits host execution. Do not change access settings automatically.`
         : reason === "project_untrusted"
           ? sandbox.requireProjectTrust
             ? `Trust this project to ${action(input.capability)} because the global Sandbox policy requires explicit trust for all execution.`

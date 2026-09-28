@@ -136,11 +136,21 @@ See [Sessions](/openscience/sessions) for continuing, exporting, and importing c
 - [Context and handoffs](/openscience/context): compact long work and prepare a continuation.
 - [Keyboard shortcuts](/openscience/keyboard-shortcuts) and [Preferences](/openscience/preferences): navigate and configure the interface.
 
+## Custom model API protocols
+
+In **Settings → Models → Custom API connections**, select the API protocol documented by your endpoint: **OpenAI Chat Completions**, **OpenAI Responses**, or **Anthropic Messages**. A model's name does not determine its protocol; gateways can expose the same model through different APIs with different behavior. Existing connections keep Chat Completions unless you explicitly change them.
+
+For Anthropic-compatible endpoints that support adaptive reasoning, select **Adaptive thinking**, then choose the model's reasoning effort in the conversation. Otherwise leave **Model default** selected. Keys stay in the selected backend's auth store; changing protocols on the same URL keeps the key. For a remote project, edit its remote backend's connection. Model discovery uses the selected protocol's authentication; endpoints without discovery can be configured with manual model IDs.
+
+If a custom gateway answers correctly without streaming but loses the task on its streaming route, set `provider.<connection-id>.options.streaming` to `false` in that backend's `openscience.jsonc`. This explicit compatibility mode uses non-streaming generation and delivers completed responses through the existing session event interface, including tool calls and usage. Text appears when each model response completes. The default remains streaming; no automatic retry based on answer wording is performed. A remote project's provider configuration belongs to its remote backend. Editing the model list retains this setting for the same API URL.
+
 ## Messages while a task is running
 
 With a draft in the composer, **Guide now** sends a follow-up for the agent to read at its next step. It does not interrupt a running command. The separate Stop control (or Escape) cancels the current run.
 
 While a task runs, **Enter** sends guidance to its next step. Open the arrow beside Send and choose **Add to queue**, or press **Ctrl+Enter** (⌘+Enter on macOS), to save a separate task for execution after the current run. Selecting either menu action sends the current draft immediately. Queued messages retain their attachments, selected model and reasoning settings on the connected backend, including remote projects. You can edit their text, reorder or remove them, and pause or resume the queue. Stopping a run, a failed run, or a backend restart pauses pending work; review it before resuming. A stopped backend does not silently replay work whose effects may already have occurred.
+
+Guidance accepted as a text-only reply finishes is checked before the run settles, so it can receive a subsequent response in the same run. Stop prevents this continuation. Root conversations use the same durable run receipts across the workspace, legacy message API and scientific wake-ups. After an update or interruption, inspect the recorded outcome and outputs before explicitly continuing; opening that history does not restart a recorded run. Model-turn cancellation does not take ownership of your independent Terminal or submitted compute jobs.
 
 Permission buttons show a pending state immediately and prevent duplicate decisions. Connection failures keep the request available for retry. Waiting for approval is labelled separately from command execution. Shell timeouts show their configured limit instead of hiding the reason in diagnostic metadata. Action Timeline keeps its loaded history when you switch modules; workbench summaries update separately.
 

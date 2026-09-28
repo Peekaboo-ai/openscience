@@ -173,6 +173,32 @@ test("kernel env filtering keeps runtime configuration but drops credentials", (
   })
 })
 
+test("remote shell retains Conda, modules and accelerator context without admitting credentials or shell hooks", () => {
+  const runtime = {
+    MODULEPATH: "/opt/modules:/public/software/modules",
+    MODULESHOME: "/usr/share/Modules",
+    LOADEDMODULES: "mpi",
+    _LMFILES_: "/opt/modules/mpi",
+    LMOD_CMD: "/usr/share/lmod/lmod/libexec/lmod",
+    CONDA_EXE: "/opt/conda/bin/conda",
+    CONDA_SHLVL: "1",
+    ROCM_PATH: "/opt/rocm",
+    CUDA_VISIBLE_DEVICES: "0",
+    SLURM_JOB_ID: "123",
+  }
+  expect(
+    OpenScience.filterEnvForKernel({
+      ...runtime,
+      MODULES_API_KEY: "secret",
+      SLURM_JWT: "secret",
+      CONDA_TOKEN: "secret",
+      BASH_ENV: "/private/inject.sh",
+      "BASH_FUNC_module%%": "() { malicious; }",
+      OPENAI_API_KEY: "secret",
+    }),
+  ).toEqual(runtime)
+})
+
 test("Windows runtime environment filtering preserves mixed-case system keys and rejects ambient injection", () => {
   const input = {
     Path: "C:\\fixture\\bin",

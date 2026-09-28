@@ -1,20 +1,31 @@
-import path from "node:path"
 import z from "zod"
-import { Global } from "../global"
+import { Agent } from "../agent/agent"
 import { Identifier } from "../id/id"
 import { Instance } from "../project/instance"
 import { ProcessIdentity } from "../process/process-identity"
 import { Session } from "../session"
 import { MessageV2 } from "../session/message-v2"
 import { SessionPrompt } from "../session/prompt"
-import { PromptInput } from "../session/prompt-input"
+import { PromptInput, RuntimePromptInput } from "../session/prompt-input"
 import { Storage } from "../storage/storage"
-import { FileLease } from "../util/file-lease"
 import { Log } from "../util/log"
 import { RuntimeEvents } from "./events"
+import { RuntimeAdmission } from "./admission"
 
 export namespace RuntimeRuns {
   const log = Log.create({ service: "runtime-runs" })
+  const hooks = { value: undefined as { beforeSettle?(run: Run): Promise<void> } | undefined }
+
+  /** 确定性故障夹具在接收/收尾窗口设置屏障，不修改生产调度顺序。 */
+  export function testing(value: NonNullable<typeof hooks.value>) {
+    const previous = hooks.value
+    hooks.value = value
+    return {
+      [Symbol.dispose]() {
+        hooks.value = previous
+      },
+    }
+  }
   const executions = Instance.state(() => new Map<string, { sessionID: string; controller: AbortSignal }>())
 
   export const Input = PromptInput.pick({
@@ -45,6 +56,24 @@ export namespace RuntimeRuns {
 
   export type Input = z.infer<typeof Input>
 
+  // 公共 Input 保持严格校验；科研唤醒/CLI 的合成上下文只允许由内部适配器进入。
+  const StoredInput = RuntimePromptInput.omit({ agent: true, noReply: true })
+    .extend({ ...Input.shape, parts: RuntimePromptInput.shape.parts.optional() })
+    .strict()
+    .refine((value) => (value.message !== undefined) !== (value.parts !== undefined), {
+      message: "Supply exactly one of message or parts",
+    })
+  type StoredInput = z.infer<typeof StoredInput>
+  const tasks = Instance.state(
+    () => ({ stopping: false, work: new Map<string, Promise<MessageV2.WithParts | undefined>>() }),
+    async (state) => {
+      // controller 负责取消；实例销毁还必须等待回执/队列收尾，不能让旧任务写入新实例。
+      state.stopping = true
+      await Promise.allSettled([...state.work.values()])
+      state.work.clear()
+    },
+  )
+
   export const RunID = z.string().regex(/^run_[A-Za-z0-9_-]+$/)
 
   export const Run = z
@@ -66,7 +95,7 @@ export namespace RuntimeRuns {
   const Record = z.object({
     run: Run,
     fingerprint: z.string(),
-    input: Input,
+    input: StoredInput,
     agent: z.string(),
     owner: z.object({ pid: z.number().int().positive(), identity: z.string() }),
   })
@@ -183,12 +212,16 @@ export namespace RuntimeRuns {
    * A crash in the admission/execution gap is interrupted, never auto-retried. */
   export async function admit(value: Input, agent = "research") {
     const input = Input.parse(value)
+    return admitStored(input, agent)
+  }
+
+  async function admitStored(input: StoredInput, agent: string) {
     await Session.get(input.sessionID)
     const identity = input.requestID ?? input.messageID
     const fingerprint = digest(JSON.stringify(ordered({ ...input, requestID: undefined, agent })))
     const runID = identity ? "run_" + digest(input.sessionID + "\0" + identity) : Identifier.ascending("runtime")
-    const lock = path.join(Global.Path.data, "runtime-admission", digest(Instance.project.id + "\0" + input.sessionID))
-    await using lease = await FileLease.acquire(lock)
+    await using lease = await RuntimeAdmission.acquire(input.sessionID)
+    if (tasks().stopping) throw new Error("The project runtime is stopping")
     const prior = await read(input.sessionID, runID).catch((error) => {
       if (Storage.NotFoundError.isInstance(error)) return
       throw error
@@ -299,16 +332,13 @@ export namespace RuntimeRuns {
 
   async function execute(run: Run) {
     const local = executions()
+    const lifecycle = tasks()
     try {
       // Admission and cancellation use the same lease. Install the controlled
       // prompt before releasing it, closing the gap before async preflight.
       const started = await (async () => {
-        const lock = path.join(
-          Global.Path.data,
-          "runtime-admission",
-          digest(Instance.project.id + "\0" + run.sessionID),
-        )
-        await using lease = await FileLease.acquire(lock)
+        await using lease = await RuntimeAdmission.acquire(run.sessionID)
+        if (lifecycle.stopping) throw new Error("The project runtime is stopping")
         const record = await read(run.sessionID, run.runID)
         if (finished(await reconcile(record))) return
         await update(run.sessionID, run.runID, { state: "running" })
@@ -326,33 +356,13 @@ export namespace RuntimeRuns {
         return { promise }
       })()
       if (!started) return
-      const result = await started.promise
-      const event =
-        result.info.role === "assistant" && result.info.error
-          ? await RuntimeEvents.fail({
-              sessionID: run.sessionID,
-              runID: run.runID,
-              messageID: result.info.id,
-              error: result.info.error,
-            })
-          : await RuntimeEvents.finish({
-              sessionID: run.sessionID,
-              runID: run.runID,
-              messageID: result.info.id,
-            })
-      await update(run.sessionID, run.runID, {
-        state:
-          event.type === "runtime.completed"
-            ? "completed"
-            : event.type === "runtime.cancelled"
-              ? "cancelled"
-              : "failed",
-        completedAt: event.time,
-        resultMessageID: result.info.id,
-        ...(event.type === "runtime.failed"
-          ? { error: { code: "run_failed", message: String(event.properties.message ?? "The research run failed") } }
-          : {}),
-      })
+      let result = await started.promise
+      for (;;) {
+        await hooks.value?.beforeSettle?.(run)
+        const next = await settle(run, result)
+        if (!next) return result
+        result = await next.promise
+      }
     } catch (error) {
       if (error instanceof RuntimeEvents.ActiveRunError) {
         await reconcile(await read(run.sessionID, run.runID))
@@ -372,23 +382,116 @@ export namespace RuntimeRuns {
       // 队列在运行收尾后推进；取消或失败会暂停，不能把停止误当成启动下一项。
       await SessionPrompt.detached(async () => {
         const { RuntimeQueue } = await import("./queue")
-        await RuntimeQueue.settled(run.sessionID, await get(run.sessionID, run.runID))
+        if (lifecycle.stopping) await RuntimeQueue.pause(run.sessionID, "runtime_stopped")
+        else await RuntimeQueue.settled(run.sessionID, await get(run.sessionID, run.runID))
       }).catch((error) => log.error("could not advance prompt queue", { sessionID: run.sessionID, error }))
     }
   }
 
+  async function settle(run: Run, result: MessageV2.WithParts) {
+    await using lease = await RuntimeAdmission.acquire(run.sessionID)
+    if (tasks().stopping) throw new Error("The project runtime stopped before the run settled")
+    const current = await get(run.sessionID, run.runID)
+    if (finished(current)) return
+    if (
+      result.info.role === "assistant" &&
+      !result.info.error &&
+      !(await RuntimeEvents.cancellationRequested(run.sessionID, run.runID))
+    ) {
+      const latest = await pendingPrompt(run.sessionID, result.info.parentID)
+      // 对照 ZCode turn-guide-drain：纯文本收尾也要消费 guide。
+      // 与接收共用租约，封闭“loop 已退出、run 尚未收尾”期间引导被接受却无人处理的窗口。
+      if (latest) {
+        const promise = SessionPrompt.withCancellation(run.sessionID, () => SessionPrompt.loop(run.sessionID))
+        const controller = SessionPrompt.activeController(run.sessionID)
+        if (controller) executions().set(run.runID, { sessionID: run.sessionID, controller })
+        void promise.catch(() => undefined)
+        return { promise }
+      }
+    }
+    const event =
+      result.info.role === "assistant" && result.info.error
+        ? await RuntimeEvents.fail({
+            sessionID: run.sessionID,
+            runID: run.runID,
+            messageID: result.info.id,
+            error: result.info.error,
+          })
+        : await RuntimeEvents.finish({
+            sessionID: run.sessionID,
+            runID: run.runID,
+            messageID: result.info.id,
+          })
+    await update(run.sessionID, run.runID, {
+      state:
+        event.type === "runtime.completed" ? "completed" : event.type === "runtime.cancelled" ? "cancelled" : "failed",
+      completedAt: event.time,
+      resultMessageID: result.info.id,
+      ...(event.type === "runtime.failed"
+        ? { error: { code: "run_failed", message: String(event.properties.message ?? "The research run failed") } }
+        : {}),
+    })
+  }
+
+  async function pendingPrompt(sessionID: string, answeredID: string) {
+    // 只检查回答之后的新输入；压缩/续写 carrier 不是新引导，也不必读取整个会话。
+    for await (const message of MessageV2.stream(sessionID)) {
+      if (message.info.id <= answeredID) return false
+      if (message.info.role === "user" && (!message.info.internal || message.info.internal.type === "prompt"))
+        return true
+    }
+    return false
+  }
+
   export async function prompt(input: Input, agent = "research") {
     const result = await admit(input, agent)
-    if (!result.replayed)
-      void execute(result.run).catch((error) =>
-        log.error("failed to settle runtime run", { runID: result.run.runID, error }),
-      )
+    if (!result.replayed) launch(result.run)
     return { runID: result.run.runID, acceptedAt: result.run.acceptedAt }
   }
 
+  function launch(run: Run) {
+    const work = tasks().work
+    const task = execute(run)
+    work.set(run.runID, task)
+    void task
+      .catch((error) => log.error("failed to settle runtime run", { runID: run.runID, error }))
+      .finally(() => {
+        if (work.get(run.runID) === task) work.delete(run.runID)
+      })
+    return task
+  }
+
+  /** 旧同步接口保留返回最终消息的契约，但接收、去重和执行与公开 runtime 共用。 */
+  export async function submit(value: z.infer<typeof RuntimePromptInput>): Promise<MessageV2.WithParts> {
+    const { agent: selected, noReply: _, ...rest } = RuntimePromptInput.parse(value)
+    const agent = selected ?? (await Agent.defaultAgent())
+    const input = StoredInput.parse({
+      ...rest,
+      effort: MessageV2.resolveResearchEffort(rest.effort),
+      messageID: rest.messageID ?? Identifier.ascending("message"),
+    })
+    const accepted = await admitStored(input, agent)
+    const task = accepted.replayed ? tasks().work.get(accepted.run.runID) : launch(accepted.run)
+    if (task) {
+      const result = await task
+      if (result) return result
+    }
+    // 其他进程/窗口可能拥有任务；只读取持久回执，绝不启动第二条 loop。
+    for (;;) {
+      const current = await get(input.sessionID, accepted.run.runID)
+      if (current.resultMessageID)
+        return MessageV2.get({ sessionID: input.sessionID, messageID: current.resultMessageID })
+      if (finished(current)) throw new Error(current.error?.message ?? `Runtime ${current.state}`)
+      await Bun.sleep(250)
+    }
+  }
+
+  export async function managed(sessionID: string) {
+    return (await Storage.list(prefix(sessionID))).length > 0
+  }
+
   export async function cancel(sessionID: string, runID: string) {
-    const lock = path.join(Global.Path.data, "runtime-admission", digest(Instance.project.id + "\0" + sessionID))
-    await using lease = await FileLease.acquire(lock)
+    await using lease = await RuntimeAdmission.acquire(sessionID)
     const local = executions().get(runID)
     const controller = local?.sessionID === sessionID ? local.controller : undefined
     try {

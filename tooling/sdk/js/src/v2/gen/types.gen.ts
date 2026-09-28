@@ -10079,6 +10079,8 @@ export type ModelConnectionsListResponses = {
       id: string
       name: string
       baseURL: string
+      protocol: "openai-chat-completions" | "openai-responses" | "anthropic-messages"
+      thinking: "auto" | "adaptive"
       models: Array<string>
       hasKey: boolean
       context: number
@@ -10103,7 +10105,9 @@ export type ModelConnectionsSaveData = {
     id?: string
     url: string
     key?: string
+    protocol?: "openai-chat-completions" | "openai-responses" | "anthropic-messages"
     name: string
+    thinking?: "auto" | "adaptive"
     models: Array<string>
     context?: number
     output?: number
@@ -10141,6 +10145,8 @@ export type ModelConnectionsSaveResponses = {
     id: string
     name: string
     baseURL: string
+    protocol: "openai-chat-completions" | "openai-responses" | "anthropic-messages"
+    thinking: "auto" | "adaptive"
     models: Array<string>
     hasKey: boolean
     context: number
@@ -10203,6 +10209,7 @@ export type ModelConnectionsDiscoverData = {
     id?: string
     url: string
     key?: string
+    protocol?: "openai-chat-completions" | "openai-responses" | "anthropic-messages"
   }
   path?: never
   query?: never

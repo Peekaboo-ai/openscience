@@ -8,11 +8,23 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 
 ## Unreleased
 
+- **Harness admission and ownership.** Adapt ZCode's FIFO admission gate and lifecycle boundaries while retaining OpenScience's scientific runtime and PTY ownership. Root session submissions, prompt-template commands and background task wake-ups share durable runtime receipts. Late guidance at text-only completion is drained under the admission lease; cancellation prevents it from restarting work. Slow runtime observers no longer block durable control actions, and project warmup cannot bypass a recorded run's terminal outcome. On Windows, exited processes with outstanding handles no longer count as live runtime owners.
+
+- **Runtime storage lifecycle.** Share concurrent scientific-ledger initialization so SQLite handles are not leaked. Adapt ZCode's bounded retry for transient Windows file sharing errors while retaining atomic publication, cancellation and lease budgets.
+
 ### Added
+
+- **Custom API protocols.** Configure OpenAI Chat Completions, OpenAI Responses, or Anthropic Messages explicitly instead of forcing every custom connection through Chat Completions. Support opt-in adaptive thinking, protocol-specific model discovery and reasoning parameters; preserve saved protocols and live projects while editing connections.
 
 - **Windows Workspaces installer.** Package the native desktop shell, embedded workspace, and Linux/macOS remote runtimes in a per-user EXE installer with desktop/Start menu shortcuts. Keep custom-build identity and user data separate from the upstream app and development server; upgrades and uninstall preserve research data.
 
 ### Fixed
+
+- **Execution policy failures.** Stop the agent turn after the first authoritative execution denial, preserving completed parallel tool results and the original cause. Explain that an unavailable OS sandbox requires server repair or an explicit project Full access choice, instead of suggesting repeated commands or unrelated global settings. Preserve exit codes and signals in direct user Shell results so silent failures remain visible to the model and UI.
+- **Agent execution feedback and convergence.** Preserve non-secret Conda, environment-module, accelerator and scheduler context in remote tool processes. Report nonzero shell exits and signals to the model. Carry catalog-declared reasoning defaults/history for custom connections. Detect unchanged results and short repeating action cycles within the current user task, with a bounded strategy redirect and a clear pause instead of unbounded retries.
+- **Remote SSH startup.** Allow a bounded 30-second handshake and two connection attempts for workspace bridges on high-latency networks, without replaying remote commands or weakening host verification.
+
+- **Custom gateway transport.** Support explicit provider `options.streaming: false` using the AI SDK generation-to-stream adapter when a gateway's streaming route mishandles user messages. Preserve tool calls, cancellation and usage, and retain the setting when editing models on the same endpoint. Other providers continue streaming normally.
 
 - **Windows Unicode profiles.** Encode directory headers in the legacy plugin SDK like the v2 client, so desktop startup also works under Chinese user names and data folders.
 - **Windows installer extraction.** Disable differential archives when using the ZIP extractor, so the Workspaces installer embeds the correct archive format and installs across drives.

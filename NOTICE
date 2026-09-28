@@ -7,6 +7,27 @@ Licensed under the Apache License, Version 2.0.
 It bundles or accesses the following third-party software and services.
 
 --------------------------------------------------------------------------------
+ZCode — harness command admission, stable tool-input serialization and lifecycle design reference
+https://github.com/zai-org/ZCode
+Reference revision: 328c1a0c0ffaa5a4f65e8fa199af5e4c20706e5f
+Copyright ZCode contributors. Licensed under the Apache License, Version 2.0.
+http://www.apache.org/licenses/LICENSE-2.0
+The FIFO admission gate in backend/cli/src/runtime/admission.ts is adapted from
+apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/command-inbox.ts.
+The bounded transient file-operation retry in backend/cli/src/util/transient-file.ts
+is adapted from renameWithRetry in apps/zcode-cli/packages/adapters/src/storage/
+workspace-hook-trust-store.ts at the same revision.
+OpenScience retains its own cross-process leases and scientific execution model.
+The stable tool-input serializer in backend/cli/src/util/stable-json.ts is
+adapted from apps/zcode-cli/packages/core/src/runtime/helpers/model-anomaly.ts
+at the same revision.
+
+The explicit custom API protocol selection and Anthropic-compatible dual-header
+authentication follow apps/zcode-cli/packages/adapters/src/model/model-execution.ts
+at that revision. Credentials remain in OpenScience's auth store; model requests
+use its existing AI SDK adapters and session lifecycle.
+
+--------------------------------------------------------------------------------
 ZCode — Projects/Tasks navigation and remote workspace lifecycle design reference
 https://github.com/zai-org/ZCode
 Reference revision: 872ad96

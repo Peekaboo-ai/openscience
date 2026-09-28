@@ -8,8 +8,9 @@ import { Provider } from "../../src/provider/provider"
 import { Instance } from "../../src/project/instance"
 import { tmpdir } from "../fixture/fixture"
 import { SessionCompaction } from "../../src/session/compaction"
+import { ProviderTransform } from "../../src/provider/transform"
 
-const requests: { url: string; key: string | null; body?: unknown }[] = []
+const requests: { url: string; key: string | null; apiKey: string | null; body?: unknown }[] = []
 const server = Bun.serve({
   port: 0,
   hostname: "127.0.0.1",
@@ -18,6 +19,7 @@ const server = Bun.serve({
     requests.push({
       url: url.pathname,
       key: req.headers.get("authorization"),
+      apiKey: req.headers.get("x-api-key"),
       body: req.method === "POST" ? await req.json() : undefined,
     })
     if (url.pathname === "/denied/models") return new Response("fixture-secret-must-not-leak", { status: 401 })
@@ -37,6 +39,35 @@ const server = Bun.serve({
         ],
         usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
       })
+    if (url.pathname === "/v1/messages")
+      return Response.json({
+        id: "fixture-message",
+        type: "message",
+        role: "assistant",
+        model: "gpt-5.6-sol",
+        content: [{ type: "text", text: "Connected successfully" }],
+        stop_reason: "end_turn",
+        stop_sequence: null,
+        usage: { input_tokens: 3, output_tokens: 2 },
+      })
+    if (url.pathname === "/v1/responses")
+      return Response.json({
+        id: "fixture-response",
+        object: "response",
+        created_at: 1,
+        model: "gpt-5.6-sol",
+        status: "completed",
+        output: [
+          {
+            type: "message",
+            id: "message",
+            role: "assistant",
+            status: "completed",
+            content: [{ type: "output_text", text: "Connected successfully", annotations: [] }],
+          },
+        ],
+        usage: { input_tokens: 3, output_tokens: 2, total_tokens: 5 },
+      })
     return new Response("Not found", { status: 404 })
   },
 })
@@ -44,6 +75,11 @@ afterAll(() => server.stop(true))
 const base = server.url.toString().replace(/\/$/, "")
 
 test("normalizes base URLs without changing gateway prefixes", () => {
+  for (const suffix of ["responses", "messages"]) {
+    expect(CustomConnections.normalizeURL(`https://api.example.com/gateway/v1/${suffix}`)).toBe(
+      "https://api.example.com/gateway/v1",
+    )
+  }
   expect(CustomConnections.normalizeURL("https://api.example.com/")).toBe("https://api.example.com/v1")
   expect(CustomConnections.normalizeURL("https://api.example.com/gateway/v2/models")).toBe(
     "https://api.example.com/gateway/v2",
@@ -60,6 +96,86 @@ test("normalizes base URLs without changing gateway prefixes", () => {
     expect(() => CustomConnections.normalizeURL(url)).toThrow()
   }
 })
+
+for (const protocol of ["anthropic-messages", "openai-responses"] as const) {
+  test(`custom ${protocol} routes through its SDK and survives editing without disposing the project`, async () => {
+    await using tmp = await tmpdir()
+    const created = await CustomConnections.save({
+      name: "Protocol fixture",
+      url: base,
+      key: "protocol-fixture-key",
+      models: ["gpt-5.6-sol"],
+      protocol,
+      thinking: "adaptive",
+    })
+    try {
+      await Instance.provide({
+        directory: tmp.path,
+        fn: async () => {
+          const sentinel = Instance.state(() => ({}))
+          const current = sentinel()
+          const model = await Provider.getModel(created.id, "gpt-5.6-sol")
+          const options = {
+            ...ProviderTransform.options({ model, sessionID: "protocol-test" }),
+            ...model.options,
+            ...model.variants?.xhigh,
+          }
+          const result = await generateText({
+            model: await Provider.getLanguage(model),
+            prompt: "保留原始任务内容",
+            providerOptions: ProviderTransform.providerOptions(model, options),
+            maxOutputTokens: 4096,
+            maxRetries: 0,
+          })
+          expect(result.text).toBe("Connected successfully")
+          if (protocol === "anthropic-messages") {
+            expect(requests.at(-1)).toMatchObject({
+              url: "/v1/messages",
+              key: "Bearer protocol-fixture-key",
+              apiKey: "protocol-fixture-key",
+              body: {
+                thinking: { type: "adaptive" },
+                output_config: { effort: "xhigh" },
+                messages: [{ role: "user", content: [{ type: "text", text: "保留原始任务内容" }] }],
+              },
+            })
+            expect(options).not.toHaveProperty("reasoningEffort")
+            await CustomConnections.discover({ id: created.id, url: base })
+            expect(requests.at(-1)?.apiKey).toBe("protocol-fixture-key")
+          } else {
+            expect(requests.at(-1)).toMatchObject({
+              url: "/v1/responses",
+              body: { reasoning: { effort: "xhigh" }, store: false },
+            })
+          }
+          const edited = await CustomConnections.save({
+            id: created.id,
+            name: "Edited",
+            url: base,
+            models: created.models,
+          })
+          expect(edited.protocol).toBe(protocol)
+          expect(edited.thinking).toBe(protocol === "anthropic-messages" ? "adaptive" : "auto")
+          expect((await CustomConnections.list()).find((item) => item.id === created.id)?.protocol).toBe(protocol)
+          expect(sentinel()).toBe(current)
+          await CustomConnections.save({
+            id: created.id,
+            name: "Chat",
+            url: base,
+            models: created.models,
+            protocol: "openai-chat-completions",
+          })
+          const switched = await Provider.getModel(created.id, "gpt-5.6-sol")
+          expect(switched.api.npm).toBe("@ai-sdk/openai-compatible")
+          expect(switched.options.thinking).toBeUndefined()
+          expect(await Auth.get(created.id)).toEqual({ type: "api", key: "protocol-fixture-key" })
+        },
+      })
+    } finally {
+      await CustomConnections.remove(created.id)
+    }
+  })
+}
 
 test("discovers and deduplicates models, rejects redirects and sanitizes upstream errors", async () => {
   expect(await CustomConnections.discover({ url: base, key: "fixture-key" })).toMatchObject({
@@ -111,6 +227,10 @@ test("saved connections route real completions, replace selections and keep secr
           key: "Bearer fixture-key",
           body: { model: "lab/alpha" },
         })
+        const saved = (await Config.getGlobal()).provider![created.id]
+        await Config.setProvider(created.id, { ...saved, options: { ...saved.options, streaming: false } }, "global", {
+          preserveInstances: true,
+        })
         await CustomConnections.save({
           id: created.id,
           name: "Edited gateway",
@@ -121,6 +241,15 @@ test("saved connections route real completions, replace selections and keep secr
         })
         expect(Object.keys((await Provider.list())[created.id].models)).toEqual(["lab/alpha"])
         expect((await Provider.list())[created.id].models["lab/alpha"].limit.context).toBe(65536)
+        expect((await Config.getGlobal()).provider![created.id].options?.streaming).toBe(false)
+        await CustomConnections.save({
+          id: created.id,
+          name: "Moved",
+          url: `${base}/different`,
+          key: "fixture-key",
+          models: ["lab/alpha"],
+        })
+        expect((await Config.getGlobal()).provider![created.id].options?.streaming).toBeUndefined()
         await Auth.remove(created.id)
         Provider.invalidate()
         expect((await Provider.list())[created.id]).toBeUndefined()

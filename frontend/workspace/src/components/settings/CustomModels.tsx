@@ -11,12 +11,20 @@ import { useModels } from "@/context/models"
 import { confirmDialog } from "@/atlas/dialogs"
 import { useDialog } from "@synsci/ui/context/dialog"
 import { settingsApi } from "./api"
-import { steady } from "./_shared"
+import { FilterMenu, steady } from "./_shared"
 
+const protocols = [
+  { id: "openai-chat-completions", label: "OpenAI Chat Completions" },
+  { id: "openai-responses", label: "OpenAI Responses" },
+  { id: "anthropic-messages", label: "Anthropic Messages" },
+] as const
+type Protocol = (typeof protocols)[number]["id"]
 type Connection = {
   id: string
   name: string
   baseURL: string
+  protocol: Protocol
+  thinking: "auto" | "adaptive"
   models: string[]
   hasKey: boolean
   context: number
@@ -35,6 +43,8 @@ const empty = () => ({
   id: "",
   name: "",
   url: "",
+  protocol: "openai-chat-completions" as Protocol,
+  thinking: "auto" as "auto" | "adaptive",
   key: "",
   hasKey: false,
   savedURL: "",
@@ -76,6 +86,8 @@ export function CustomModels() {
               id: connection.id,
               name: connection.name,
               url: connection.baseURL,
+              protocol: connection.protocol ?? "openai-chat-completions",
+              thinking: connection.thinking ?? "auto",
               savedURL: connection.baseURL,
               hasKey: connection.hasKey,
               models: connection.models,
@@ -93,7 +105,12 @@ export function CustomModels() {
       "selected",
       checked ? [...new Set([...state.selected, id])] : state.selected.filter((value) => value !== id),
     )
-  const endpoint = () => ({ id: state.id || undefined, url: state.url.trim(), key: state.key.trim() || undefined })
+  const endpoint = () => ({
+    id: state.id || undefined,
+    url: state.url.trim(),
+    key: state.key.trim() || undefined,
+    protocol: state.protocol,
+  })
   const discover = async () => {
     setState({ busy: "discover", error: "" })
     try {
@@ -132,6 +149,7 @@ export function CustomModels() {
         body: JSON.stringify({
           ...endpoint(),
           name: state.name.trim(),
+          thinking: state.thinking,
           models: state.selected,
           limits: Object.fromEntries(state.selected.map((id) => [id, state.limits[id]])),
         }),
@@ -245,7 +263,7 @@ export function CustomModels() {
           <div class="models-provider-copy">
             <span class="text-14-medium text-text-strong">Custom API connections</span>
             <span class="text-12-regular text-text-weak">
-              Connect models with an OpenAI-compatible API URL and key.
+              Connect models using your provider’s API URL, key, and protocol.
             </span>
           </div>
         </div>
@@ -284,6 +302,24 @@ export function CustomModels() {
           }}
         >
           <div class="models-custom-fields">
+            <div class="models-key-field models-custom-wide">
+              <span class="text-12-medium text-text-weak">API protocol</span>
+              <FilterMenu
+                options={[...protocols]}
+                value={state.protocol}
+                ariaLabel="API protocol"
+                disabled={!!state.busy}
+                onSelect={(id) => {
+                  const item = protocols.find((item) => item.id === id)
+                  if (!item) return
+                  setState({ protocol: item.id, thinking: "auto" })
+                  invalidate()
+                }}
+              />
+              <span class="text-12-regular text-text-weak">
+                Match the protocol supported by your provider. The model name does not determine the API format.
+              </span>
+            </div>
             <label class="models-key-field">
               <span class="text-12-medium text-text-weak">Connection name</span>
               <input
@@ -329,9 +365,28 @@ export function CustomModels() {
             </label>
           </div>
           <p class="text-12-regular text-text-weak">
-            Keys are stored in the owner-only local auth file. Use the base URL for Chat Completions; model discovery
-            requests /models.
+            Keys are stored in the owner-only auth file on the selected backend. Model discovery requests /models; you
+            can also add model IDs manually.
           </p>
+          <Show when={state.protocol === "anthropic-messages"}>
+            <div class="models-key-field">
+              <span class="text-12-medium text-text-weak">Thinking mode</span>
+              <FilterMenu
+                options={[
+                  { id: "auto", label: "Model default" },
+                  { id: "adaptive", label: "Adaptive thinking" },
+                ]}
+                value={state.thinking}
+                ariaLabel="Thinking mode"
+                disabled={!!state.busy}
+                onSelect={(value) => setState("thinking", value === "adaptive" ? "adaptive" : "auto")}
+              />
+              <span class="text-12-regular text-text-weak">
+                Enable adaptive thinking only when your endpoint supports it. Choose reasoning effort in the
+                conversation.
+              </span>
+            </div>
+          </Show>
           <div class="models-custom-toolbar">
             <Button
               type="button"
@@ -567,6 +622,8 @@ export function CustomModels() {
                   </span>
                   <span class="text-12-regular text-text-weak">
                     {connection.models.length} models · {connection.hasKey ? "Key saved" : "API key required"}
+                    {" · "}
+                    {protocols.find((item) => item.id === connection.protocol)?.label ?? "OpenAI Chat Completions"}
                   </span>
                 </div>
               </div>

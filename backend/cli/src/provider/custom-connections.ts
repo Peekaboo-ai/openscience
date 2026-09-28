@@ -8,6 +8,18 @@ import { ModelsDev } from "./models"
 import { CustomModelLimits } from "./custom-model-limits"
 
 export namespace CustomConnections {
+  export const Protocol = z.enum(["openai-chat-completions", "openai-responses", "anthropic-messages"])
+  const adapters = {
+    "openai-chat-completions": "@ai-sdk/openai-compatible",
+    "openai-responses": "@ai-sdk/openai",
+    "anthropic-messages": "@ai-sdk/anthropic",
+  } as const
+  const Thinking = z.enum(["auto", "adaptive"])
+  function protocol(provider?: Config.Provider): z.infer<typeof Protocol> {
+    if (provider?.npm === "@ai-sdk/anthropic") return "anthropic-messages"
+    if (provider?.npm === "@ai-sdk/openai") return "openai-responses"
+    return "openai-chat-completions"
+  }
   const ID = z.string().regex(/^custom-[a-f0-9-]{36}$/)
   const ModelID = z
     .string()
@@ -19,9 +31,11 @@ export namespace CustomConnections {
     id: ID.optional(),
     url: z.string().trim().min(1).max(2048),
     key: z.string().trim().min(1).max(8192).optional(),
+    protocol: Protocol.optional(),
   })
   export const Input = Endpoint.extend({
     name: z.string().trim().min(1).max(80),
+    thinking: Thinking.optional(),
     models: z.array(ModelID).min(1).max(2000),
     context: z.number().int().min(1024).max(2_147_483_647).optional(),
     output: z.number().int().min(1).max(2_147_483_647).optional(),
@@ -40,6 +54,8 @@ export namespace CustomConnections {
     id: z.string(),
     name: z.string(),
     baseURL: z.string(),
+    protocol: Protocol,
+    thinking: Thinking,
     models: z.array(z.string()),
     hasKey: z.boolean(),
     context: z.number(),
@@ -52,7 +68,8 @@ export namespace CustomConnections {
     if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
       throw new Error("Use an HTTP(S) API base URL without credentials, query parameters, or fragments.")
     }
-    url.pathname = url.pathname.replace(/\/+$/, "").replace(/\/(models|chat\/completions)$/, "") || "/v1"
+    url.pathname =
+      url.pathname.replace(/\/+$/, "").replace(/\/(models|chat\/completions|responses|messages)$/, "") || "/v1"
     return url.toString().replace(/\/+$/, "")
   }
 
@@ -67,13 +84,14 @@ export namespace CustomConnections {
   async function credentials(input: z.infer<typeof Endpoint>) {
     const baseURL = normalizeURL(input.url)
     const previous = input.id ? await existing(input.id) : undefined
-    if (input.key) return { baseURL, key: input.key }
+    const selected = input.protocol ?? protocol(previous)
+    if (input.key) return { baseURL, key: input.key, protocol: selected }
     if (!previous || previous.options?.baseURL !== baseURL) {
       throw new Error("Enter an API key for this endpoint. A changed URL requires a new key.")
     }
     const auth = await Auth.get(input.id!)
     if (auth?.type !== "api" || !auth.key.trim()) throw new Error("Enter an API key for this connection.")
-    return { baseURL, key: auth.key }
+    return { baseURL, key: auth.key, protocol: selected }
   }
 
   export async function list() {
@@ -95,6 +113,8 @@ export namespace CustomConnections {
             id,
             name: p.name ?? id,
             baseURL: String(p.options?.baseURL ?? p.api ?? ""),
+            protocol: protocol(p),
+            thinking: p.options?.customThinking === "adaptive" ? ("adaptive" as const) : ("auto" as const),
             models: Object.keys(p.models ?? {}),
             hasKey: auth?.type === "api" && !!auth.key.trim(),
             context: first?.context ?? 128_000,
@@ -124,9 +144,13 @@ export namespace CustomConnections {
 
   export async function discover(raw: z.input<typeof Endpoint>) {
     const input = Endpoint.parse(raw)
-    const { baseURL, key } = await credentials(input)
+    const { baseURL, key, protocol } = await credentials(input)
     const response = await fetch(`${baseURL}/models`, {
-      headers: { Authorization: `Bearer ${key}`, Accept: "application/json" },
+      headers: {
+        Authorization: `Bearer ${key}`,
+        Accept: "application/json",
+        ...(protocol === "anthropic-messages" ? { "x-api-key": key, "anthropic-version": "2023-06-01" } : {}),
+      },
       redirect: "error",
       signal: AbortSignal.timeout(15000),
     }).catch(() => {
@@ -187,9 +211,13 @@ export namespace CustomConnections {
     const input = Input.parse(raw)
     await using lease = await FileLease.acquire(path.join(Global.Path.data, "custom-model-connections.lock"))
     return await lease.during(async () => {
-      const { baseURL, key } = await credentials(input)
+      const { baseURL, key, protocol } = await credentials(input)
       const id = input.id ?? `custom-${crypto.randomUUID()}`
       const previous = input.id ? await existing(id) : undefined
+      const thinking =
+        protocol === "anthropic-messages"
+          ? (input.thinking ?? (previous?.options?.customThinking === "adaptive" ? "adaptive" : "auto"))
+          : "auto"
       const auth = await Auth.get(id)
       const models = [...new Set(input.models)]
       const catalog = await ModelsDev.get()
@@ -214,11 +242,18 @@ export namespace CustomConnections {
       )
       const block: Config.Provider = {
         name: input.name,
-        npm: "@ai-sdk/openai-compatible",
+        npm: adapters[protocol],
         api: baseURL,
         options: {
           baseURL,
           customConnection: true,
+          customThinking: thinking,
+          // 同一网关编辑模型列表时保留已确认的传输兼容设置；换地址不继承旧网关限制。
+          ...(previous?.options?.baseURL === baseURL &&
+          previous.npm === adapters[protocol] &&
+          typeof previous.options.streaming === "boolean"
+            ? { streaming: previous.options.streaming }
+            : {}),
           customModelLimits: Object.fromEntries(
             models.map((id) => [id, { mode: limits[id].mode, source: limits[id].source }]),
           ),
@@ -231,6 +266,8 @@ export namespace CustomConnections {
               id,
               name: id,
               tool_call: true,
+              // 显式能力覆盖独立于模型名称，不向其他协议发送 Anthropic 参数。
+              ...(thinking === "adaptive" ? { options: { thinking: { type: "adaptive" } } } : {}),
               modalities: { input: ["text"], output: ["text"] },
               limit: {
                 context: limits[id].context,
@@ -257,6 +294,8 @@ export namespace CustomConnections {
         id,
         name: input.name,
         baseURL,
+        protocol,
+        thinking,
         models,
         hasKey: true,
         context: first.context,

@@ -1,15 +1,12 @@
 /**
- * A restart the person asked for while turns were running. The running turns
- * are aborted with this reason; the processor leaves each turn unfinished (no
- * error, no completion time), which is the shape of a turn the process died
- * under, so the next process continues it through resumeInterrupted. The
- * pending tool calls are closed with the reason, so the transcript says why
- * they stopped rather than showing a generic abort.
+ * 用户主动升级时的中断原因。保留未完成 transcript，工具调用写入明确中断原因。
+ * 有持久回执的根回合遵循 RuntimeRuns 的恢复政策，不能由项目预热重新执行；
+ * 无回执的旧会话仍由 resumeInterrupted 兼容处理。
  */
 export namespace SessionRestart {
   export class Interruption extends Error {
     constructor() {
-      super("Paused to install an update; OpenScience continues this turn after the restart.")
+      super("Paused to install an update; review the interrupted turn after the restart before continuing.")
       this.name = "RestartInterruption"
     }
   }

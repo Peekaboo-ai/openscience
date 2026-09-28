@@ -28,6 +28,7 @@ import type { NamedError } from "@synsci/util/error"
 import { ToolRetryGuard } from "./tool-retry-guard"
 import { SearchDedupe } from "./search-dedupe"
 import { SessionLoopState } from "./loop-state"
+import { stableJson } from "../util/stable-json"
 import type { Tool } from "@/tool/tool"
 import { InvalidCall } from "@/tool/invalid-call"
 import { CredentialRevocation } from "@/credentials/revocation"
@@ -35,6 +36,7 @@ import { SessionRestart } from "./restart"
 import { abortedToolPart } from "./tool-outcome"
 import { outputWatchdog, watchOutput } from "./output-watchdog"
 import { defer } from "@/util/defer"
+import { ExecutionAuthority } from "@/project/execution"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -121,9 +123,32 @@ export namespace SessionProcessor {
     const last = tools.slice(-threshold)
     if (last.length < threshold) return false
     return last.every(
-      (p) =>
-        p.tool === toolName && p.state.status !== "pending" && JSON.stringify(p.state.input) === JSON.stringify(input),
+      (p) => p.tool === toolName && p.state.status !== "pending" && stableJson(p.state.input) === stableJson(input),
     )
+  }
+
+  // 对照 OpenAI4S ProgressCircuit：相同行动只有在结果也不变时才算停滞。
+  // 从当前用户任务的持久记录重建；识别连续重复和短周期轮转，不计思考/文本片段。
+  export function stalledTool(parts: MessageV2.Part[]): string | undefined {
+    const calls = parts.filter((part): part is MessageV2.ToolPart => part.type === "tool").slice(-9)
+    for (const width of [1, 2, 3]) {
+      const recent = calls.slice(-width * 3)
+      if (recent.length !== width * 3 || recent.some((part) => part.state.status !== "completed")) continue
+      const signatures = recent.map((part) =>
+        stableJson({
+          tool: part.tool,
+          input: part.state.input,
+          output: part.state.status === "completed" ? part.state.output : undefined,
+          // 科研脚本可能只有文件产物而没有 stdout；产物变化同样是有效进展。
+          outputFiles: part.state.status === "completed" ? part.state.metadata.outputFiles : undefined,
+          attachments:
+            part.state.status === "completed"
+              ? part.state.attachments?.map(({ mime, url, filename }) => ({ mime, url, filename }))
+              : undefined,
+        }),
+      )
+      if (signatures.every((signature, index) => signature === signatures[index % width])) return recent.at(-1)!.tool
+    }
   }
 
   export function isMalformedLoop(parts: MessageV2.Part[], input: unknown, threshold = 2) {
@@ -778,7 +803,8 @@ export namespace SessionProcessor {
   }) {
     let snapshot: string | undefined
     let blocked = false
-    let guardTrip: { kind: "tool_errors"; tool: string } | undefined
+    let executionDenied: ExecutionAuthority.DeniedError | undefined
+    let guardTrip: { kind: "tool_errors" | "repeated_call"; tool: string } | undefined
     let shouldBreakOnDeny = true
     let attempt = 0
     let transientRetries = 0
@@ -794,6 +820,13 @@ export namespace SessionProcessor {
       identity: { messageID: input.assistantMessage.id, sessionID: input.assistantMessage.sessionID },
       onActive: (active) => output?.pause(active),
       onRejected(error) {
+        // 执行策略拒绝不是工具用法错误；换工具或派生智能体也不能恢复权限。
+        // 与 OpenCode 的权限拒绝一样结束当前轮，避免科研工具之间轮流重试。
+        if (ExecutionAuthority.DeniedError.isInstance(error)) {
+          executionDenied ??= error
+          blocked = true
+          return
+        }
         if (error instanceof InvalidCall.RepeatedError) {
           blocked = true
           return
@@ -839,14 +872,17 @@ export namespace SessionProcessor {
         return guardTrip
       },
       /** No unit redirected the trip: end the turn the way the guard always did. */
-      async stopOnGuard(trip: { kind: "tool_errors"; tool: string }) {
+      async stopOnGuard(trip: { kind: "tool_errors" | "repeated_call"; tool: string }) {
         await Session.updatePart({
           id: Identifier.ascending("part"),
           messageID: input.assistantMessage.id,
           sessionID: input.sessionID,
           type: "text",
           synthetic: true,
-          text: toolErrorStopMessage(trip.tool),
+          text:
+            trip.kind === "repeated_call"
+              ? `OpenScience paused this turn because the same tool actions returned unchanged results three times. No further calls were made. Review the existing results, change the approach, or provide new guidance before continuing.`
+              : toolErrorStopMessage(trip.tool),
           time: { start: Date.now(), end: Date.now() },
         } satisfies MessageV2.TextPart)
       },
@@ -1436,6 +1472,13 @@ export namespace SessionProcessor {
           // the SDK already started execute(). Do not publish a completed
           // assistant turn until those authoritative execute promises settle.
           await toolOutcomes.drain()
+          if (executionDenied && !input.assistantMessage.error && !input.abort.aborted) {
+            input.assistantMessage.error = MessageV2.fromError(executionDenied, { providerID: input.model.providerID })
+            await Bus.publish(Session.Event.Error, {
+              sessionID: input.sessionID,
+              error: input.assistantMessage.error,
+            })
+          }
           if (snapshot) {
             const patch = await Snapshot.patch(snapshot)
             if (patch.files.length) {
@@ -1479,19 +1522,21 @@ export namespace SessionProcessor {
           // second such error, append corrective guidance to the tool result the
           // model will read next; on the third, stop the turn.
           if (!overflow && !needsCompaction && !blocked && !input.assistantMessage.error) {
+            // 复用当前任务 epoch，避免每次命令结束都重新扫描整段会话历史。
+            const all = [...(await history()), { info: input.assistantMessage, parts: p }]
+            const redirect = all
+              .filter(
+                (message) => message.info.role === "user" && SessionLoopState.messageKind(message.info) === "harness",
+              )
+              .sort((a, b) => a.info.id.localeCompare(b.info.id))
+              .at(-1)
+            const scoped = redirect ? all.filter((message) => message.info.id > redirect.info.id) : all
+            const recent = turnParts(scoped, input.assistantMessage.parentID)
             const lastError = p.findLast(
               (part): part is MessageV2.ToolPart => part.type === "tool" && part.state.status === "error",
             )
             if (lastError && lastError.state.status === "error") {
-              const all = await Array.fromAsync(MessageV2.stream(input.sessionID))
-              // A harness redirect opens a fresh window: failures before it were
-              // already answered, so only those after it count toward the next trip.
-              const redirect = all.find(
-                (message) => message.info.role === "user" && SessionLoopState.messageKind(message.info) === "harness",
-              )
-              const scoped = redirect ? all.filter((message) => message.info.id > redirect.info.id) : all
-              const history = turnParts(scoped, input.assistantMessage.parentID)
-              const action = toolErrorLoopAction(history, lastError.tool)
+              const action = toolErrorLoopAction(recent, lastError.tool)
               if (action !== "none" && !lastError.state.error.includes(toolErrorGuidance(lastError.tool))) {
                 await Session.updatePart({
                   ...lastError,
@@ -1504,6 +1549,10 @@ export namespace SessionProcessor {
               // The loop decides what a tripped guard means: a harness unit may
               // redirect the model instead of ending the turn.
               if (action === "stop") guardTrip = { kind: "tool_errors", tool: lastError.tool }
+            }
+            if (!guardTrip && p.some((part) => part.type === "tool" && part.state.status === "completed")) {
+              const tool = stalledTool(recent)
+              if (tool) guardTrip = { kind: "repeated_call", tool }
             }
           }
           // A turn paused for a restart is left unfinished on purpose: no error,

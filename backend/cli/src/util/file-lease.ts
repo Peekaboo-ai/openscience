@@ -2,6 +2,7 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { DataRootBarrier } from "@/global/data-root-barrier"
 import { LockCoordination } from "@/util/lock-coordination"
+import { transientFile } from "./transient-file"
 
 export namespace FileLease {
   const timeout = 10_000
@@ -129,10 +130,12 @@ export namespace FileLease {
           const attempt = await (async () => {
             await using intent = await LockCoordination.intent(filepath, grace)
             if (await intent.blocked()) return { status: "blocked" as const }
-            const handle = await fs.open(filepath, "wx", 0o600).catch((error: NodeJS.ErrnoException) => {
-              if (error.code === "EEXIST") return
-              throw error
-            })
+            const handle = await transientFile(() => fs.open(filepath, "wx", 0o600), { signal, timeoutMs }).catch(
+              (error: NodeJS.ErrnoException) => {
+                if (error.code === "EEXIST") return
+                throw error
+              },
+            )
             if (handle) return { status: "acquired" as const, handle }
             return { status: "occupied" as const }
           })()

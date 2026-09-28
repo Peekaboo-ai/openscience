@@ -4,6 +4,8 @@ Use Bash for builds, tests, packages, Git, utilities, and scripts. Prefer file t
 
 The default `environment: "shell"` uses the host's environment without provisioning Python. Activate an existing Conda/venv environment and run its commands in the SAME call; activation does not persist across Bash calls or change an already-open terminal. Use `environment: "python"` only for OpenScience's existing Python runtime and shared project packages, not when activating a user environment. Missing runtimes must be installed explicitly through environment management. Preparation and execution share the timeout (default 120000 ms); use a bounded timeout appropriate to the work.
 
+For an existing named Conda environment, prefer `conda run --no-capture-output -n <name> <executable> ...`. Do not nest a login shell (`bash -lc`) inside it: login profiles can reset the selected environment's PATH. Reuse confirmed executable locations and environment results instead of searching again. If a bounded network or runtime check fails, use its exit status to diagnose the cause before retrying the same check.
+
 Use the web and literature tools for internet retrieval, not curl or wget.
 
 All Bash children stop when the call ends; `&`, `nohup`, `disown`, and `setsid` are not durable. For work that must outlive the call, use the durable job tool when it is offered (start a local job, then wait for it); never poll with Bash.

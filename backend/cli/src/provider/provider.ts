@@ -7,7 +7,13 @@ import { Config } from "../config/config"
 import { Global } from "../global"
 import { WorkspaceCredentials } from "../openscience/workspace-credentials"
 import { mapValues, mergeDeep, omit, pickBy, sortBy } from "remeda"
-import { APICallError, NoSuchModelError, type Provider as SDK } from "ai"
+import {
+  APICallError,
+  NoSuchModelError,
+  simulateStreamingMiddleware,
+  wrapLanguageModel,
+  type Provider as SDK,
+} from "ai"
 import { Log } from "../util/log"
 import { BunProc } from "../bun"
 import { Plugin } from "../plugin"
@@ -2379,6 +2385,7 @@ export namespace Provider {
             ? customReasoning(
                 model.id ?? modelID,
                 Object.values(database).flatMap((entry) => Object.values(entry.models)),
+                model.provider?.npm ?? provider.npm,
               )
             : undefined
         const baseURL = typeof provider.options?.baseURL === "string" ? provider.options.baseURL : undefined
@@ -2436,7 +2443,7 @@ export namespace Provider {
             // capability above — otherwise overriding any single field (e.g. cost)
             // on an interleaved-reasoning model dropped its {field} object, so
             // normalizeMessages stopped relocating prior-turn reasoning.
-            interleaved: model.interleaved ?? existingModel?.capabilities.interleaved ?? false,
+            interleaved: model.interleaved ?? existingModel?.capabilities.interleaved ?? custom?.interleaved ?? false,
           },
           cost: {
             input: model?.cost?.input ?? existingModel?.cost?.input ?? 0,
@@ -3013,6 +3020,13 @@ export namespace Provider {
           ...model.headers,
         }
 
+      if (provider.options.customConnection === true && model.api.npm === "@ai-sdk/anthropic" && options.apiKey) {
+        // 部分 Messages 兼容网关同时读取 Bearer 和 x-api-key；显式 Authorization 优先。
+        const headers = new Headers(options.headers)
+        if (!headers.has("authorization")) headers.set("authorization", `Bearer ${options.apiKey}`)
+        options.headers = Object.fromEntries(headers)
+      }
+
       const key = Bun.hash.xxHash32(JSON.stringify({ providerID: model.providerID, npm: model.api.npm, options }))
       const existing = s.sdk.get(key)
       if (existing) return existing
@@ -3238,8 +3252,14 @@ export namespace Provider {
       const language = s.modelLoaders[model.providerID]
         ? await s.modelLoaders[model.providerID](sdk, model.api.id, provider.options)
         : sdk.languageModel(model.api.id)
-      s.models.set(key, language)
-      return language
+      // 仅显式配置的兼容网关走非流式生成；复用 SDK 事件适配，保留工具调用、用量和取消语义。
+      // 不能按回复内容自动重试，否则会重复计费，且无法可靠判断回答是否偏题。
+      const resolved =
+        provider.options.streaming === false
+          ? wrapLanguageModel({ model: language, middleware: simulateStreamingMiddleware() })
+          : language
+      s.models.set(key, resolved)
+      return resolved
     } catch (e) {
       if (e instanceof NoSuchModelError)
         throw new ModelNotFoundError(

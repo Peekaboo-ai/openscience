@@ -49,7 +49,12 @@ export async function transport(target: Target, signal: AbortSignal) {
           : target.kind === "docker"
             ? ["exec", "-i", target.container, "sh", "-c", script]
             : []
-    if (ssh) args.splice(args.indexOf("--"), 0, "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3")
+    if (ssh) {
+      // 长连接建立允许高延迟网关完成握手；仅重试 TCP 建连，不重放已执行的远端命令。
+      // OpenSSH 同一选项取首值，放在通用探测用的 8 秒配置之前；外层仍有超时/取消边界。
+      args.unshift("-o", "ConnectTimeout=30", "-o", "ConnectionAttempts=2")
+      args.splice(args.indexOf("--"), 0, "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3")
+    }
     const proc = spawn(executable, args, {
       env: ssh ? SshAdapter.env() : process.env,
       windowsHide: true,

@@ -2,7 +2,7 @@ import { RuntimePromptInput, PromptInput as PublicPromptInput } from "./prompt-i
 import path from "path"
 import os from "os"
 import fs from "fs/promises"
-import { AsyncLocalStorage } from "node:async_hooks"
+import { SessionController } from "./controller"
 import z from "zod"
 import { Identifier } from "../id/id"
 import { MessageV2 } from "./message-v2"
@@ -196,71 +196,22 @@ export namespace SessionPrompt {
     }
   }
 
-  const processActive = new Set<string>()
-  const activityKey = (sessionID: string) => `${Instance.project.id}:${sessionID}`
-
-  export function activeCount() {
-    return processActive.size
-  }
-
-  const state = Instance.state(
-    () => {
-      const data: Record<
-        string,
-        {
-          abort: AbortController
-          callbacks: {
-            resolve(input: MessageV2.WithParts): void
-            reject(): void
-          }[]
-        }
-      > = {}
-      return data
-    },
-    async (current) => {
-      for (const [sessionID, item] of Object.entries(current)) {
-        processActive.delete(activityKey(sessionID))
-        item.abort.abort()
-        for (const callback of item.callbacks) {
-          callback.reject()
-        }
-      }
-    },
-  )
-
-  const pending = Instance.state(
-    () => new Map<string, AbortController>(),
-    async (current) => {
-      for (const [sessionID, controller] of current) {
-        processActive.delete(activityKey(sessionID))
-        controller.abort(new MessageV2.AbortedError({ message: "The runtime stopped during prompt preparation." }))
-      }
-      current.clear()
-    },
-  )
-  const admission = new AsyncLocalStorage<{ sessionID: string; controller: AbortController }>()
-
-  function preparation(sessionID: string) {
-    const current = admission.getStore()
-    return current?.sessionID === sessionID ? current.controller : undefined
-  }
-
-  function assertPreparing(sessionID: string) {
-    preparation(sessionID)?.signal.throwIfAborted()
-  }
+  export const activeCount = SessionController.activeCount
+  const preparation = SessionController.preparation
+  const assertPreparing = SessionController.assertPreparing
 
   /** Run work outside the calling turn's admission context. Background
    * workers outlive the turn that dispatched them; a wake-up issued from
    * inside that turn's async context would otherwise see the finished turn's
    * aborted reservation and refuse to start. */
   export function detached<T>(fn: () => Promise<T>) {
-    return admission.exit(fn)
+    return SessionController.detached(fn)
   }
 
   // The loop aborts its controller during disposal to stop any remaining
   // background work. That cleanup is not a cancellation of the completed
   // prompt returned to its caller.
-  const completed = Symbol("prompt.completed")
+  const completed = SessionController.completed
 
   async function cancellable<T>(signal: AbortSignal, action: () => Promise<T>) {
     signal.throwIfAborted()
@@ -302,15 +253,13 @@ export namespace SessionPrompt {
   }
 
   /**
-   * Sessions the previous process left mid-turn: a lead that was working
-   * when the server restarted picks its loop back up, a worker whose lead is
-   * gone is closed with the reason. Nothing here spends on a session that
-   * has been quiet longer than the window. Runs once per project at warmup.
+   * 项目预热只自动续接没有持久回执的旧会话；新根回合交给 RuntimeRuns 裁决，
+   * 恢复历史不能重复执行已产生副作用的命令。失去父回合的 worker 明确中断。
    */
   export async function resumeInterrupted(now = Date.now()) {
     const resumed: string[] = []
     for await (const session of Session.list()) {
-      if (state()[session.id] || pending().has(session.id)) continue
+      if (SessionController.has(session.id)) continue
       if (now - session.time.updated > RESUME_WINDOW_MS) continue
       const messages = await Session.messages({ sessionID: session.id }).catch(() => [])
       if (!interrupted(messages)) continue
@@ -325,6 +274,13 @@ export namespace SessionPrompt {
         })
         continue
       }
+      // 对照 ZCode cold-session-resume 的边界：恢复历史不等于重新执行输入。
+      // 持久 runtime 已裁决的会话不能由 warmup 绕过回执再次启动。
+      const { RuntimeRuns } = await import("../runtime/runs")
+      if (await RuntimeRuns.managed(session.id)) {
+        await RuntimeRuns.list(session.id)
+        continue
+      }
       log.info("resuming a session the previous process left mid-turn", { sessionID: session.id })
       resumed.push(session.id)
       detached(() => loop(session.id)).catch((error) =>
@@ -335,13 +291,8 @@ export namespace SessionPrompt {
   }
 
   /**
-   * Stop every running turn for a restart the person asked for. Each turn is
-   * left unfinished with its tool calls closed under the reason, so the next
-   * process picks it up through resumeInterrupted; workers are aborted with
-   * their leads and re-dispatched by them.
-   *
-   * The restart route runs outside any project instance, and turns belong
-   * to their instances, so each live instance is entered to cancel its own.
+   * 升级中断按实例释放回合，关闭其工具调用并保留原因。持久回执不自动重放，
+   * worker 随父回合停止；独立 PTY/科研作业仍遵循各自的资源生命周期。
    */
   export async function pauseForRestart(): Promise<number> {
     let paused = 0
@@ -352,8 +303,7 @@ export namespace SessionPrompt {
   }
 
   export function assertNotBusy(sessionID: string) {
-    const match = state()[sessionID] ?? pending().get(sessionID)
-    if (match) throw new Session.BusyError(sessionID)
+    SessionController.assertNotBusy(sessionID)
   }
 
   export const PromptInput = PublicPromptInput
@@ -363,21 +313,21 @@ export namespace SessionPrompt {
    * The eventual loop reuses this controller, so an abort waiting on durable
    * coordination cannot miss the handoff or cancel a replacement request. */
   export async function withCancellation<T>(sessionID: string, action: () => Promise<T>, signal?: AbortSignal) {
-    signal?.throwIfAborted()
-    assertNotBusy(sessionID)
-    const controller = new AbortController()
-    pending().set(sessionID, controller)
-    processActive.add(activityKey(sessionID))
-    const stop = () => cancel(sessionID, controller.signal, signal?.reason)
-    signal?.addEventListener("abort", stop, { once: true })
-    return await admission.run({ sessionID, controller }, async () => {
-      try {
-        return await cancellable(controller.signal, action)
-      } finally {
-        signal?.removeEventListener("abort", stop)
-        cancel(sessionID, controller.signal, completed)
-      }
-    })
+    return SessionController.reserve(
+      sessionID,
+      async () => {
+        const owner = SessionController.signal(sessionID)!
+        const stop = () => cancel(sessionID, owner, signal?.reason)
+        signal?.addEventListener("abort", stop, { once: true })
+        try {
+          return await cancellable(owner, action)
+        } finally {
+          signal?.removeEventListener("abort", stop)
+          cancel(sessionID, owner, completed)
+        }
+      },
+      signal,
+    )
   }
 
   export const controlled = fn(RuntimePromptInput, (input) => withCancellation(input.sessionID, () => prompt(input)))
@@ -388,13 +338,23 @@ export namespace SessionPrompt {
    * reservation from its first await, so `/stop` can reach a preparation
    * that is waiting on a permission card instead of reporting no active turn.
    */
-  export const submit = fn(RuntimePromptInput, (input) => {
-    if (state()[input.sessionID] || pending().has(input.sessionID)) return prompt(input)
-    return withCancellation(input.sessionID, () => prompt(input))
+  export const submit = fn(RuntimePromptInput, async (input) => {
+    // noReply 是仅写消息的内部约定，不应启动模型。子任务仍由父回合控制器拥有。
+    if (input.noReply)
+      return SessionController.has(input.sessionID)
+        ? prompt(input)
+        : withCancellation(input.sessionID, () => prompt(input))
+    const session = await Session.get(input.sessionID)
+    if (session.parentID) {
+      if (SessionController.has(input.sessionID)) return prompt(input)
+      return withCancellation(input.sessionID, () => prompt(input))
+    }
+    const { RuntimeRuns } = await import("../runtime/runs")
+    return RuntimeRuns.submit(input)
   })
 
   export const prompt = fn(RuntimePromptInput, async (input) => {
-    const reservation = pending().get(input.sessionID)
+    const reservation = SessionController.reserved(input.sessionID)
     if (reservation && reservation !== preparation(input.sessionID) && !input.noReply)
       throw new Session.BusyError(input.sessionID)
     assertPreparing(input.sessionID)
@@ -496,19 +456,7 @@ export namespace SessionPrompt {
   }
 
   function start(sessionID: string) {
-    const s = state()
-    if (s[sessionID]) return
-    assertPreparing(sessionID)
-    const reserved = pending().get(sessionID)
-    if (reserved && reserved !== preparation(sessionID)) throw new Session.BusyError(sessionID)
-    const controller = reserved ?? new AbortController()
-    s[sessionID] = {
-      abort: controller,
-      callbacks: [],
-    }
-    if (reserved) pending().delete(sessionID)
-    processActive.add(activityKey(sessionID))
-    return controller.signal
+    return SessionController.start(sessionID)
   }
 
   export function loopLeasePath(projectID: string, sessionID: string) {
@@ -521,19 +469,7 @@ export namespace SessionPrompt {
    * abort. */
   export function cancel(sessionID: string, owner?: AbortSignal, reason?: unknown) {
     log.info("cancel", { sessionID })
-    const s = state()
-    const match = s[sessionID]
-    const reserved = pending().get(sessionID)
-    const controller = match?.abort ?? reserved
-    if (!controller) return
-    if (owner && controller.signal !== owner) return
-    controller.abort(reason)
-    for (const item of match?.callbacks ?? []) {
-      item.reject()
-    }
-    if (s[sessionID]?.abort === controller) delete s[sessionID]
-    if (pending().get(sessionID) === controller) pending().delete(sessionID)
-    if (!s[sessionID] && !pending().has(sessionID)) processActive.delete(activityKey(sessionID))
+    if (!SessionController.cancel(sessionID, owner, reason)) return
     // Flush any coalesced (debounced) streaming part writes now, so the final
     // text/reasoning content is durable the moment the turn goes idle. cancel()
     // is sync (invoked from a `using` disposer), so this can't be awaited; log
@@ -547,7 +483,7 @@ export namespace SessionPrompt {
    * before a credential revision disposes the instance, so the transcript
    * names the revocation rather than an anonymous abort. */
   export function interrupt(reason: unknown): number {
-    const ids = [...new Set([...Object.keys(state()), ...pending().keys()])]
+    const ids = SessionController.ids()
     for (const sessionID of ids) cancel(sessionID, undefined, reason)
     return ids.length
   }
@@ -557,7 +493,7 @@ export namespace SessionPrompt {
    * cancel(); if a newer prompt starts in the meantime, cancellation is a
    * deliberate no-op rather than aborting the replacement controller. */
   export function activeController(sessionID: string) {
-    return (state()[sessionID]?.abort ?? pending().get(sessionID))?.signal
+    return SessionController.signal(sessionID)
   }
 
   const PREFLIGHT_CONTINUATION =
@@ -1990,7 +1926,7 @@ export namespace SessionPrompt {
       if (result === "guard") {
         const trip = processor.guard
         const redirect = trip
-          ? await guard({ sessionID, kind: "tool_errors", tool: trip.tool, trips: ++guardTrips.tool_errors })
+          ? await guard({ sessionID, kind: trip.kind, tool: trip.tool, trips: ++guardTrips[trip.kind] })
           : undefined
         if (redirect) {
           await enqueue({ user: lastUser, kind: "harness", epoch: turn, text: redirect })
@@ -2042,11 +1978,7 @@ export namespace SessionPrompt {
       }
     })()
     if (item) {
-      const current = state()[sessionID]
-      const queued = current?.abort.signal === abort ? current.callbacks : []
-      for (const q of queued) {
-        q.resolve(item)
-      }
+      SessionController.resolve(sessionID, abort, item)
       return item
     }
     throw new Error("Impossible")
@@ -2066,10 +1998,7 @@ export namespace SessionPrompt {
       }
     })
     if (!abort) {
-      return new Promise<MessageV2.WithParts>((resolve, reject) => {
-        const callbacks = state()[sessionID].callbacks
-        callbacks.push({ resolve, reject })
-      })
+      return SessionController.join(sessionID)
     }
 
     using _ = defer(() => cancel(sessionID, abort, completed))
@@ -3556,6 +3485,13 @@ or internal reasoning. Call plan_exit when the plan is ready for approval.`)
       Sandbox.cleanup(sandbox)
     })
 
+    // 用户直接运行的 Shell 结果也会进入后续模型上下文，不能把静默非零退出当成成功。
+    const exitNote = proc.signalCode
+      ? `Command terminated by signal ${proc.signalCode}`
+      : proc.exitCode !== 0
+        ? `Command exited with code ${proc.exitCode ?? "unknown"}`
+        : undefined
+    if (exitNote) state.output += `\n\n<bash_metadata>\n${exitNote}\n</bash_metadata>`
     if (state.aborted) {
       state.output +=
         "\n\n" + ["<metadata>", state.interruption ?? "User aborted the command", "</metadata>"].join("\n")
@@ -3574,6 +3510,8 @@ or internal reasoning. Call plan_exit when the plan is ready for approval.`)
         metadata: {
           output: text(),
           description: "",
+          exit: proc.exitCode,
+          signal: proc.signalCode,
         },
         output: text(),
       }
@@ -3972,7 +3910,7 @@ or internal reasoning. Call plan_exit when the plan is ready for approval.`)
       { parts },
     )
 
-    const result = (await prompt({
+    const result = (await submit({
       sessionID: input.sessionID,
       messageID: commandMessageID,
       model: userModel,

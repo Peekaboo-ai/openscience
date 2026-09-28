@@ -64,6 +64,10 @@ export namespace ProcessIdentity {
 
   export async function owns(pid: number, expected: string | undefined): Promise<boolean> {
     if (!expected) return false
+    if (process.platform === "win32") {
+      const raw = WindowsJob.identity(pid, true)
+      return !!raw && crypto.createHash("sha256").update(raw).digest("hex") === expected
+    }
     if (process.platform === "linux") {
       const info = await linux(pid)
       if (!info || info.state === "Z") return false

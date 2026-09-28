@@ -263,6 +263,7 @@ export namespace Experiments {
   `
 
   const databases = new Map<string, Database>()
+  const opening = new Map<string, Promise<Database>>()
 
   export function directory() {
     return path.join(Global.Path.data, "experiments")
@@ -271,18 +272,33 @@ export namespace Experiments {
   async function db(projectID: string): Promise<Database> {
     const existing = databases.get(projectID)
     if (existing) return existing
+    const pending = opening.get(projectID)
+    if (pending) return pending
+    // 对照 ZCode ColdSessionResumeCoordinator 的 single-flight：并发初始化共享一次打开。
+    // 否则 mkdir 的 await 窗口会创建多个 SQLite 句柄，缓存只保留最后一个而泄漏 WAL。
+    const flight = open(projectID).finally(() => opening.delete(projectID))
+    opening.set(projectID, flight)
+    return flight
+  }
+
+  async function open(projectID: string): Promise<Database> {
     await fs.mkdir(directory(), { recursive: true })
     const database = new Database(path.join(directory(), `${projectID}.sqlite`), { create: true })
-    database.exec("PRAGMA busy_timeout = 5000")
-    database.exec("PRAGMA journal_mode = WAL")
-    database.exec("PRAGMA synchronous = NORMAL")
-    database.exec(schema)
-    const columns = database.query("PRAGMA table_info(study)").all() as Array<{ name: string }>
-    if (!columns.some((column) => column.name === "directives")) {
-      database.exec("ALTER TABLE study ADD COLUMN directives TEXT NOT NULL DEFAULT '[]'")
+    try {
+      database.exec("PRAGMA busy_timeout = 5000")
+      database.exec("PRAGMA journal_mode = WAL")
+      database.exec("PRAGMA synchronous = NORMAL")
+      database.exec(schema)
+      const columns = database.query("PRAGMA table_info(study)").all() as Array<{ name: string }>
+      if (!columns.some((column) => column.name === "directives")) {
+        database.exec("ALTER TABLE study ADD COLUMN directives TEXT NOT NULL DEFAULT '[]'")
+      }
+      databases.set(projectID, database)
+      return database
+    } catch (error) {
+      database.close()
+      throw error
     }
-    databases.set(projectID, database)
-    return database
   }
 
   /** Tests and disposal close every open handle. */

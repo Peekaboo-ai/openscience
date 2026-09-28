@@ -754,6 +754,9 @@ export const BashTool = Tool.define("bash", async () => {
         .catch(() => undefined)
 
       const resultMetadata: string[] = []
+      // 模型只读取 output；退出码若仅留在 metadata，静默失败会被误读为成功。
+      if (proc.signalCode) resultMetadata.push(`Command terminated by signal ${proc.signalCode}`)
+      else if (proc.exitCode !== 0) resultMetadata.push(`Command exited with code ${proc.exitCode ?? "unknown"}`)
 
       if (sandbox.warning) {
         resultMetadata.push(sandbox.warning)

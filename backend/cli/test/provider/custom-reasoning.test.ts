@@ -27,6 +27,18 @@ test("unknown aliases and models without an effort dial do not get invented choi
   }
 })
 
+test("custom effort choices must also be representable by the selected protocol", () => {
+  expect(customReasoning("gpt-5.6-sol", [], "@ai-sdk/anthropic").reasoningOptions[0].values).toEqual([
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+  ])
+  expect(customReasoning("gpt-5.6-sol", [], "@ai-sdk/openai").reasoningOptions[0].values).toContain("none")
+  expect(customReasoning("unknown", [], "@ai-sdk/anthropic").reasoningOptions).toEqual([])
+})
+
 test("catalog models retain their exact effort choices and supported default", () => {
   const source: Provider.Model = {
     id: "catalog-reasoner",
@@ -55,4 +67,9 @@ test("catalog models retain their exact effort choices and supported default", (
     reasoningOptions: [{ type: "effort", values: ["low", "high"], default: "low" }],
   })
   expect(customReasoning("renamed-catalog-reasoner", [source]).reasoningOptions).toEqual([])
+  const interleaved = { field: "reasoning_content" as const }
+  const result = customReasoning("vendor/catalog-reasoner", [
+    { ...source, capabilities: { ...source.capabilities, interleaved } },
+  ])
+  expect(result.interleaved).toEqual(interleaved)
 })

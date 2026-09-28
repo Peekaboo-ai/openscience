@@ -5,7 +5,33 @@ import { ProjectTrust } from "../../src/project/trust"
 import { Sandbox } from "../../src/sandbox/sandbox"
 import { Server } from "../../src/server/server"
 import { Session } from "../../src/session"
-import { sandboxedExecution, tmpdir } from "../fixture/fixture"
+import { fullAccessExecution, sandboxedExecution, tmpdir } from "../fixture/fixture"
+import { SessionPrompt } from "../../src/session/prompt"
+
+test("direct shell commands retain silent exit failures for the model and UI", async () => {
+  await using _execution = await fullAccessExecution()
+  await using workspace = await tmpdir()
+  await Instance.provide({
+    directory: workspace.path,
+    fn: async () => {
+      const session = await Session.create({ title: "shell exit status" })
+      for (const exit of [0, 7]) {
+        const result = await SessionPrompt.shell({
+          sessionID: session.id,
+          agent: "research",
+          model: { providerID: "test", modelID: "test" },
+          command: `exit ${exit}`,
+        })
+        const part = result.parts[0]
+        expect(part.state.status).toBe("completed")
+        if (part.state.status !== "completed") throw new Error("Shell did not settle")
+        expect(part.state.metadata.exit).toBe(exit)
+        if (exit) expect(part.state.output).toContain("Command exited with code 7")
+        else expect(part.state.output).not.toContain("bash_metadata")
+      }
+    },
+  })
+}, 30_000)
 
 test("the legacy session shell route runs untrusted projects only inside its sandbox", async () => {
   await using _sandbox = await sandboxedExecution()

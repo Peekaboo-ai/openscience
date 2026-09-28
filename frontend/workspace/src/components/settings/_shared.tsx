@@ -244,6 +244,7 @@ export const FilterMenu: Component<{
   value: string
   onSelect: (id: string) => void
   ariaLabel?: string
+  disabled?: boolean
 }> = (props) => {
   const active = () => props.options.find((o) => o.id === props.value) ?? props.options[0]
   const dialog = useDialogMount()
@@ -252,6 +253,7 @@ export const FilterMenu: Component<{
       <DropdownMenu.Trigger
         ref={dialog.anchor}
         aria-label={props.ariaLabel}
+        disabled={props.disabled}
         class={`${controlBase} settings-control--menu max-w-full`}
       >
         <span class="min-w-0 truncate max-w-[160px]">

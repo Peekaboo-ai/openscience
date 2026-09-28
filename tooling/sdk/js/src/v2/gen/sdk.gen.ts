@@ -2786,7 +2786,9 @@ export class ModelConnections extends HeyApiClient {
       id?: string
       url: string
       key?: string
+      protocol?: "openai-chat-completions" | "openai-responses" | "anthropic-messages"
       name: string
+      thinking?: "auto" | "adaptive"
       models: Array<string>
       context?: number
       output?: number
@@ -2810,7 +2812,9 @@ export class ModelConnections extends HeyApiClient {
             { in: "body", key: "id" },
             { in: "body", key: "url" },
             { in: "body", key: "key" },
+            { in: "body", key: "protocol" },
             { in: "body", key: "name" },
+            { in: "body", key: "thinking" },
             { in: "body", key: "models" },
             { in: "body", key: "context" },
             { in: "body", key: "output" },
@@ -2862,13 +2866,14 @@ export class ModelConnections extends HeyApiClient {
   }
 
   /**
-   * Discover models from an OpenAI-compatible endpoint
+   * Discover models using the selected API protocol
    */
   public discover<ThrowOnError extends boolean = false>(
     parameters: {
       id?: string
       url: string
       key?: string
+      protocol?: "openai-chat-completions" | "openai-responses" | "anthropic-messages"
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2880,6 +2885,7 @@ export class ModelConnections extends HeyApiClient {
             { in: "body", key: "id" },
             { in: "body", key: "url" },
             { in: "body", key: "key" },
+            { in: "body", key: "protocol" },
           ],
         },
       ],

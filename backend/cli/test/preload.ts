@@ -3,13 +3,20 @@
 import os from "os"
 import path from "path"
 import fs from "fs/promises"
-import fsSync from "fs"
 import { afterAll } from "bun:test"
+import { removeFixture } from "./fixture/cleanup"
 
 const dir = path.join(os.tmpdir(), "openscience-test-data-" + process.pid)
 await fs.mkdir(dir, { recursive: true })
-afterAll(() => {
-  fsSync.rmSync(dir, { recursive: true, force: true })
+afterAll(async () => {
+  const { Instance } = await import("../src/project/instance")
+  await Instance.disposeAll()
+  // 科研账本在进程级缓存 SQLite；Windows 删除测试目录前必须关闭 WAL 句柄。
+  const { Experiments } = await import("../src/experiments")
+  Experiments.close()
+  const { Log } = await import("../src/util/log")
+  await Log.flush()
+  await removeFixture(dir)
 })
 // Set test home directory to isolate tests from user's actual home directory
 // This prevents tests from picking up real user configs/skills from ~/.claude/skills
@@ -101,7 +108,7 @@ delete process.env["SAMBANOVA_API_KEY"]
 // Now safe to import from src/
 const { Log } = await import("../src/util/log")
 
-Log.init({
+await Log.init({
   print: false,
   dev: true,
   level: "DEBUG",

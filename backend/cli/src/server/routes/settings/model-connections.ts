@@ -56,7 +56,7 @@ export const ModelConnectionsRoutes = lazy(() =>
       "/models",
       describeRoute({
         operationId: "modelConnections.discover",
-        summary: "Discover models from an OpenAI-compatible endpoint",
+        summary: "Discover models using the selected API protocol",
         responses: response(models),
       }),
       validator("json", CustomConnections.Endpoint),

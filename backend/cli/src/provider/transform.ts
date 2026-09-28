@@ -617,7 +617,11 @@ export namespace ProviderTransform {
       Object.fromEntries(
         values.map((effort) => [
           effort,
-          model.api.npm === "@openrouter/ai-sdk-provider" ? { reasoning: { effort } } : { reasoningEffort: effort },
+          model.api.npm === "@openrouter/ai-sdk-provider"
+            ? { reasoning: { effort } }
+            : model.api.npm === "@ai-sdk/anthropic"
+              ? { effort }
+              : { reasoningEffort: effort },
         ]),
       )
 
@@ -984,6 +988,18 @@ export namespace ProviderTransform {
   }): Record<string, any> {
     const result: Record<string, any> = {}
 
+    // 自定义兼容连接使用目录声明的合法默认值，不能被通用 GPT 分支静默降为 medium。
+    if (input.model.api.npm === "@ai-sdk/openai-compatible" && input.model.capabilities.reasoning) {
+      const option = input.model.reasoningOptions?.find((option) => option.type === "effort")
+      if (
+        typeof option?.default === "string" &&
+        Array.isArray(option.values) &&
+        option.values.includes(option.default)
+      ) {
+        result["reasoningEffort"] = option.default
+      }
+    }
+
     // openai and providers using openai package should set store to false by default.
     if (
       input.model.providerID === "openai" ||
@@ -1101,7 +1117,9 @@ export namespace ProviderTransform {
     if (
       (input.model.api.id.includes("gpt-5") || input.model.api.id === "gpt-6-astra") &&
       !input.model.api.id.includes("gpt-5-chat") &&
-      input.model.api.npm !== "@openrouter/ai-sdk-provider"
+      input.model.api.npm !== "@openrouter/ai-sdk-provider" &&
+      input.model.api.npm !== "@ai-sdk/anthropic" &&
+      input.model.api.npm !== "@ai-sdk/google-vertex/anthropic"
     ) {
       if (
         !input.model.api.id.includes("gpt-5-pro") &&
@@ -1112,7 +1130,7 @@ export namespace ProviderTransform {
         // medium. On the public API GPT-5.4 / 5.4-mini default to none, while
         // GPT-5.5 and GPT-5.6 default to medium.
         const apiID = input.model.api.id.toLowerCase()
-        result["reasoningEffort"] =
+        result["reasoningEffort"] ??=
           input.model.providerID === "openai-codex" && /^gpt-5[.-]6-sol$/.test(apiID)
             ? "low"
             : input.model.providerID === "openai" && /^gpt-5[.-]4(?:-mini)?$/.test(apiID)

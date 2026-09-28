@@ -4,7 +4,7 @@ import { Instance } from "../../src/project/instance"
 import { OpenScience } from "../../src/openscience"
 import { Provenance } from "../../src/science/provenance/store"
 import { SessionFilesystem } from "../../src/session/filesystem"
-import { executionSession, tmpdir } from "../fixture/fixture"
+import { executionSession, fullAccessExecution, tmpdir } from "../fixture/fixture"
 
 async function context() {
   const session = await executionSession()
@@ -26,6 +26,7 @@ describe("tool.bash provenance", () => {
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
+        await using access = await fullAccessExecution()
         const ctx = await context()
         const workspace = await SessionFilesystem.workspace(ctx.sessionID)
         const bash = await BashTool.init()
@@ -103,6 +104,7 @@ describe("tool.bash provenance", () => {
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
+        await using access = await fullAccessExecution()
         const ctx = await context()
         const bash = await BashTool.init()
         const result = await bash.execute(
@@ -113,6 +115,7 @@ describe("tool.bash provenance", () => {
           ctx,
         )
         expect(result.metadata.exit).toBe(7)
+        expect(result.output).toContain("Command exited with code 7")
         expect(await Provenance.get(result.metadata.provenanceID!)).toMatchObject({
           kind: "run",
           tool: "bash",
@@ -137,6 +140,7 @@ describe("tool.bash provenance", () => {
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
+        await using access = await fullAccessExecution()
         const ctx = await context()
         const secret = `bash-provenance-${crypto.randomUUID()}`
         OpenScience.registerSecretValues([secret])

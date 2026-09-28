@@ -23827,6 +23827,21 @@
                           "baseURL": {
                             "type": "string"
                           },
+                          "protocol": {
+                            "type": "string",
+                            "enum": [
+                              "openai-chat-completions",
+                              "openai-responses",
+                              "anthropic-messages"
+                            ]
+                          },
+                          "thinking": {
+                            "type": "string",
+                            "enum": [
+                              "auto",
+                              "adaptive"
+                            ]
+                          },
                           "models": {
                             "type": "array",
                             "items": {
@@ -23895,6 +23910,8 @@
                           "id",
                           "name",
                           "baseURL",
+                          "protocol",
+                          "thinking",
                           "models",
                           "hasKey",
                           "context",
@@ -23956,6 +23973,21 @@
                     },
                     "baseURL": {
                       "type": "string"
+                    },
+                    "protocol": {
+                      "type": "string",
+                      "enum": [
+                        "openai-chat-completions",
+                        "openai-responses",
+                        "anthropic-messages"
+                      ]
+                    },
+                    "thinking": {
+                      "type": "string",
+                      "enum": [
+                        "auto",
+                        "adaptive"
+                      ]
                     },
                     "models": {
                       "type": "array",
@@ -24025,6 +24057,8 @@
                     "id",
                     "name",
                     "baseURL",
+                    "protocol",
+                    "thinking",
                     "models",
                     "hasKey",
                     "context",
@@ -24074,10 +24108,25 @@
                     "minLength": 1,
                     "maxLength": 8192
                   },
+                  "protocol": {
+                    "type": "string",
+                    "enum": [
+                      "openai-chat-completions",
+                      "openai-responses",
+                      "anthropic-messages"
+                    ]
+                  },
                   "name": {
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 80
+                  },
+                  "thinking": {
+                    "type": "string",
+                    "enum": [
+                      "auto",
+                      "adaptive"
+                    ]
                   },
                   "models": {
                     "minItems": 1,
@@ -24288,7 +24337,7 @@
     "/settings/model-connections/models": {
       "post": {
         "operationId": "modelConnections.discover",
-        "summary": "Discover models from an OpenAI-compatible endpoint",
+        "summary": "Discover models using the selected API protocol",
         "responses": {
           "200": {
             "description": "Success",
@@ -24402,6 +24451,14 @@
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 8192
+                  },
+                  "protocol": {
+                    "type": "string",
+                    "enum": [
+                      "openai-chat-completions",
+                      "openai-responses",
+                      "anthropic-messages"
+                    ]
                   }
                 },
                 "required": [

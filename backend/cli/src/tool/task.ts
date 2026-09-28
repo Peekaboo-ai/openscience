@@ -662,28 +662,14 @@ export const TaskTool = Tool.define("task", async (ctx) => {
       // wakes the parent with a synthetic message carrying the same envelope.
       const parentAgent = ctx.agent
       const wake = async (output: string) => {
-        // Write the message first, then make sure a loop answers it: a wake
-        // that lands as the parent's turn is ending can slip past that loop's
-        // final read, so run the loop again until the message has a reply.
-        const message = await SessionPrompt.prompt({
+        // 对照 ZCode guide drain：后台结果也走统一接收和收尾检查，不另开重试 loop。
+        // 保留 synthetic 标记，科研/worker 输出不能冒充人工授权。
+        await SessionPrompt.submit({
           sessionID: ctx.sessionID,
           agent: parentAgent,
           model: leadModel,
           variant: typeof ctx.extra?.variant === "string" ? ctx.extra.variant : undefined,
-          noReply: true,
           parts: [{ type: "text", synthetic: true, text: output }],
-        })
-        for (let attempt = 0; attempt < 3; attempt++) {
-          await SessionPrompt.loop(ctx.sessionID).catch(() => undefined)
-          const messages = await Session.messages({ sessionID: ctx.sessionID })
-          const answered = messages.some(
-            (item) => item.info.role === "assistant" && item.info.parentID === message.info.id,
-          )
-          if (answered) return
-        }
-        log.warn("background task completion was recorded but the parent did not answer it", {
-          sessionID: ctx.sessionID,
-          child: session.id,
         })
       }
       // The dispatching call settled long ago with `background: true`; once the

@@ -1,9 +1,27 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { Experiments } from "../../src/experiments"
+import fs from "node:fs/promises"
+import path from "node:path"
 
 const projectID = `prj_test_${Math.random().toString(36).slice(2, 10)}`
 
 afterEach(() => Experiments.close())
+
+test("concurrent first use shares a database whose handles all close", async () => {
+  const projectID = `prj_concurrent_${crypto.randomUUID().replaceAll("-", "")}`
+  const runs = await Promise.all(
+    Array.from({ length: 24 }, (_, index) =>
+      Experiments.createRun({ projectID, name: `run-${index}`, source: "external" }),
+    ),
+  )
+  expect(new Set(runs.map((run) => run.id)).size).toBe(24)
+  Experiments.close()
+  // Windows 不允许删除仍被 SQLite 占用的文件；同时检查 WAL/SHM 已被最后一个连接清理。
+  const file = path.join(Experiments.directory(), `${projectID}.sqlite`)
+  expect(await Bun.file(`${file}-wal`).exists()).toBe(false)
+  expect(await Bun.file(`${file}-shm`).exists()).toBe(false)
+  await fs.unlink(file)
+})
 
 describe("experiment runs", () => {
   test("ingests points idempotently and derives the headline from the last metric value", async () => {

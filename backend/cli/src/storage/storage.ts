@@ -11,6 +11,7 @@ import { NamedError } from "@synsci/util/error"
 import z from "zod"
 import { DataRootBarrier } from "@/global/data-root-barrier"
 import { LockCoordination } from "@/util/lock-coordination"
+import { transientFile } from "@/util/transient-file"
 
 export namespace Storage {
   const log = Log.create({ service: "storage" })
@@ -211,7 +212,7 @@ export namespace Storage {
     // 继续在同目录暂存后重命名，保证其他进程不会读到未写完的记录。
     await fs
       .writeFile(tmp, content, { flag: "wx", mode: 0o600 })
-      .then(() => fs.rename(tmp, target))
+      .then(() => transientFile(() => fs.rename(tmp, target)))
       .catch(async (error) => {
         if ((error as NodeJS.ErrnoException).code !== "EEXIST") await fs.unlink(tmp).catch(() => {})
         throw error

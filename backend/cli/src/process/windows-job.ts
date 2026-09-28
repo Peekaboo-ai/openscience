@@ -215,11 +215,13 @@ export namespace WindowsJob {
   }
 
   /** Stable process-start identity from the kernel's creation FILETIME. */
-  export function identity(pid: number): string | undefined {
+  export function identity(pid: number, running = false): string | undefined {
     if (process.platform !== "win32") return
-    const handle = processHandle(pid, PROCESS_QUERY_LIMITED_INFORMATION)
+    const handle = processHandle(pid, PROCESS_QUERY_LIMITED_INFORMATION | (running ? SYNCHRONIZE : 0))
     if (!handle) return
     try {
+      // 已退出进程被其他句柄引用时仍可 OpenProcess/GetProcessTimes，不能据此恢复执行所有权。
+      if (running && Number(api().WaitForSingleObject(handle, 0)) !== WAIT_TIMEOUT) return
       return identityForHandle(handle)
     } finally {
       close(handle)

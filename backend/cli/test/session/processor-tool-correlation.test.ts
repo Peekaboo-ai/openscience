@@ -10,7 +10,7 @@ import { ToolRetryGuard } from "../../src/session/tool-retry-guard"
 import { observableToolStatus } from "../../src/session/tool-outcome"
 import { BashTool } from "../../src/tool/bash"
 import type { Tool } from "../../src/tool/tool"
-import { executionSession, tmpdir } from "../fixture/fixture"
+import { executionSession, fullAccessExecution, tmpdir } from "../fixture/fixture"
 
 function running(
   callID: string,
@@ -649,6 +649,7 @@ describe("SessionProcessor tool outcome correlation", () => {
   })
 
   test("keeps real Bash exit 0 and exit 127 results durable when the stream closes during metadata writes", async () => {
+    await using _execution = await fullAccessExecution()
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({
       directory: tmp.path,
@@ -712,7 +713,13 @@ describe("SessionProcessor tool outcome correlation", () => {
             }),
           )
 
-          await metadataStarted.promise
+          // 启动前失败时没有进度事件；立即传播执行错误，不把缺失事件等待成死锁。
+          await Promise.race([
+            metadataStarted.promise,
+            execution.then(() => {
+              if (!delayedMetadata) throw new Error("Bash completed without publishing execution metadata")
+            }),
+          ])
           let drained = false
           const drain = coordinator.drain().then(() => {
             drained = true

@@ -15,12 +15,18 @@ test("cancelled requests and failed terminal subscribers do not tear down the sh
   })
   try {
     await client.ready
-    await expect(client.request("/failure")).rejects.toThrow("before headers")
-    await expect(client.request("/invalid")).rejects.toThrow()
+    // 先等待真实 I/O 结束再断言，避免 Bun 的 pending-rejection 断言阻塞子进程回调。
+    const failure = await client.request("/failure").catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(Error)
+    expect((failure as Error).message).toContain("before headers")
+    const invalid = await client.request("/invalid").catch((error: unknown) => error)
+    expect(invalid).toBeInstanceOf(Error)
     const abort = new AbortController()
     const cancelled = client.request("/slow", { signal: abort.signal })
     abort.abort()
-    await expect(cancelled).rejects.toThrow("cancelled")
+    const cancellation = await cancelled.catch((error: unknown) => error)
+    expect(cancellation).toBeInstanceOf(Error)
+    expect((cancellation as Error).message).toContain("cancelled")
     const socket = client.socket("/terminal", () => {
       throw new Error("Already removed subscriber")
     })

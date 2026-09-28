@@ -12,7 +12,7 @@ import { handoffRuntimeEvents, RuntimeRoutes } from "../../src/server/routes/run
 import { SessionRoutes } from "../../src/server/routes/session"
 import { Server } from "../../src/server/server"
 import { Storage } from "../../src/storage/storage"
-import { tmpdir, trustProject } from "../fixture/fixture"
+import { fullAccessExecution, tmpdir, trustProject } from "../fixture/fixture"
 import { applyRuntimeCancellationRequest } from "../../src/project/bootstrap"
 
 const Tick = BusEvent.define(
@@ -321,6 +321,7 @@ describe("public runtime event journal", () => {
   })
 
   test("stops the active controller even when cancellation event delivery fails", async () => {
+    await using execution = await fullAccessExecution()
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({
       directory: tmp.path,
@@ -427,6 +428,7 @@ describe("public runtime event journal", () => {
   })
 
   test("the HTTP abort endpoint cannot cancel a controller that replaced its original owner", async () => {
+    await using execution = await fullAccessExecution()
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({
       directory: tmp.path,
