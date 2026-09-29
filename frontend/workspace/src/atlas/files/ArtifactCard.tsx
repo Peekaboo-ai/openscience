@@ -8,6 +8,7 @@ import { IconDownload, IconEdit, IconExpand, IconMoreH, IconTrash } from "@/atla
 export interface CardProps extends ThumbProps {
   layout: "grid" | "list"
   sizes: boolean
+  sessionLabel?: string
   onOpen: (artifact: StoredArtifact) => void
   onDownload: (artifact: StoredArtifact) => void
   onRename: (artifact: StoredArtifact) => void
@@ -79,6 +80,11 @@ export function ArtifactCard(props: CardProps): JSX.Element {
         <ArtifactThumb artifact={props.artifact} read={props.read} highlight={props.highlight} />
         <span class="artifact-card__label">
           <span class="artifact-card__name">{props.artifact.title}</span>
+          <Show when={props.sessionLabel}>
+            <span class="artifact-card__session" title={`${props.sessionLabel} · ${props.artifact.current.sessionID}`}>
+              {props.sessionLabel} · {props.artifact.current.sessionID.slice(-6)}
+            </span>
+          </Show>
           <span class="artifact-card__sub" data-card-meta>
             <span data-card-saved title={new Date(props.artifact.current.createdAt).toLocaleString()}>
               Saved {ago(props.artifact.current.createdAt)}

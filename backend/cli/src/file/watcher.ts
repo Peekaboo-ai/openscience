@@ -15,6 +15,7 @@ import { $ } from "bun"
 import { Flag } from "@/flag/flag"
 import { readdir } from "fs/promises"
 import { Global } from "@/global"
+import { runtimeWatchIgnores } from "./watcher-paths"
 
 const SUBSCRIBE_TIMEOUT_MS = 10_000
 const EVENT_FLUSH_MS = 100
@@ -164,7 +165,11 @@ export namespace FileWatcher {
       ready: Promise.resolve(undefined),
     }
     const pending = state.watcher.subscribe(root, callback(state, root), {
-      ignore: [...FileIgnore.PATTERNS, ...ignores],
+      ignore: [
+        ...FileIgnore.PATTERNS,
+        ...ignores,
+        ...runtimeWatchIgnores(root, [Global.Path.data, Global.Path.config, Global.Path.cache, Global.Path.state]),
+      ],
       backend: state.backend,
     })
     entry.ready = withTimeout(pending, SUBSCRIBE_TIMEOUT_MS).catch((error) => {

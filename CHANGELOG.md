@@ -8,11 +8,19 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 
 ## Unreleased
 
+- **Viewable research deliveries.** Research archive saves require key preview files or an explicit reason for a download-only bundle. The artifact tool publishes selected files as individual Results in the producing session, preserving provenance and existing renderers alongside the complete download archive. Delivery instructions prioritize figures, structures, result tables and reports over intermediate files and duplicate exports.
+
+- **Remote SSH startup.** Reuse the authenticated connection for platform detection, cached-runtime verification and backend startup, avoiding three independent logins through slow SSH gateways. Retry transient failures of the initial read-only probe at most twice without replaying research work or retrying authentication errors. Preserve buffered protocol frames during startup handoff and bound startup output, cancellation and timeouts.
+
+- **Connection stability.** Give remote health probes a bounded SSH latency budget, share concurrent checks, and discard cancelled probes when switching servers. Remote connection failures identify the workspace and offer reconnect. Project file watchers exclude configured runtime storage and configuration directories while preserving explicit session output watches.
+
 - **Harness admission and ownership.** Adapt ZCode's FIFO admission gate and lifecycle boundaries while retaining OpenScience's scientific runtime and PTY ownership. Root session submissions, prompt-template commands and background task wake-ups share durable runtime receipts. Late guidance at text-only completion is drained under the admission lease; cancellation prevents it from restarting work. Slow runtime observers no longer block durable control actions, and project warmup cannot bypass a recorded run's terminal outcome. On Windows, exited processes with outstanding handles no longer count as live runtime owners.
 
 - **Runtime storage lifecycle.** Share concurrent scientific-ledger initialization so SQLite handles are not leaked. Adapt ZCode's bounded retry for transient Windows file sharing errors while retaining atomic publication, cancellation and lease budgets.
 
 ### Added
+
+- **Artifact catalog and scientific previews.** Files → Results now filters saved project artifacts by session and format, shows session identity on every card, and renders molecular coordinate thumbnails. Saved artifacts and remote text previews use the existing molecular, sequence, genomics, table, notebook, and sandboxed HTML renderers, with a source fallback for saved files.
 
 - **Custom API protocols.** Configure OpenAI Chat Completions, OpenAI Responses, or Anthropic Messages explicitly instead of forcing every custom connection through Chat Completions. Support opt-in adaptive thinking, protocol-specific model discovery and reasoning parameters; preserve saved protocols and live projects while editing connections.
 

@@ -2,6 +2,15 @@ import { describe, expect, test } from "bun:test"
 import { resolveViewer, viewerUsesText } from "./viewer-registry"
 
 describe("viewer registry", () => {
+  test("routes saved scientific bytes to the existing visual renderers", () => {
+    for (const name of ["structure.pdb", "structure.mmcif", "molecule.sdf", "sequence.fasta", "ligand.smiles"]) {
+      const viewer = resolveViewer({ name, mimeType: "application/octet-stream" })
+      expect(viewer.kind).toBe("science")
+      expect(viewerUsesText(viewer)).toBeTrue()
+    }
+    expect(resolveViewer({ name: "variants.vcf" }).kind).toBe("scientific-data")
+    expect(resolveViewer({ name: "structure.pdb", encoding: "base64" }).kind).toBe("binary")
+  })
   test("resolves common formats consistently", () => {
     expect(resolveViewer({ name: "report.md" }).kind).toBe("markdown")
     expect(resolveViewer({ name: "analysis.ipynb" }).kind).toBe("notebook")

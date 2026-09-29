@@ -518,10 +518,13 @@ export function generatedArtifacts(
   for (const part of parts) {
     if (part.type !== "tool" || part.tool !== "artifact" || part.state?.status !== "completed") continue
     const metadata = record(part.state.metadata)
-    const artifact = savedArtifact(metadata?.savedArtifact)
-    if (!artifact) continue
-    const current = artifacts.get(artifact.id)
-    if (!current || artifact.version >= current.version) artifacts.set(artifact.id, artifact)
+    const previews = Array.isArray(metadata?.previewArtifacts) ? metadata.previewArtifacts : []
+    for (const item of [...previews, metadata?.savedArtifact]) {
+      const artifact = savedArtifact(item)
+      if (!artifact) continue
+      const current = artifacts.get(artifact.id)
+      if (!current || artifact.version >= current.version) artifacts.set(artifact.id, artifact)
+    }
   }
   return [...artifacts.values()]
 }

@@ -15,6 +15,8 @@ A remote workspace runs conversations, files, terminals, kernels, and compute ag
 
 The sidebar displays a cloud icon, transport, and connection status. Remote conversations appear only after connection. On failure, use **Retry**, correct the target in a new connection, or return to local Tasks. **Cancel** stops an unfinished connection; removing a bookmark retains remote files and saved conversations.
 
+The connection banner identifies the affected remote workspace and shows its transport error when available. **Reconnect** reopens a disconnected transport; **Retry Now** checks an existing connection. Remote health checks allow up to 30 seconds and require three consecutive failures before reporting an unavailable server, so brief SSH latency does not immediately interrupt the workspace with an error. A transport failure is shown immediately. SSH banner-exchange or connection timeouts indicate that the remote endpoint or network needs attention; restarting the local server does not resolve those endpoint failures.
+
 ## Requirements and storage
 
 The target needs Linux or macOS on x64/ARM64, a writable home directory, a POSIX shell, and `sha256sum` or `shasum`. The installation must include a native backend for that target. Alpine/musl images and remote Windows shells are not supported by the bundled Linux runtime.
@@ -22,6 +24,10 @@ The target needs Linux or macOS on x64/ARM64, a writable home directory, a POSIX
 SSH uses the tested host key, local SSH agent or existing identity file, and optional pinned jump hosts. Private keys are not uploaded and agent forwarding is not enabled. Password/passphrase prompts must be satisfied through your SSH agent before connecting. SSH traffic carries the HTTP/event/terminal bridge; no public remote listening port is required.
 
 Backend binaries are cached by SHA-256 under `~/.openscience/remote/`. Remote application data and configuration live under `~/.openscience/workspaces/data` and `~/.openscience/workspaces/config`. Deployments verify the complete binary before replacing a cached runtime. Reconnection preserves durable data; terminals and running in-process work are disposed when the connection closes.
+
+When the matching runtime is already cached, platform detection, checksum verification and backend startup share one authenticated connection. A missing or outdated runtime uses a separate upload connection, then starts through the original connection. This avoids repeated SSH handshakes on slow gateways while retaining host-key and binary verification. A timeout or closed connection before platform detection completes still indicates a transport or SSH login problem; the connection cannot proceed until that stage succeeds.
+
+Temporary connection failures during the initial read-only SSH probe are retried at most twice, with a short delay. The connection panel shows the attempt number, and **Cancel** also cancels a pending retry. Authentication and host-key failures are not automatically retried. Backend execution, uploads and research tasks are never replayed by this startup retry.
 
 ## Models and execution policy
 

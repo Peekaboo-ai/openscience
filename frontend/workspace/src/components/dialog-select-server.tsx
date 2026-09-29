@@ -7,6 +7,7 @@ import { Button } from "@synsci/ui/button"
 import { IconButton } from "@synsci/ui/icon-button"
 import { TextField } from "@synsci/ui/text-field"
 import { normalizeServerUrl, serverDisplayName, useServer } from "@/context/server"
+import { serverHealthTimeout } from "@/context/server-health"
 import { usePlatform } from "@/context/platform"
 import { createOpenScienceClient } from "@synsci/sdk/v2/client"
 import { useNavigate } from "@solidjs/router"
@@ -53,8 +54,13 @@ interface EditRowProps {
   onCancel: () => void
 }
 
-async function checkHealth(url: string, platform: ReturnType<typeof usePlatform>): Promise<ServerStatus> {
-  const signal = (AbortSignal as unknown as { timeout?: (ms: number) => AbortSignal }).timeout?.(3000)
+async function checkHealth(
+  url: string,
+  platform: ReturnType<typeof usePlatform>,
+  cancelled?: AbortSignal,
+): Promise<ServerStatus> {
+  const deadline = AbortSignal.timeout(serverHealthTimeout(url))
+  const signal = cancelled ? AbortSignal.any([cancelled, deadline]) : deadline
   const sdk = createOpenScienceClient({
     baseUrl: url,
     fetch: platform.fetch,
@@ -190,13 +196,11 @@ export function DialogSelectServer() {
       status: undefined as boolean | undefined,
     },
   })
-  let healthGeneration = 0
   let addPreviewGeneration = 0
   let editPreviewGeneration = 0
   let disposed = false
   onCleanup(() => {
     disposed = true
-    healthGeneration++
     addPreviewGeneration++
     editPreviewGeneration++
   })
@@ -301,31 +305,32 @@ export function DialogSelectServer() {
     })
   })
 
-  async function refreshHealth() {
-    const generation = ++healthGeneration
-    const urls = items()
-    const results: Record<string, ServerStatus> = {}
-    await Promise.all(
-      urls.map(async (url) => {
-        results[url] = await checkHealth(url, platform)
-      }),
-    )
-    const current = items()
-    if (
-      disposed ||
-      generation !== healthGeneration ||
-      current.length !== urls.length ||
-      current.some((url, index) => url !== urls[index])
-    )
-      return
-    setStore("status", reconcile(results))
-  }
-
   createEffect(() => {
-    items()
-    refreshHealth()
+    const urls = items()
+    const controller = new AbortController()
+    let checking = false
+    async function refreshHealth() {
+      // 远程探测可能超过轮询间隔，必须等本轮结束后再发起下一轮。
+      if (checking || controller.signal.aborted) return
+      checking = true
+      try {
+        const results: Record<string, ServerStatus> = {}
+        await Promise.all(
+          urls.map(async (url) => {
+            results[url] = await checkHealth(url, platform, controller.signal)
+          }),
+        )
+        if (!controller.signal.aborted) setStore("status", reconcile(results))
+      } finally {
+        checking = false
+      }
+    }
+    void refreshHealth()
     const interval = setInterval(refreshHealth, 10_000)
-    onCleanup(() => clearInterval(interval))
+    onCleanup(() => {
+      clearInterval(interval)
+      controller.abort()
+    })
   })
 
   async function select(value: string, persist?: boolean) {

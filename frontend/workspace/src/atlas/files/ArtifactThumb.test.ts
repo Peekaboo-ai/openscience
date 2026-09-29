@@ -77,6 +77,43 @@ const artifact = (over: { filename: string; mimeType?: string; size?: number }) 
   }) as never
 
 describe("artifact thumbnail", () => {
+  test("renders a static HTML thumbnail with scripts and remote resources blocked", async () => {
+    const host = mount(() =>
+      subject.ArtifactThumb({
+        artifact: artifact({ filename: "report.html" }),
+        read: async () =>
+          new Blob(['<h1>Result</h1><img src="https://example.com/chart.png"><script>throw 1</script>']),
+      }),
+    )
+    const frame = await waitFor(() => host.querySelector<HTMLIFrameElement>("iframe"))
+    expect(frame?.getAttribute("sandbox")).toBe("")
+    expect(frame?.getAttribute("srcdoc")).toContain("<h1>Result</h1>")
+    expect(frame?.getAttribute("srcdoc")).toContain("default-src 'none'")
+    expect(frame?.getAttribute("srcdoc")).not.toContain("<script")
+    expect(frame?.getAttribute("srcdoc")).not.toContain("https://example.com")
+  })
+  test("preserves quoted CSV cells and the real column count", async () => {
+    const host = mount(() =>
+      subject.ArtifactThumb({
+        artifact: artifact({ filename: "metrics.csv" }),
+        read: async () => new Blob(['sample,value\n"A, B",1.2\nC,2.4']),
+      }),
+    )
+    const table = await waitFor(() => host.querySelector<HTMLElement>('[aria-label="Table preview"]'))
+    expect(table?.style.gridTemplateColumns).toBe("repeat(2, minmax(0, 1fr))")
+    expect([...table!.children].map((cell) => cell.textContent)).toEqual(["sample", "value", "A, B", "1.2", "C", "2.4"])
+  })
+  test("renders an authenticated XYZ structure as coordinates", async () => {
+    const host = mount(() =>
+      subject.ArtifactThumb({
+        artifact: artifact({ filename: "structure.xyz", size: 100 }),
+        read: async () => new Blob(["2\nexample\nC 0 0 0\nO 1 1 1"]),
+      }),
+    )
+    const image = await waitFor(() => host.querySelector<HTMLImageElement>('img[alt="Molecular coordinate preview"]'))
+    expect(image?.src).toStartWith("data:image/svg+xml,")
+    expect(decodeURIComponent(image!.src).match(/<circle/g)).toHaveLength(2)
+  })
   test("renders an image from authenticated bytes, never a raw URL", async () => {
     let reads = 0
     const host = mount(() =>

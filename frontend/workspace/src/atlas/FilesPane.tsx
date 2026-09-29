@@ -812,10 +812,21 @@ export function FilesPane(
   })
   const available = (row: FileRow) => !busy() && !entries.loading && !listingError() && rows().includes(row)
 
+  const titles = createMemo(() => {
+    const sessions = sync?.data.session ?? []
+    return new Map(sessions.filter((item) => item.title).map((item) => [item.id, item.title]))
+  })
+
   const artifactTrash = createMemo(() => {
     const query = filter().trim().toLowerCase()
     const list = artifactData()?.trash ?? []
-    return query ? list.filter((item) => item.title.toLowerCase().includes(query)) : list
+    return query
+      ? list.filter((item) =>
+          [item.title, item.current.filename, item.current.mimeType, titles().get(item.current.sessionID) ?? ""].some(
+            (value) => value.toLowerCase().includes(query),
+          ),
+        )
+      : list
   })
 
   const fileTrash = createMemo(() => {
@@ -830,7 +841,13 @@ export function FilesPane(
   const stored = createMemo(() => {
     const query = filter().trim().toLowerCase()
     const list = artifactData()?.active ?? []
-    return query ? list.filter((item) => item.title.toLowerCase().includes(query)) : list
+    return query
+      ? list.filter((item) =>
+          [item.title, item.current.filename, item.current.mimeType, titles().get(item.current.sessionID) ?? ""].some(
+            (value) => value.toLowerCase().includes(query),
+          ),
+        )
+      : list
   })
 
   const filterCopy = createMemo(() => {
@@ -869,14 +886,6 @@ export function FilesPane(
             badge: "Read & write",
           }
     return
-  })
-
-  // Session titles label the grid's groups. They live in the sync store, which
-  // a standalone mount has no access to, so the map is simply empty there and
-  // groupBySession falls back to abbreviated ids.
-  const titles = createMemo(() => {
-    const sessions = sync?.data.session ?? []
-    return new Map(sessions.filter((item) => item.title).map((item) => [item.id, item.title]))
   })
 
   // An artifact's bytes are addressed by id and version, never by the source
@@ -1549,8 +1558,10 @@ export function FilesPane(
         <Match when={current().kind === "artifacts"}>
           <ArtifactGrid
             artifacts={stored()}
+            catalog={artifactData()?.active ?? []}
             titles={titles()}
             currentSession={sessionID()}
+            scopeKey={scope()}
             filtered={Boolean(filter().trim())}
             loading={sourceLoading()}
             unavailable={Boolean(sourceError())}

@@ -11,9 +11,11 @@ import {
   type JSX,
 } from "solid-js"
 import { Button } from "@synsci/ui/button"
+import { createStore } from "solid-js/store"
 import { TextField } from "@synsci/ui/text-field"
 import { MarkdownImages } from "@synsci/ui/markdown"
 import { useSDK } from "@/context/sdk"
+import { useSync } from "@/context/sync"
 import { FONT_SANS } from "@/styles/tokens"
 import { IconDownload, IconEdit, IconFile, IconMoreH, IconTrash } from "@/atlas/shared/Icon"
 import { toast } from "@/atlas/Toast"
@@ -61,6 +63,12 @@ function label(version: StoredArtifactVersion | undefined, fallback: string) {
 
 export function StoredArtifactView(props: { artifact: StoredArtifact }): JSX.Element {
   const sdk = useSDK()
+  const sync = useSync()
+  const origin = () => {
+    const version = selected() ?? props.artifact.current
+    const session = sync.data.session.find((item) => item.id === version.sessionID)
+    return `${session?.title || "Session"} · ${version.sessionID.slice(-6)} · v${version.version}`
+  }
   const previewScope = () => `${sdk.url}\n${sdk.scope}`
   const [action, setAction] = createSignal<Action>()
   const [name, setName] = createSignal(props.artifact.title)
@@ -203,6 +211,13 @@ export function StoredArtifactView(props: { artifact: StoredArtifact }): JSX.Ele
             <span style={meta()}>
               {label(selected(), record()?.kind ?? props.artifact.kind)} ·{" "}
               {size(selected()?.size ?? props.artifact.current.size)}
+            </span>
+            <span
+              class="artifact-preview-origin"
+              style={meta()}
+              title={`${origin()} · ${selected()?.sessionID ?? props.artifact.current.sessionID}`}
+            >
+              {origin()}
             </span>
           </span>
           <ViewerControlsSlot />
@@ -396,6 +411,11 @@ function Preview(props: {
   onRetry: () => void
 }): JSX.Element {
   const sdk = useSDK()
+  const [mode, setMode] = createStore({ source: false })
+  createEffect(() => {
+    props.version.id
+    setMode("source", false)
+  })
   const file = (href: string) => localAssetPath(href, props.version.sourcePath)
   const imageUrl = (src: string) =>
     assetUrl(src, {
@@ -469,10 +489,35 @@ function Preview(props: {
       </Match>
       <Match when={props.data?.kind === "text" ? props.data : undefined}>
         {(data) => (
-          <div style={viewer().kind === "markdown" || viewer().kind === "notebook" ? undefined : pre()}>
-            <MarkdownImages resolve={imageUrl} resolveFile={file} openFile={openFile}>
-              <TextContentView name={props.version.filename} text={data().data} viewer={viewer()} />
-            </MarkdownImages>
+          <div class="artifact-preview-document">
+            <div class="artifact-preview-modes" role="group" aria-label="Artifact preview mode">
+              <Button
+                size="small"
+                variant={mode.source ? "ghost" : "secondary"}
+                aria-pressed={!mode.source}
+                onClick={() => setMode("source", false)}
+              >
+                Preview
+              </Button>
+              <Button
+                size="small"
+                variant={mode.source ? "secondary" : "ghost"}
+                aria-pressed={mode.source}
+                onClick={() => setMode("source", true)}
+              >
+                Source
+              </Button>
+            </div>
+            <Show when={!mode.source} fallback={<pre style={pre()}>{data().data}</pre>}>
+              <MarkdownImages resolve={imageUrl} resolveFile={file} openFile={openFile}>
+                <TextContentView
+                  name={props.version.filename}
+                  text={data().data}
+                  viewer={viewer()}
+                  resolveAsset={imageUrl}
+                />
+              </MarkdownImages>
+            </Show>
           </div>
         )}
       </Match>

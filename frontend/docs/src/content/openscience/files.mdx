@@ -63,6 +63,18 @@ After saving, choose **Save as Result** to retain a completed output. See [Saved
 
 ## Previews
 
+### Project artifact catalog
+
+Open **Files → Results** to browse saved artifacts from the current project. Choose **This project** or **This session**, then filter by session or file type. Search matches the result title, filename, content type, and loaded session title. Session names and short IDs remain visible on cards, including when sorted by filename, so identically named outputs from different conversations stay distinct.
+
+Images, PDF first pages, and small HTML reports have rendered thumbnails; supported molecular coordinate files have structure projections. Tables, notebooks, and small text files show content excerpts. A thumbnail is a quick locator; opening the artifact loads its saved version through the authenticated project connection.
+
+Saved PDB/mmCIF and molecule files open in the interactive Mol* viewer. Sequence and genomic formats use the same scientific views as working files. Reports, tables, notebooks, and sandboxed HTML open as rendered documents. **Source** shows the original text; **Download** retrieves the original bytes. Unsupported or oversized formats retain a download fallback (8 MB preview limit, 64 MB for PDFs). HTML previews do not run scripts.
+
+Only explicitly saved Results appear in this catalog. Open a working file and choose **Save as Result**, or ask the agent to save the completed deliverable. Intermediate files remain in their working folders.
+
+Research bundles include individually saved key figures, structures, result tables and reports so you can inspect them here without downloading and unpacking an archive. The complete archive remains available for reproducibility and bulk download. The agent's `artifact save_file` accepts `preview_paths` to publish these existing files alongside a bundle, with the same session and producing-run provenance. Files from different runs should be saved separately with their own provenance; `preview_artifact_ids` reuses those saved Results without creating extra versions. Raw-data or source-only archives can specify `download_only_reason` when no useful preview applies. Archives are not automatically unpacked; existing bundles can be supplemented by saving their original key files as Results in the originating session.
+
 Depending on the file, the workspace can show documents, images, tables, code, and scientific views. Molecules, protein structures, and genomic data use supported scientific renderers.
 
 If a format cannot be previewed, open it with a suitable local application or ask for a derived preview while keeping the original. For a large dataset, request a summary or sample first.

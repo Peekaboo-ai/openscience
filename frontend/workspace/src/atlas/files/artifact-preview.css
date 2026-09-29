@@ -1,0 +1,29 @@
+.artifact-preview-document {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+.artifact-preview-modes {
+  display: flex;
+  flex: none;
+  gap: 4px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-border-weak);
+}
+.artifact-preview-document > .atlas-file-html {
+  min-height: 560px;
+  flex: 1;
+}
+.artifact-preview-document .atlas-file-html-frame {
+  min-height: 560px;
+}
+.artifact-preview-document .atlas-file-science {
+  padding: 8px;
+  min-width: 0;
+}
+.artifact-preview-origin {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

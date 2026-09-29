@@ -41,6 +41,8 @@ export class RemoteClient {
       },
       (error) => this.close(error),
     )
+    // 启动探测交接时暂停了 stdout；协议监听安装完成后再读取缓存中的 hello。
+    process.stdout.resume()
     process.on("error", (error) => this.close(error))
     process.on("close", () =>
       this.close(

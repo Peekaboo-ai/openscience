@@ -22,6 +22,152 @@ const context = (sessionID: string) => ({
   async ask() {},
 })
 
+test("research bundles publish selected files with the same session, immutable bytes and producing run", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const session = await executionSession()
+      const tool = await ArtifactTool.init()
+      const workspace = await SessionFilesystem.workspace(session.id)
+      const files = {
+        "result.csv": "metric,value\nidentity,0.91\n",
+        "structure.cif": "data_test\n_entry.id test\n",
+        "bundle.tar.gz": new Uint8Array([31, 139, 8, 0]),
+        "raw.json": '{"intermediate":true}',
+      }
+      for (const [name, content] of Object.entries(files)) await Bun.write(path.join(workspace, name), content)
+      const scope = { projectID: Instance.project.id, directory: Instance.directory }
+      const run = await Provenance.recordOwned(scope, {
+        id: "run_bundle",
+        kind: "run",
+        label: "Analysis",
+        tool: "python",
+        sessionID: session.id,
+        status: "ok",
+        meta: { projectID: scope.projectID, sessionID: session.id },
+      } as Parameters<typeof Provenance.record>[0])
+      const response = await tool.execute(
+        {
+          action: "save_file",
+          path: "bundle.tar.gz",
+          preview_paths: ["result.csv", "structure.cif", "result.csv"],
+          provenance_id: run.id,
+        },
+        context(session.id),
+      )
+      expect(response.metadata.previewArtifacts).toHaveLength(2)
+      const saved = await ArtifactStore.list(scope.projectID)
+      expect(saved).toHaveLength(3)
+      expect(saved.map((item) => item.kind).sort()).toEqual(["archive", "dataset", "structure"])
+      for (const item of saved) {
+        expect(item.current.sessionID).toBe(session.id)
+        expect(item.versionCount).toBe(1)
+        const stored = await ArtifactStore.read(scope.projectID, item.id)
+        const original = Bun.file(path.join(workspace, item.current.filename))
+        expect(await stored!.content.arrayBuffer()).toEqual(await original.arrayBuffer())
+        expect((await ArtifactStore.get(scope.projectID, item.id))?.execution?.source).toBe(run.id)
+        expect(response.output).toContain(item.id)
+      }
+      expect((await ArtifactStore.listSessionVersions(scope.projectID, session.id)).length).toBe(3)
+      const previews = saved.filter((item) => item.kind !== "archive")
+      const reused = await tool.execute(
+        {
+          action: "save_file",
+          path: "bundle.tar.gz",
+          preview_artifact_ids: previews.map((item) => item.id),
+        },
+        context(session.id),
+      )
+      expect(reused.metadata.previewArtifacts).toHaveLength(2)
+      for (const item of previews) {
+        const detail = await ArtifactStore.get(scope.projectID, item.id)
+        expect(detail?.versionCount).toBe(1)
+        expect(detail?.execution?.source).toBe(run.id)
+      }
+      const other = await executionSession()
+      await expect(
+        tool.execute(
+          { action: "save_file", path: "bundle.tar.gz", preview_artifact_ids: [previews[0]!.id] },
+          context(other.id),
+        ),
+      ).rejects.toThrow("saved in this session")
+      await ArtifactStore.trash(scope.projectID, previews[0]!.id)
+      await expect(
+        tool.execute(
+          { action: "save_file", path: "bundle.tar.gz", preview_artifact_ids: [previews[0]!.id] },
+          context(session.id),
+        ),
+      ).rejects.toThrow("active individual file")
+    },
+  })
+})
+
+test("archive-only delivery needs an explicit download-only reason", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const session = await executionSession()
+      const tool = await ArtifactTool.init()
+      await Bun.write(path.join(await SessionFilesystem.workspace(session.id), "source.zip"), "source archive")
+      await expect(tool.execute({ action: "save_file", path: "source.zip" }, context(session.id))).rejects.toThrow(
+        "preview_paths",
+      )
+      expect(await ArtifactStore.list(Instance.project.id)).toHaveLength(0)
+      const saved = await tool.execute(
+        { action: "save_file", path: "source.zip", download_only_reason: "Source code only; no research outputs." },
+        context(session.id),
+      )
+      expect(saved.metadata.savedArtifact).toMatchObject({ kind: "archive" })
+      expect(await ArtifactStore.list(Instance.project.id)).toHaveLength(1)
+    },
+  })
+})
+
+test.each(["missing.csv", "bundle.zip"])(
+  "invalid bundle preview %s fails before publishing any Results",
+  async (preview) => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await executionSession()
+        const tool = await ArtifactTool.init()
+        const workspace = await SessionFilesystem.workspace(session.id)
+        await Bun.write(path.join(workspace, "bundle.zip"), "bundle")
+        await Bun.write(path.join(workspace, "result.csv"), "metric,value\nscore,1\n")
+        await expect(
+          tool.execute(
+            { action: "save_file", path: "bundle.zip", preview_paths: ["result.csv", preview] },
+            context(session.id),
+          ),
+        ).rejects.toThrow()
+        expect(await ArtifactStore.list(Instance.project.id)).toHaveLength(0)
+      },
+    })
+  },
+)
+
+test("bundle previews cannot read another session's scratch files", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const session = await executionSession()
+      const other = await executionSession()
+      const source = path.join(await SessionFilesystem.workspace(other.id), "private.csv")
+      await Bun.write(source, "private\n1\n")
+      await Bun.write(path.join(await SessionFilesystem.workspace(session.id), "bundle.zip"), "bundle")
+      const tool = await ArtifactTool.init()
+      await expect(
+        tool.execute({ action: "save_file", path: "bundle.zip", preview_paths: [source] }, context(session.id)),
+      ).rejects.toThrow()
+      expect(await ArtifactStore.list(Instance.project.id)).toHaveLength(0)
+    },
+  })
+})
+
 test.each(["\ufeff", "\ufeff" + "α".repeat(25_599) + "🧬ending"])(
   "artifact read_file preserves BOM bytes and advances exact UTF-8 offsets",
   async (content) => {

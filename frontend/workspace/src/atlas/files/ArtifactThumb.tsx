@@ -3,6 +3,9 @@ import { blobDataUrl } from "@/artifacts/bytes"
 import type { StoredArtifact } from "@/artifacts/store"
 import { ensurePdfWorker } from "@/science/renderers/documents/pdfjs-worker"
 import { extension, thumbKind, thumbLanguage } from "./artifact-thumb"
+import { molecularThumbnail } from "./molecular-thumbnail"
+import { parseTable } from "@/data/table"
+import { rewriteHtmlAssets } from "@/utils/html-assets"
 
 export interface ThumbProps {
   artifact: StoredArtifact
@@ -18,6 +21,7 @@ const shared = (code: string, lang: string) =>
   import("@synsci/ui/context/marked").then((module) => module.highlightSnippet(code, lang))
 
 interface Preview {
+  document?: string
   text?: string
   html?: string
   image?: string
@@ -26,17 +30,9 @@ interface Preview {
 }
 
 const cells = (body: string, filename: string) => {
-  const delimiter = extension(filename) === "tsv" ? "\t" : ","
-  return body
-    .split(/\r?\n/)
-    .filter(Boolean)
-    .slice(0, 5)
-    .map((row) =>
-      row
-        .split(delimiter)
-        .slice(0, 4)
-        .map((cell) => cell.trim().replace(/^['"]|['"]$/g, "")),
-    )
+  const ext = extension(filename)
+  const table = parseTable(ext === "tsv" ? "tsv" : ext === "jsonl" ? "jsonl" : "csv", body, 4)
+  return [table.columns, ...table.rows].map((row) => row.slice(0, 4))
 }
 
 const notebookText = (body: string) => {
@@ -104,9 +100,10 @@ export function ArtifactThumb(props: ThumbProps): JSX.Element {
   // hazard FilesPane.tsx:248 already documents for the listing.
   createEffect(() => {
     const artifact = props.artifact
+    const previewKind = kind()
     setPreview(undefined)
     setFailed(false)
-    if (kind() === "binary") return
+    if (previewKind === "binary") return
 
     const cached = previews.get(artifact.current.id)
     if (cached) {
@@ -122,7 +119,8 @@ export function ArtifactThumb(props: ThumbProps): JSX.Element {
         // Inside the try, because `read` can throw rather than reject:
         // sdk.request is a plain function that throws when no project is open.
         const blob = await props.read(artifact)
-        if (kind() === "image") {
+        if (!live) return
+        if (previewKind === "image") {
           const typed =
             blob.type === artifact.current.mimeType ? blob : new Blob([blob], { type: artifact.current.mimeType })
           const preview = { image: await blobDataUrl(typed) }
@@ -130,20 +128,47 @@ export function ArtifactThumb(props: ThumbProps): JSX.Element {
           if (live) setPreview(preview)
           return
         }
-        if (kind() === "pdf") {
+        if (previewKind === "pdf") {
           const preview = { image: await pdfImage(blob), label: "PDF preview" }
           remember(artifact.current.id, preview)
           if (live) setPreview(preview)
           return
         }
         const body = await blob.text()
-        if (kind() === "table") {
+        if (previewKind === "html") {
+          // 缩略图只展示静态排版，避免滚动目录时执行脚本或访问外部资源。
+          const doc = new DOMParser().parseFromString(
+            rewriteHtmlAssets(body, (src) => (src.startsWith("data:") ? src : "about:blank")),
+            "text/html",
+          )
+          doc.querySelectorAll("script, iframe, object, embed, base, meta[http-equiv]").forEach((node) => node.remove())
+          const policy = doc.createElement("meta")
+          policy.setAttribute("http-equiv", "Content-Security-Policy")
+          policy.setAttribute("content", "default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:")
+          doc.head.prepend(policy)
+          const preview = { document: `<!doctype html>${doc.documentElement.outerHTML}` }
+          remember(artifact.current.id, preview)
+          if (live) setPreview(preview)
+          return
+        }
+        if (previewKind === "molecule") {
+          const image = await molecularThumbnail(body, extension(artifact.current.filename))
+          if (!image) {
+            if (live) setFailed(true)
+            return
+          }
+          const preview = { image }
+          remember(artifact.current.id, preview)
+          if (live) setPreview(preview)
+          return
+        }
+        if (previewKind === "table") {
           const preview = { table: cells(body, artifact.current.filename) }
           remember(artifact.current.id, preview)
           if (live) setPreview(preview)
           return
         }
-        if (kind() === "notebook") {
+        if (previewKind === "notebook") {
           const preview = notebookText(body)
           remember(artifact.current.id, preview)
           if (live) setPreview(preview)
@@ -170,6 +195,18 @@ export function ArtifactThumb(props: ThumbProps): JSX.Element {
 
   return (
     <Switch fallback={chip()}>
+      <Match when={kind() === "html" && !failed() && preview()?.document}>
+        {(html) => (
+          <span class="artifact-thumb artifact-thumb--html" aria-hidden="true">
+            <iframe sandbox="" srcdoc={html()} title="Report thumbnail" tabindex={-1} loading="lazy" />
+          </span>
+        )}
+      </Match>
+      <Match when={kind() === "molecule" && !failed() && preview()?.image}>
+        {(image) => (
+          <img class="artifact-thumb artifact-thumb--image" src={image()} alt="Molecular coordinate preview" />
+        )}
+      </Match>
       <Match when={kind() === "image" && !failed() && preview()?.image}>
         {(image) => <img class="artifact-thumb artifact-thumb--image" src={image()} alt="" />}
       </Match>
@@ -180,7 +217,13 @@ export function ArtifactThumb(props: ThumbProps): JSX.Element {
       </Match>
       <Match when={kind() === "table" && !failed() && preview()?.table}>
         {(rows) => (
-          <span class="artifact-thumb artifact-thumb--table" aria-label="Table preview">
+          <span
+            class="artifact-thumb artifact-thumb--table"
+            aria-label="Table preview"
+            style={{
+              "grid-template-columns": `repeat(${Math.max(1, ...rows().map((row) => row.length))}, minmax(0, 1fr))`,
+            }}
+          >
             {rows().map((row) => row.map((cell) => <span title={cell}>{cell}</span>))}
           </span>
         )}

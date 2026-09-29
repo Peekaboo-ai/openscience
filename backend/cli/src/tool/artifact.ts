@@ -163,12 +163,37 @@ async function recordedRun(
 
 export const ArtifactTool = Tool.define("artifact", {
   description:
-    "Save an important workspace file as a durable Result, or read an exact immutable Result version by artifact_id and version_id (including outputs handed back by a worker). read_file returns bounded text or binary metadata; it does not grant access to another session's scratch. Empirical contract Results need provenance_id to pass completion. Keep drafts and large mutable working data in the workspace instead.",
+    "Save an important workspace file as a durable Result, or read an exact immutable Result version by artifact_id and version_id (including outputs handed back by a worker). When saving a research archive, include preview_paths for the key figures, structures, tables and report: these are saved as separate Results in the same session before the download bundle. An archive alone cannot be previewed. read_file returns bounded text or binary metadata; it does not grant access to another session's scratch. Empirical contract Results need provenance_id to pass completion. Keep drafts and large mutable working data in the workspace instead.",
   parameters: z
     .object({
       action: z.enum(["save_file", "read_file"]),
       path: z.string().trim().min(1).max(10_000).optional().describe("Required for save_file: workspace file path"),
       summary: z.string().optional().describe("Concise user-facing Result title"),
+      preview_paths: z
+        .array(z.string().trim().min(1).max(10_000))
+        .min(1)
+        .max(32)
+        .optional()
+        .describe(
+          "For save_file: key workspace files to publish individually alongside the archive. Choose one preview per figure, meaningful result tables, molecular structures and the report; exclude raw inputs, logs and duplicate formats. These files must already exist outside the archive. Each inherits this call's session and provenance_id; use separate save_file calls when producing runs differ.",
+        ),
+      download_only_reason: z
+        .string()
+        .trim()
+        .min(1)
+        .max(1_000)
+        .optional()
+        .describe(
+          "For archives with no useful previewable content (e.g. raw data or source code only), explain why no preview_paths apply. Do not use this to omit available research figures, structures, tables or reports.",
+        ),
+      preview_artifact_ids: z
+        .array(z.string().min(1))
+        .min(1)
+        .max(32)
+        .optional()
+        .describe(
+          "Already saved key Result IDs from this session to accompany the archive without creating new versions. Use this for files saved separately with different producing-run provenance.",
+        ),
       provenance_id: z
         .string()
         .optional()
@@ -268,18 +293,59 @@ export const ArtifactTool = Tool.define("artifact", {
     if (params.provenance_id && (!entry || sessionID !== ctx.sessionID || owner !== Instance.project.id)) {
       return result("Invalid provenance", "The producing run was not found in this project and session.")
     }
-    {
-      const file = await File.rawSource(params.path!, {
+    const archive = ArtifactFile.classify(params.path!)?.kind === "archive"
+    const previews = [...new Set(params.preview_paths ?? [])]
+    const references = [...new Set(params.preview_artifact_ids ?? [])]
+    if (archive && !previews.length && !references.length && !params.download_only_reason) {
+      throw new Error(
+        "Research bundles must include independently viewable Results. Call save_file again with preview_paths naming the key existing figures, structures, tables and report outside the archive, or preview_artifact_ids for Results already saved in this session. Keep the archive for full download. If it contains only raw data or source code with no useful preview, supply download_only_reason.",
+      )
+    }
+    const published = []
+    for (const id of references) {
+      ctx.abort.throwIfAborted()
+      const saved = await ArtifactStore.get(Instance.project.id, id)
+      if (!saved || saved.state !== "active" || saved.kind === "archive" || saved.current.sessionID !== ctx.sessionID) {
+        throw new Error(`Preview Result must be an active individual file saved in this session: ${id}`)
+      }
+      published.push(
+        result(saved.title, `${saved.title}: ${saved.id} (${saved.currentVersionID})`, {
+          savedArtifact: {
+            id: saved.id,
+            versionID: saved.currentVersionID,
+            version: saved.current.version,
+            title: saved.title,
+            size: saved.current.size,
+            mimeType: saved.current.mimeType,
+            path: saved.current.sourcePath,
+            kind: saved.kind,
+            sha256: saved.current.sha256,
+          },
+        }),
+      )
+    }
+    // 先校验整组文件，防止缺失或越权路径导致只交付压缩包；不解压或猜测相邻文件。
+    for (const source of [params.path!, ...previews]) {
+      ctx.abort.throwIfAborted()
+      if (previews.includes(source) && (source === params.path || ArtifactFile.classify(source)?.kind === "archive")) {
+        throw new Error(`Preview paths must identify individual files, not download bundles: ${source}`)
+      }
+      const file = await File.rawSource(source, { sessionID: ctx.sessionID, maxBytes: ArtifactStore.MAX_VERSION_BYTES })
+      await file.close()
+    }
+    const save = async (source: string, summary?: string, inline = true) => {
+      ctx.abort.throwIfAborted()
+      const file = await File.rawSource(source, {
         sessionID: ctx.sessionID,
         maxBytes: ArtifactStore.MAX_VERSION_BYTES,
       })
-      const name = path.basename(params.path!)
+      const name = path.basename(source)
       const classified = ArtifactFile.classify(name)
-      const title = params.summary?.trim() || name
+      const title = summary?.trim() || name
       const saved = await ArtifactStore.save({
         projectID: Instance.project.id,
         sessionID: ctx.sessionID,
-        sourcePath: params.path!,
+        sourcePath: source,
         filename: name,
         kind: classified?.kind ?? "file",
         content: file,
@@ -290,7 +356,7 @@ export const ArtifactTool = Tool.define("artifact", {
         ...(entry ? { execution: savedExecution(entry) } : {}),
       }).finally(() => file.close())
       const preview = await (async () => {
-        if (saved.current.size > 1_500_000) return
+        if (!inline || saved.current.size > 1_500_000) return
         const stored = await ArtifactStore.read(Instance.project.id, saved.id, saved.currentVersionID)
         if (!stored) return
         if (saved.current.mimeType.startsWith("image/")) {
@@ -345,5 +411,18 @@ export const ArtifactTool = Tool.define("artifact", {
         },
       )
     }
+    for (const source of previews) published.push(await save(source, undefined, false))
+    const saved = await save(params.path!, params.summary)
+    if (!published.length) return saved
+    return result(
+      saved.title,
+      [
+        saved.output,
+        "",
+        "Independent Results are available in Files > Results under this session:",
+        ...published.map((item) => item.output),
+      ].join("\n"),
+      { ...saved.metadata, previewArtifacts: published.map((item) => item.metadata.savedArtifact) },
+    )
   },
 })

@@ -4,6 +4,8 @@ import { batch, createEffect, createMemo, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
 import { usePlatform } from "@/context/platform"
 import { Persist, persisted } from "@/utils/persist"
+import { createServerHealth, serverHealthTimeout } from "./server-health"
+export { nextServerHealth, SERVER_FAILURE_THRESHOLD } from "./server-health"
 
 type StoredProject = { projectID: string; expanded: boolean }
 type LegacyProject = { worktree: string; expanded: boolean }
@@ -150,17 +152,6 @@ export function serverDisplayName(url: string) {
   return trimSlashes(withoutProtocol(url))
 }
 
-export const SERVER_FAILURE_THRESHOLD = 3
-
-export function nextServerHealth(healthy: boolean | undefined, failures: number, succeeded: boolean) {
-  if (succeeded) return { healthy: true, failures: 0 }
-  const count = Math.min(failures + 1, SERVER_FAILURE_THRESHOLD)
-  return {
-    healthy: count >= SERVER_FAILURE_THRESHOLD ? false : healthy,
-    failures: count,
-  }
-}
-
 function withoutProtocol(value: string) {
   if (value.startsWith("http://")) return value.slice("http://".length)
   if (value.startsWith("https://")) return value.slice("https://".length)
@@ -281,8 +272,8 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
 
     const isReady = createMemo(() => ready() && !!state.active)
 
-    const check = (url: string) => {
-      const signal = (AbortSignal as unknown as { timeout?: (ms: number) => AbortSignal }).timeout?.(3000)
+    const check = (url: string, cancelled: AbortSignal) => {
+      const signal = AbortSignal.any([cancelled, AbortSignal.timeout(serverHealthTimeout(url))])
       const sdk = createOpenScienceClient({
         baseUrl: url,
         fetch: platform.fetch,
@@ -322,33 +313,19 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
       return request
     }
 
-    const refresh = async (target = state.active) => {
-      if (!target) return false
-      setState("checking", true)
-      const next = await check(target)
-      if (state.active !== target) return next
-      const result = nextServerHealth(state.healthy, state.failures, next)
-      batch(() => {
-        setState("healthy", result.healthy)
-        setState("checking", false)
-        setState("failures", result.failures)
-      })
-      if (next) void loadProjects(target).catch(() => undefined)
-      return next
-    }
+    const monitor = createServerHealth({
+      check,
+      changed: (health) => setState(health),
+      connected: (target) => void loadProjects(target).catch(() => undefined),
+    })
+    const refresh = () => monitor.refresh()
+    onCleanup(() => monitor.dispose())
 
     createEffect(() => {
       const url = state.active
       if (!url) return
 
-      batch(() => {
-        setState("healthy", undefined)
-        setState("checking", false)
-        setState("failures", 0)
-      })
-
-      let alive = true
-      let busy = false
+      monitor.select(url)
       let interval: ReturnType<typeof setInterval> | undefined
 
       const hidden = () => typeof document !== "undefined" && document.hidden
@@ -356,15 +333,8 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
       const run = () => {
         // Skip probes while the tab is backgrounded — no point spending network
         // on a health check nobody can see; we refresh immediately on refocus.
-        if (busy || hidden()) return
-        busy = true
-        void refresh(url)
-          .then(() => {
-            if (!alive) return
-          })
-          .finally(() => {
-            busy = false
-          })
+        if (hidden()) return
+        void refresh()
       }
 
       const start = () => {
@@ -391,7 +361,6 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
       if (typeof document !== "undefined") document.addEventListener("visibilitychange", onVisibility)
 
       onCleanup(() => {
-        alive = false
         stop()
         if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVisibility)
       })

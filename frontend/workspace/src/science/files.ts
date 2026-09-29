@@ -24,6 +24,11 @@ const molecule: Record<string, string> = {
 
 const fasta = new Set(["fa", "fasta", "faa", "fna", "ffn", "frn"])
 
+export function isScientificFile(extension: string) {
+  const ext = extension.toLowerCase()
+  return !!protein[ext] || !!molecule[ext] || fasta.has(ext) || ext === "smi" || ext === "smiles"
+}
+
 export function detectScientificFile(extension: string, content: string): ScientificFile | undefined {
   if (!content.trim()) return
 

@@ -711,6 +711,30 @@ describe("generatedArtifacts", () => {
     expect(savedArtifact(artifact)).toEqual(artifact)
   })
 
+  test("shows the key Results alongside their archive and deduplicates existing previews", () => {
+    const archive = {
+      ...artifact,
+      id: "art_bundle",
+      versionID: "ver_bundle",
+      kind: "archive",
+      path: "results.zip",
+      title: "Complete bundle",
+    }
+    expect(
+      generatedArtifacts([
+        { type: "tool", tool: "artifact", state: { status: "completed", metadata: { savedArtifact: artifact } } },
+        {
+          type: "tool",
+          tool: "artifact",
+          state: {
+            status: "completed",
+            metadata: { savedArtifact: archive, previewArtifacts: [artifact, { id: "invalid" }] },
+          },
+        },
+      ]),
+    ).toEqual([artifact, archive])
+  })
+
   test("collects only completed artifact versions and deduplicates them", () => {
     expect(
       generatedArtifacts([

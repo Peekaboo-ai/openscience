@@ -1,8 +1,10 @@
-import { For, Show, createMemo, createSignal, type JSX } from "solid-js"
+import { For, Show, createEffect, createMemo, createSignal, type JSX } from "solid-js"
+import { createStore } from "solid-js/store"
 import type { StoredArtifact } from "@/artifacts/store"
 import { ArtifactCard } from "./ArtifactCard"
 import type { ThumbProps } from "./ArtifactThumb"
-import { groupBySession, sortArtifacts, type Group } from "./artifact-groups"
+import { groupBySession, sessionLabel, sortArtifacts, type Group } from "./artifact-groups"
+import { ARTIFACT_TYPES, filterArtifacts, type ArtifactType } from "./artifact-catalog"
 import { readView, writeView, type View } from "./artifact-view"
 import { age } from "./ago"
 import { IconChevronDown } from "@/atlas/shared/Icon"
@@ -10,8 +12,10 @@ import "./file-items.css"
 
 export interface GridProps extends Omit<ThumbProps, "artifact"> {
   artifacts: StoredArtifact[]
+  catalog?: StoredArtifact[]
   titles: Map<string, string>
   currentSession: string | undefined
+  scopeKey?: string
   /** Set while the pane's search box is filtering, so an empty grid can say why. */
   filtered?: boolean
   /** Empty data during loading or a failed request is not a true empty state. */
@@ -24,6 +28,21 @@ export interface GridProps extends Omit<ThumbProps, "artifact"> {
 }
 
 export function ArtifactGrid(props: GridProps): JSX.Element {
+  const [filter, setFilter] = createStore({ scope: "project", session: "", type: "all" as ArtifactType })
+  createEffect(() => {
+    props.scopeKey
+    setFilter({ scope: "project", session: "", type: "all" })
+  })
+  const sessions = createMemo(() =>
+    groupBySession(props.catalog ?? props.artifacts, props.titles, props.currentSession),
+  )
+  const visible = createMemo(() =>
+    filterArtifacts(props.artifacts, {
+      session: filter.scope === "session" ? (props.currentSession ?? "") : filter.session || undefined,
+      type: filter.type,
+    }),
+  )
+  const filtering = () => props.filtered || filter.scope === "session" || !!filter.session || filter.type !== "all"
   const [view, setView] = createSignal<View>(readView())
   const [prefs, setPrefs] = createSignal(false)
   const refs: { trigger?: HTMLButtonElement; menu?: HTMLDivElement } = {}
@@ -63,13 +82,17 @@ export function ArtifactGrid(props: GridProps): JSX.Element {
   // path; the header is what disappears, not the list.
   const groups = createMemo((): Group[] =>
     sort() === "created"
-      ? groupBySession(props.artifacts, props.titles, props.currentSession)
-      : [{ key: "all", label: "", artifacts: sortArtifacts(props.artifacts, "name"), newest: 0 }],
+      ? groupBySession(visible(), props.titles, props.currentSession)
+      : [{ key: "all", label: "", artifacts: sortArtifacts(visible(), "name"), newest: 0 }],
   )
 
   const card = (artifact: StoredArtifact) => (
     <ArtifactCard
       artifact={artifact}
+      sessionLabel={
+        props.titles.get(artifact.current.sessionID)?.trim() ||
+        sessionLabel(artifact.current.sessionID, props.titles, props.currentSession)
+      }
       layout={layout()}
       sizes={sizes()}
       read={props.read}
@@ -83,12 +106,58 @@ export function ArtifactGrid(props: GridProps): JSX.Element {
 
   return (
     <div class="artifact-surface">
+      <div class="artifact-catalog-filters">
+        <div class="artifact-catalog-scope" role="group" aria-label="Artifact scope">
+          <button type="button" aria-pressed={filter.scope === "project"} onClick={() => setFilter("scope", "project")}>
+            This project
+          </button>
+          <button
+            type="button"
+            aria-pressed={filter.scope === "session"}
+            disabled={!props.currentSession}
+            onClick={() => setFilter("scope", "session")}
+          >
+            This session
+          </button>
+        </div>
+        <div class="artifact-catalog-selects">
+          <Show when={filter.scope === "project"}>
+            <label>
+              <span>Session</span>
+              <select
+                aria-label="Filter artifacts by session"
+                value={filter.session}
+                onChange={(event) => setFilter("session", event.currentTarget.value)}
+              >
+                <option value="">All sessions</option>
+                <For each={sessions()}>
+                  {(group) => (
+                    <option value={group.key}>
+                      {props.titles.get(group.key)?.trim() || group.label} · {group.key.slice(-6)}
+                    </option>
+                  )}
+                </For>
+              </select>
+            </label>
+          </Show>
+          <label>
+            <span>Type</span>
+            <select
+              aria-label="Filter artifacts by type"
+              value={filter.type}
+              onChange={(event) => setFilter("type", event.currentTarget.value as ArtifactType)}
+            >
+              <For each={ARTIFACT_TYPES}>{(type) => <option value={type.value}>{type.label}</option>}</For>
+            </select>
+          </label>
+        </div>
+      </div>
       <div class="artifact-toolbar">
         <span class="artifact-toolbar__primary">
           <span class="artifact-toolbar__count" data-artifact-count>
-            {props.artifacts.length} {props.artifacts.length === 1 ? "result" : "results"}
+            {visible().length} {visible().length === 1 ? "result" : "results"}
           </span>
-          <span class="artifact-toolbar__hint">Immutable versions</span>
+          <span class="artifact-toolbar__hint">Saved artifacts</span>
         </span>
 
         {/* Sorting, layout and the optional size column are one mental model:
@@ -212,18 +281,27 @@ export function ArtifactGrid(props: GridProps): JSX.Element {
       </div>
 
       <Show
-        when={props.artifacts.length > 0}
+        when={visible().length > 0}
         fallback={
           <Show when={!props.loading && !props.unavailable}>
             {/* "No artifacts saved yet." is false when a search simply matched
                 nothing, and the count beside it already says 0. */}
             <div class="files-empty files-empty--artifacts" data-artifact-empty>
-              <strong>{props.filtered ? "No matching results" : "No saved results yet"}</strong>
+              <strong>{filtering() ? "No matching results" : "No saved results yet"}</strong>
               <span>
-                {props.filtered
-                  ? "Try a different name or clear the search."
-                  : "Deliverables saved by a session appear here with their versions intact."}
+                {filtering()
+                  ? "Try another session or file type, or clear the search."
+                  : "Save a file to Results from its preview, or ask the agent to save a deliverable. Artifacts from this project appear here, grouped by session."}
               </span>
+              <Show when={filter.scope !== "project" || filter.session || filter.type !== "all"}>
+                <button
+                  type="button"
+                  class="artifact-toolbar__prefs"
+                  onClick={() => setFilter({ scope: "project", session: "", type: "all" })}
+                >
+                  Clear filters
+                </button>
+              </Show>
             </div>
           </Show>
         }
@@ -234,6 +312,9 @@ export function ArtifactGrid(props: GridProps): JSX.Element {
               <Show when={group.label}>
                 <div class="artifact-group" data-artifact-group>
                   <span class="artifact-group__name">{group.label}</span>
+                  <span class="artifact-group__id" title={group.key}>
+                    {group.key.slice(-6)}
+                  </span>
                   <span class="artifact-group__meta">
                     {group.artifacts.length} · {age(group.newest)}
                   </span>

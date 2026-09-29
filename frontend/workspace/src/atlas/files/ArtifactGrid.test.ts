@@ -83,6 +83,54 @@ const props = (over: Record<string, unknown> = {}) => ({
 })
 
 describe("artifact grid", () => {
+  test("keeps session choices available when search matches no artifacts", () => {
+    const catalog = props().artifacts
+    const host = mount(() => subject.ArtifactGrid(props({ artifacts: [], catalog, filtered: true }) as never))
+    const sessions = host.querySelector<HTMLSelectElement>('[aria-label="Filter artifacts by session"]')!
+    expect([...sessions.options].map((item) => item.value)).toEqual(["", "ses_one", "ses_two"])
+    expect(host.querySelector("[data-artifact-empty]")?.textContent).toContain("No matching results")
+  })
+  test("filters this session without merging identical filenames", () => {
+    const rows = [
+      artifact({ filename: "result.csv", session: "ses_one", createdAt: now }),
+      artifact({ filename: "result.csv", session: "ses_two", createdAt: now }),
+    ]
+    const host = mount(() => subject.ArtifactGrid(props({ artifacts: rows, currentSession: "ses_one" }) as never))
+    expect(host.querySelectorAll("[data-card-open]")).toHaveLength(2)
+    expect([...host.querySelectorAll(".artifact-card__session")].map((node) => node.textContent)).toEqual([
+      "First session · es_one",
+      "ses_…es_two · es_two",
+    ])
+    host.querySelectorAll<HTMLButtonElement>(".artifact-catalog-scope button")[1]!.click()
+    expect(host.querySelectorAll("[data-card-open]")).toHaveLength(1)
+    expect(host.querySelector(".artifact-card__session")?.textContent).toContain("First session")
+    host.querySelectorAll<HTMLButtonElement>(".artifact-catalog-scope button")[0]!.click()
+    expect(host.querySelectorAll("[data-card-open]")).toHaveLength(2)
+  })
+
+  test("combines session and type filters and recovers from no matches", () => {
+    const host = mount(() =>
+      subject.ArtifactGrid(
+        props({
+          artifacts: [
+            artifact({ filename: "structure.pdb", session: "ses_one", createdAt: now }),
+            artifact({ filename: "table.csv", session: "ses_two", createdAt: now }),
+          ],
+        }) as never,
+      ),
+    )
+    const type = host.querySelector<HTMLSelectElement>('[aria-label="Filter artifacts by type"]')!
+    type.value = "structure"
+    type.dispatchEvent(new Event("change", { bubbles: true }))
+    expect(host.querySelectorAll("[data-card-open]")).toHaveLength(1)
+    const session = host.querySelector<HTMLSelectElement>('[aria-label="Filter artifacts by session"]')!
+    session.value = "ses_two"
+    session.dispatchEvent(new Event("change", { bubbles: true }))
+    expect(host.querySelectorAll("[data-card-open]")).toHaveLength(0)
+    expect(host.textContent).toContain("No matching results")
+    host.querySelector<HTMLButtonElement>("[data-artifact-empty] button")!.click()
+    expect(host.querySelectorAll("[data-card-open]")).toHaveLength(2)
+  })
   test("counts what it shows", () => {
     const host = mount(() => subject.ArtifactGrid(props() as never))
 
@@ -163,7 +211,7 @@ describe("artifact grid", () => {
     const host = mount(() => subject.ArtifactGrid(props({ artifacts: [] }) as never))
 
     expect(host.textContent).toContain("No saved results yet")
-    expect(host.textContent).toContain("versions intact")
+    expect(host.textContent).toContain("Save a file to Results")
     expect(host.textContent).not.toContain("folder")
     expect(host.querySelector("[data-artifact-count]")?.textContent).toBe("0 results")
   })

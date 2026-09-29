@@ -7,6 +7,7 @@ import { pipeline } from "node:stream/promises"
 import z from "zod"
 import { Global } from "../global"
 import { SshAdapter } from "../compute/ssh/adapter"
+import { PLATFORM_COMMAND, openRemoteShell, startupReply } from "./startup"
 
 const segment = z
   .string()
@@ -113,50 +114,63 @@ export async function prepare(
 ): Promise<ChildProcessWithoutNullStreams> {
   progress("Checking connection and remote platform…")
   const remote = await transport(target, signal)
-  const detected = await remote.run("printf '\\nOPENSCIENCE_PLATFORM '; uname -s; uname -m")
-  const match = detected.match(/OPENSCIENCE_PLATFORM (Linux|Darwin)\s+(x86_64|aarch64|arm64)/)
-  if (!match) throw new Error("Remote workspaces require Linux or macOS on x64/ARM64.")
-  const os = match[1] === "Linux" ? "linux" : "darwin"
-  const arch = match[2] === "x86_64" ? "x64" : "arm64"
-  const name = `${os}-${arch}${os === "linux" && arch === "x64" ? "-baseline" : ""}`
-  const roots = [
-    process.env.OPENSCIENCE_REMOTE_ASSETS,
-    path.join(path.dirname(process.execPath), "remote"),
-    path.resolve(import.meta.dir, "../../../../tooling/remote/dist"),
-    path.resolve(import.meta.dir, "../../dist/headless"),
-  ].filter((value): value is string => !!value)
-  const candidates = roots.flatMap((root) => [
-    path.join(root, name, "openscience"),
-    path.join(root, "@synsci", `openscience-${name}`, "bin", "openscience"),
-  ])
-  let artifact = ""
-  for (const candidate of candidates)
-    if ((await fs.stat(candidate).catch(() => undefined))?.isFile()) {
-      artifact = candidate
-      break
-    }
-  if (!artifact)
-    throw new Error(
-      `This installation has no ${name} remote backend. Build and package the matching remote runtime before connecting.`,
-    )
-  const bytes = Bun.file(artifact)
-  const hash = new Bun.CryptoHasher("sha256").update(await bytes.arrayBuffer()).digest("hex")
-  const directory = `"$HOME/.openscience/remote/${hash}"`
-  const binary = `${directory}/openscience`
-  progress("Checking remote backend version…")
-  const check = `if [ -f ${binary} ]; then (sha256sum ${binary} 2>/dev/null || shasum -a 256 ${binary}) | cut -d ' ' -f 1; fi`
-  if (!(await remote.run(check)).endsWith(hash)) {
-    progress(`Installing remote backend (${Math.ceil(bytes.size / 1024 / 1024)} MiB)…`)
-    const tmp = `${directory}/upload-${crypto.randomUUID()}`
-    // 内容寻址、独占临时文件与校验后重命名保证失败上传不会替换可用版本。
-    const script = `set -eu; umask 077; mkdir -p ${directory}; trap 'rm -f ${tmp}' EXIT; cat > ${tmp}; actual=$( (sha256sum ${tmp} 2>/dev/null || shasum -a 256 ${tmp}) | cut -d ' ' -f 1); [ "$actual" = ${quote(hash)} ]; chmod 700 ${tmp}; mv ${tmp} ${binary}`
-    await remote.run(script, createReadStream(artifact), 15 * 60_000)
-  }
-  signal.throwIfAborted()
-  progress("Starting remote backend and waiting for handshake…")
-  return remote.start(
-    `export OPENSCIENCE_DATA_DIR="$HOME/.openscience/workspaces/data" OPENSCIENCE_CONFIG_DIR="$HOME/.openscience/workspaces/config"; exec ${binary} workspace-bridge`,
+  // 平台探测后保留 shell；缓存命中时，校验与 exec 共用一次认证，避免高延迟网关反复握手。
+  const opened = await openRemoteShell(
+    () => remote.start(PLATFORM_COMMAND),
+    signal,
+    target.kind === "ssh" ? (attempt) => progress(`Retrying SSH connection (${attempt}/3)…`) : undefined,
   )
+  const proc = opened.proc
+  try {
+    const match = opened.platform.match(/^(Linux|Darwin) (x86_64|aarch64|arm64)$/)
+    if (!match) throw new Error("Remote workspaces require Linux or macOS on x64/ARM64.")
+    const os = match[1] === "Linux" ? "linux" : "darwin"
+    const arch = match[2] === "x86_64" ? "x64" : "arm64"
+    const name = `${os}-${arch}${os === "linux" && arch === "x64" ? "-baseline" : ""}`
+    const roots = [
+      process.env.OPENSCIENCE_REMOTE_ASSETS,
+      path.join(path.dirname(process.execPath), "remote"),
+      path.resolve(import.meta.dir, "../../../../tooling/remote/dist"),
+      path.resolve(import.meta.dir, "../../dist/headless"),
+    ].filter((value): value is string => !!value)
+    const candidates = roots.flatMap((root) => [
+      path.join(root, name, "openscience"),
+      path.join(root, "@synsci", `openscience-${name}`, "bin", "openscience"),
+    ])
+    let artifact = ""
+    for (const candidate of candidates)
+      if ((await fs.stat(candidate).catch(() => undefined))?.isFile()) {
+        artifact = candidate
+        break
+      }
+    if (!artifact)
+      throw new Error(
+        `This installation has no ${name} remote backend. Build and package the matching remote runtime before connecting.`,
+      )
+    const bytes = Bun.file(artifact)
+    const hash = new Bun.CryptoHasher("sha256").update(await bytes.arrayBuffer()).digest("hex")
+    const directory = `"$HOME/.openscience/remote/${hash}"`
+    const binary = `${directory}/openscience`
+    progress("Checking remote backend version…")
+    const check = `actual=''; if [ -f ${binary} ]; then actual=$( (sha256sum ${binary} 2>/dev/null || shasum -a 256 ${binary}) | cut -d ' ' -f 1); fi; printf '\\nOPENSCIENCE_CACHE %s\\n' "$actual"`
+    if ((await startupReply(proc, "OPENSCIENCE_CACHE ", signal, check)) !== hash) {
+      progress(`Installing remote backend (${Math.ceil(bytes.size / 1024 / 1024)} MiB)…`)
+      const tmp = `${directory}/upload-${crypto.randomUUID()}`
+      // 内容寻址、独占临时文件与校验后重命名保证失败上传不会替换可用版本。
+      const script = `set -eu; umask 077; mkdir -p ${directory}; trap 'rm -f ${tmp}' EXIT; cat > ${tmp}; actual=$( (sha256sum ${tmp} 2>/dev/null || shasum -a 256 ${tmp}) | cut -d ' ' -f 1); [ "$actual" = ${quote(hash)} ]; chmod 700 ${tmp}; mv ${tmp} ${binary}`
+      await remote.run(script, createReadStream(artifact), 15 * 60_000)
+    }
+    signal.throwIfAborted()
+    progress("Starting remote backend and waiting for handshake…")
+    proc.stdin.write(
+      `export OPENSCIENCE_DATA_DIR="$HOME/.openscience/workspaces/data" OPENSCIENCE_CONFIG_DIR="$HOME/.openscience/workspaces/config"; exec ${binary} workspace-bridge\n`,
+    )
+    return proc
+  } catch (error) {
+    proc.stdin.destroy()
+    proc.kill()
+    throw error
+  }
 }
 
 export async function listEnvironment(command: string, args: string[]) {

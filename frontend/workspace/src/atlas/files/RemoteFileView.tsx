@@ -3,6 +3,8 @@ import { IconDownload, IconX } from "@/atlas/shared/Icon"
 import { bytes } from "./bytes"
 import { thumbLanguage } from "./artifact-thumb"
 import { remoteMime, remotePreview, type RemotePreview } from "./remote-preview"
+import { resolveViewer } from "./viewer-registry"
+import { TextContentView } from "./TextContentView"
 
 export interface RemoteFile {
   name: string
@@ -24,6 +26,9 @@ export interface RemoteFileViewProps {
 
 const shared = (code: string, lang: string) =>
   import("@synsci/ui/context/marked").then((module) => module.highlightSnippet(code, lang))
+
+const visual = (name: string, content: string) =>
+  ["science", "scientific-data", "html", "table", "notebook"].includes(resolveViewer({ name, content }).kind)
 
 interface Cached {
   bytes: number
@@ -105,7 +110,9 @@ export function RemoteFileView(props: RemoteFileViewProps): JSX.Element {
         if (!live) return
         if (shape === "text") {
           const body = await blob.text()
-          const html = await (props.highlight ?? shared)(body, thumbLanguage(file.name)).catch(() => undefined)
+          const html = visual(file.name, body)
+            ? undefined
+            : await (props.highlight ?? shared)(body, thumbLanguage(file.name)).catch(() => undefined)
           keep(key, { bytes: blob.size, text: { body, html } })
           if (live) setText({ body, html })
           return
@@ -191,14 +198,25 @@ export function RemoteFileView(props: RemoteFileViewProps): JSX.Element {
           <Match when={kind() === "text" && text()}>
             {(value) => (
               <Show
-                when={value().html}
+                when={!visual(props.file.name, value().body)}
                 fallback={
-                  <pre class="remote-view__text" data-remote-text>
-                    {value().body}
-                  </pre>
+                  <TextContentView
+                    name={props.file.name}
+                    text={value().body}
+                    viewer={resolveViewer({ name: props.file.name, content: value().body })}
+                  />
                 }
               >
-                {(html) => <pre class="remote-view__text" data-remote-text innerHTML={html()} />}
+                <Show
+                  when={value().html}
+                  fallback={
+                    <pre class="remote-view__text" data-remote-text>
+                      {value().body}
+                    </pre>
+                  }
+                >
+                  {(html) => <pre class="remote-view__text" data-remote-text innerHTML={html()} />}
+                </Show>
               </Show>
             )}
           </Match>

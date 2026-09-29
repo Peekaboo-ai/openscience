@@ -16,6 +16,98 @@
   white-space: nowrap;
 }
 
+.artifact-catalog-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 0 8px;
+}
+.artifact-catalog-scope {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--color-border-weak);
+  border-radius: var(--atlas-radius-sm);
+  background: var(--color-bg-subtle);
+}
+.artifact-catalog-scope button {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--atlas-radius-xs);
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: var(--font-size-small);
+  cursor: pointer;
+}
+.artifact-catalog-scope button[aria-pressed="true"] {
+  background: var(--color-surface-solid);
+  color: var(--color-text);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--color-text) 8%, transparent);
+}
+.artifact-catalog-scope button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.artifact-catalog-selects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.artifact-catalog-selects label {
+  display: flex;
+  flex: 1 1 120px;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-x-small);
+}
+.artifact-catalog-selects select {
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border-weak);
+  border-radius: var(--atlas-radius-xs);
+  background: var(--color-surface-solid);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--font-size-small);
+}
+.artifact-catalog-filters :is(button, select):focus-visible {
+  outline: 2px solid var(--color-text-muted);
+  outline-offset: 2px;
+}
+@container files-pane (min-width: 640px) {
+  .artifact-catalog-filters {
+    flex-direction: row;
+    align-items: flex-end;
+    gap: 20px;
+  }
+  .artifact-catalog-scope {
+    align-self: flex-end;
+  }
+  .artifact-catalog-selects {
+    flex: 1;
+    max-width: 520px;
+  }
+}
+.artifact-card__session {
+  display: block;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-x-small);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.artifact-group__id {
+  color: var(--color-text-faint);
+  font-size: var(--font-size-x-small);
+}
+
 .files-menu__item[data-source-kind="artifacts"] .files-menu__label,
 .files-menu__item[data-source-kind="project"] .files-menu__label {
   font-weight: var(--font-weight-medium);
@@ -230,4 +322,21 @@
   .artifact-toolbar__controls .artifact-toolbar__prefs {
     transition: none;
   }
+}
+.artifact-thumb--html {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  background: white;
+  pointer-events: none;
+}
+.artifact-thumb--html iframe {
+  position: absolute;
+  inset: 0;
+  width: 400%;
+  height: 400%;
+  border: 0;
+  transform: scale(0.25);
+  transform-origin: top left;
+  pointer-events: none;
 }

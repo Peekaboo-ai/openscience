@@ -1,7 +1,20 @@
 import type { TableFormat } from "@/data/table"
 import { LANG, extension } from "./artifact-thumb"
+import { isScientificFile } from "@/science/files"
+import { detectBiologicalFormat } from "@/science/formats/biological"
 
-type ViewerKind = "markdown" | "html" | "table" | "notebook" | "image" | "pdf" | "code" | "text" | "binary"
+type ViewerKind =
+  | "markdown"
+  | "html"
+  | "table"
+  | "notebook"
+  | "image"
+  | "pdf"
+  | "science"
+  | "scientific-data"
+  | "code"
+  | "text"
+  | "binary"
 
 export type ViewerResolution = {
   kind: ViewerKind
@@ -32,6 +45,8 @@ export function resolveViewer(input: {
   if (mime.startsWith("image/") || images.has(ext)) return { kind: "image", extension: ext, language }
   if (mime === "application/pdf" || ext === "pdf") return { kind: "pdf", extension: ext, language }
   if (binary) return { kind: "binary", extension: ext, language }
+  if (isScientificFile(ext)) return { kind: "science", extension: ext, language }
+  if (detectBiologicalFormat(ext)) return { kind: "scientific-data", extension: ext, language }
   if (ext === "ipynb" || ext === "rmd" || ext === "qmd")
     return { kind: "notebook", extension: ext, language: ext === "ipynb" ? "json" : "markdown" }
   if (markdown.has(ext) || mime.includes("markdown")) return { kind: "markdown", extension: ext, language: "markdown" }
