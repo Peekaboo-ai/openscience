@@ -1,6 +1,6 @@
 import { type JSX, Show } from "solid-js"
 import { FONT_SANS } from "@/styles/tokens"
-import { ProviderIcon } from "@synsci/ui/provider-icon"
+import { BrandMark } from "./BrandMark"
 
 interface WordmarkProps {
   size?: "sm" | "md" | "lg"
@@ -24,16 +24,7 @@ export function Wordmark(props: WordmarkProps): JSX.Element {
   const content = () => (
     <>
       <Show when={!props.textOnly}>
-        <ProviderIcon
-          id="synsci"
-          aria-hidden="true"
-          style={{
-            width: `${px().logo}px`,
-            height: `${px().logo}px`,
-            "flex-shrink": 0,
-            color: "var(--color-text)",
-          }}
-        />
+        <BrandMark size={px().logo} />
       </Show>
       <span
         aria-hidden="true"
@@ -41,12 +32,12 @@ export function Wordmark(props: WordmarkProps): JSX.Element {
           "font-family": FONT_SANS,
           "font-size": `${px().text}px`,
           "font-weight": weight(),
-          "letter-spacing": "-0.02em",
+          "letter-spacing": "0",
           color: "var(--color-text)",
           "white-space": "nowrap",
         }}
       >
-        OpenScience
+        OneLab
       </span>
     </>
   )
@@ -54,12 +45,12 @@ export function Wordmark(props: WordmarkProps): JSX.Element {
     <Show
       when={props.onClick}
       fallback={
-        <span class="atlas-wordmark" role="img" aria-label="OpenScience" style={rootStyle()}>
+        <span class="atlas-wordmark" role="img" aria-label="OneLab" style={rootStyle()}>
           {content()}
         </span>
       }
     >
-      <button type="button" class="atlas-wordmark" aria-label="OpenScience" onClick={props.onClick} style={rootStyle()}>
+      <button type="button" class="atlas-wordmark" aria-label="OneLab" onClick={props.onClick} style={rootStyle()}>
         {content()}
       </button>
     </Show>

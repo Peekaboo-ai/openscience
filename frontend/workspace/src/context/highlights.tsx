@@ -126,7 +126,7 @@ function parseRelease(value: unknown): ParsedRelease | undefined {
   if (!Array.isArray(value.highlights)) {
     const body = getText(value.body)
     if (!body) return { tag, highlights: [] }
-    const version = getText(value.name) ?? tag ?? "OpenScience update"
+    const version = getText(value.name) ?? tag ?? "OneLab update"
     return {
       tag,
       highlights: parseReleaseBody(body, version).map((highlight) => ({ ...highlight, version })),

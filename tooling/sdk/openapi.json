@@ -23562,6 +23562,109 @@
         ]
       }
     },
+    "/settings/usage-stats": {
+      "get": {
+        "operationId": "settings.usageStats.get",
+        "summary": "Get token usage, trends and project, session and model breakdowns for this server",
+        "responses": {
+          "200": {
+            "description": "Usage statistics for the connected server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageStatsReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid date range or time zone"
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "range",
+            "schema": {
+              "default": "30d",
+              "type": "string",
+              "enum": [
+                "today",
+                "7d",
+                "30d",
+                "90d",
+                "all",
+                "custom"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "timeZone",
+            "schema": {
+              "default": "UTC",
+              "type": "string",
+              "maxLength": 100
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "in": "query",
+            "name": "provider",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "in": "query",
+            "name": "model",
+            "schema": {
+              "type": "string",
+              "maxLength": 500
+            }
+          },
+          {
+            "in": "query",
+            "name": "refresh",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "0",
+                "1"
+              ]
+            }
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.settings.usageStats.get({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/settings/local/start": {
       "post": {
         "operationId": "postSettingsLocalStart",
@@ -39305,6 +39408,262 @@
           {
             "lang": "js",
             "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.file.artifacts({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/file/artifacts/publish": {
+      "post": {
+        "operationId": "file.artifacts.publish",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Publish completed conversation outputs",
+        "description": "Save readable files explicitly linked in a completed answer as session-associated immutable Results. Repeated requests reuse saved versions and respect Trash.",
+        "responses": {
+          "200": {
+            "description": "Published Results and individual file failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "artifacts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "schemaVersion": {
+                            "type": "number",
+                            "const": 1
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "projectID": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "currentVersionID": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "updatedAt": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "state": {
+                            "type": "string",
+                            "enum": [
+                              "active",
+                              "trash"
+                            ]
+                          },
+                          "trashedAt": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "versionCount": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "current": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "artifactID": {
+                                "type": "string"
+                              },
+                              "version": {
+                                "type": "integer",
+                                "exclusiveMinimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "filename": {
+                                "type": "string"
+                              },
+                              "mimeType": {
+                                "type": "string"
+                              },
+                              "size": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "sha256": {
+                                "type": "string",
+                                "pattern": "^[a-f0-9]{64}$"
+                              },
+                              "sessionID": {
+                                "type": "string"
+                              },
+                              "messageID": {
+                                "type": "string"
+                              },
+                              "executionID": {
+                                "type": "string"
+                              },
+                              "sourcePath": {
+                                "type": "string"
+                              },
+                              "captureQuality": {
+                                "type": "string",
+                                "enum": [
+                                  "exact",
+                                  "declared",
+                                  "partial",
+                                  "unknown"
+                                ]
+                              },
+                              "createdAt": {
+                                "type": "integer",
+                                "exclusiveMinimum": 0,
+                                "maximum": 9007199254740991
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "artifactID",
+                              "version",
+                              "filename",
+                              "mimeType",
+                              "size",
+                              "sha256",
+                              "sessionID",
+                              "sourcePath",
+                              "captureQuality",
+                              "createdAt"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "schemaVersion",
+                          "id",
+                          "projectID",
+                          "title",
+                          "kind",
+                          "currentVersionID",
+                          "createdAt",
+                          "updatedAt",
+                          "state",
+                          "versionCount",
+                          "current"
+                        ]
+                      }
+                    },
+                    "failures": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "path",
+                          "message"
+                        ]
+                      }
+                    },
+                    "published": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "truncated": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "artifacts",
+                    "failures",
+                    "published",
+                    "truncated"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sessionID": {
+                    "type": "string",
+                    "pattern": "^ses.*"
+                  },
+                  "messageID": {
+                    "type": "string",
+                    "pattern": "^msg.*"
+                  },
+                  "messageIDs": {
+                    "maxItems": 500,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^msg.*"
+                    }
+                  }
+                },
+                "required": [
+                  "sessionID",
+                  "messageID"
+                ]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.file.artifacts.publish({\n  ...\n})"
           }
         ]
       }
@@ -62265,6 +62624,38 @@
           "properties"
         ]
       },
+      "Event.artifact.published": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "artifact.published"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "projectID": {
+                "type": "string"
+              },
+              "sessionID": {
+                "type": "string"
+              },
+              "messageID": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "projectID",
+              "sessionID",
+              "messageID"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "properties"
+        ]
+      },
       "PermissionAction": {
         "type": "string",
         "enum": [
@@ -63120,6 +63511,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.command.executed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.artifact.published"
           },
           {
             "$ref": "#/components/schemas/Event.session.created"
@@ -65076,6 +65470,705 @@
         "required": [
           "name",
           "data"
+        ]
+      },
+      "UsageStatsReport": {
+        "type": "object",
+        "properties": {
+          "generatedAt": {
+            "type": "number",
+            "minimum": 0
+          },
+          "timeZone": {
+            "type": "string"
+          },
+          "range": {
+            "type": "string",
+            "enum": [
+              "today",
+              "7d",
+              "30d",
+              "90d",
+              "all",
+              "custom"
+            ]
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "firstRecord": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "totals": {
+            "type": "object",
+            "properties": {
+              "tokens": {
+                "type": "object",
+                "properties": {
+                  "input": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "output": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "reasoning": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "cacheRead": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "cacheWrite": {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "input",
+                  "output",
+                  "reasoning",
+                  "cacheRead",
+                  "cacheWrite"
+                ]
+              },
+              "total": {
+                "type": "number",
+                "minimum": 0
+              },
+              "requests": {
+                "type": "number",
+                "minimum": 0
+              },
+              "sessions": {
+                "type": "number",
+                "minimum": 0
+              },
+              "unreported": {
+                "type": "number",
+                "minimum": 0
+              },
+              "background": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "tokens",
+              "total",
+              "requests",
+              "sessions",
+              "unreported",
+              "background"
+            ]
+          },
+          "previous": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "tokens": {
+                    "type": "object",
+                    "properties": {
+                      "input": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "output": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "reasoning": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "cacheRead": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "cacheWrite": {
+                        "type": "number",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "input",
+                      "output",
+                      "reasoning",
+                      "cacheRead",
+                      "cacheWrite"
+                    ]
+                  },
+                  "total": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "requests": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "sessions": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "unreported": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "background": {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "tokens",
+                  "total",
+                  "requests",
+                  "sessions",
+                  "unreported",
+                  "background"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cacheHitRate": {
+            "type": "number",
+            "minimum": 0
+          },
+          "activeDays": {
+            "type": "number",
+            "minimum": 0
+          },
+          "peakDay": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "date": {
+                    "type": "string"
+                  },
+                  "total": {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "date",
+                  "total"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "tokens": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "output": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "reasoning": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "cacheRead": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "cacheWrite": {
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "input",
+                    "output",
+                    "reasoning",
+                    "cacheRead",
+                    "cacheWrite"
+                  ]
+                },
+                "total": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "requests": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "sessions": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "unreported": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "background": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "id": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "secondary": {
+                  "type": "string"
+                },
+                "projectID": {
+                  "type": "string"
+                },
+                "providerID": {
+                  "type": "string"
+                },
+                "modelID": {
+                  "type": "string"
+                },
+                "lastUsed": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "available": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "tokens",
+                "total",
+                "requests",
+                "sessions",
+                "unreported",
+                "background",
+                "id",
+                "label",
+                "secondary",
+                "lastUsed",
+                "available"
+              ]
+            }
+          },
+          "projects": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "tokens": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "output": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "reasoning": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "cacheRead": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "cacheWrite": {
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "input",
+                    "output",
+                    "reasoning",
+                    "cacheRead",
+                    "cacheWrite"
+                  ]
+                },
+                "total": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "requests": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "sessions": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "unreported": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "background": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "id": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "secondary": {
+                  "type": "string"
+                },
+                "projectID": {
+                  "type": "string"
+                },
+                "providerID": {
+                  "type": "string"
+                },
+                "modelID": {
+                  "type": "string"
+                },
+                "lastUsed": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "available": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "tokens",
+                "total",
+                "requests",
+                "sessions",
+                "unreported",
+                "background",
+                "id",
+                "label",
+                "secondary",
+                "lastUsed",
+                "available"
+              ]
+            }
+          },
+          "sessions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "tokens": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "output": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "reasoning": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "cacheRead": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "cacheWrite": {
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "input",
+                    "output",
+                    "reasoning",
+                    "cacheRead",
+                    "cacheWrite"
+                  ]
+                },
+                "total": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "requests": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "sessions": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "unreported": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "background": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "id": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "secondary": {
+                  "type": "string"
+                },
+                "projectID": {
+                  "type": "string"
+                },
+                "providerID": {
+                  "type": "string"
+                },
+                "modelID": {
+                  "type": "string"
+                },
+                "lastUsed": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "available": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "tokens",
+                "total",
+                "requests",
+                "sessions",
+                "unreported",
+                "background",
+                "id",
+                "label",
+                "secondary",
+                "lastUsed",
+                "available"
+              ]
+            }
+          },
+          "trend": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "date": {
+                  "type": "string"
+                },
+                "end": {
+                  "type": "string"
+                },
+                "tokens": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "output": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "reasoning": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "cacheRead": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "cacheWrite": {
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "input",
+                    "output",
+                    "reasoning",
+                    "cacheRead",
+                    "cacheWrite"
+                  ]
+                },
+                "total": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "requests": {
+                  "type": "number",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "date",
+                "end",
+                "tokens",
+                "total",
+                "requests"
+              ]
+            }
+          },
+          "interval": {
+            "type": "string",
+            "enum": [
+              "day",
+              "week",
+              "month"
+            ]
+          },
+          "activity": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "date": {
+                  "type": "string"
+                },
+                "total": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "requests": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "level": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4
+                }
+              },
+              "required": [
+                "date",
+                "total",
+                "requests",
+                "level"
+              ]
+            }
+          },
+          "options": {
+            "type": "object",
+            "properties": {
+              "projects": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "label"
+                  ]
+                }
+              },
+              "providers": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "models": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "providerID": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "label",
+                    "providerID"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "projects",
+              "providers",
+              "models"
+            ]
+          },
+          "quality": {
+            "type": "object",
+            "properties": {
+              "skipped": {
+                "type": "number",
+                "minimum": 0
+              },
+              "historical": {
+                "type": "number",
+                "minimum": 0
+              },
+              "inherited": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "skipped",
+              "historical",
+              "inherited"
+            ]
+          }
+        },
+        "required": [
+          "generatedAt",
+          "timeZone",
+          "range",
+          "from",
+          "to",
+          "firstRecord",
+          "totals",
+          "previous",
+          "cacheHitRate",
+          "activeDays",
+          "peakDay",
+          "models",
+          "projects",
+          "sessions",
+          "trend",
+          "interval",
+          "activity",
+          "options",
+          "quality"
         ]
       },
       "CliShimStatus": {

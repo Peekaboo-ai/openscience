@@ -14,7 +14,7 @@ import { createStore } from "solid-js/store"
 import { AtomLoader } from "@synsci/ui/atom-loader"
 import { Button } from "@synsci/ui/button"
 import { TextField } from "@synsci/ui/text-field"
-import { ProviderIcon } from "@synsci/ui/provider-icon"
+import { BrandMark } from "./BrandMark"
 import { ProviderLogo } from "@/components/settings/ProviderLogo"
 import { settingsApi } from "@/components/settings/api"
 import { ACCOUNT_DEADLINE_MS, withAccountDeadline } from "@/components/settings/account-deadline"
@@ -424,7 +424,7 @@ export function DesktopOnboardingController(
           <main class="desktop-onboarding" aria-labelledby="desktop-onboarding-title" aria-busy={Boolean(connect.busy)}>
             <section class="desktop-onboarding__card" data-step={step()}>
               <header class="desktop-onboarding__top">
-                <ProviderIcon id="synsci" class="desktop-onboarding__logo" aria-hidden="true" />
+                <BrandMark size={22} class="desktop-onboarding__logo" />
                 <span
                   class="desktop-onboarding__count"
                   aria-label={`Step ${STEPS.indexOf(step()) + 1} of ${STEPS.length}`}
@@ -436,7 +436,7 @@ export function DesktopOnboardingController(
               <Switch>
                 <Match when={step() === "account"}>
                   <h1 ref={title} id="desktop-onboarding-title" tabindex="-1">
-                    Welcome to OpenScience
+                    Welcome to OneLab
                   </h1>
                   <p class="desktop-onboarding__body">Sign in or create an account to continue.</p>
                   <div class="desktop-onboarding__actions">

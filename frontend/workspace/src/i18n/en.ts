@@ -1,4 +1,8 @@
 export const dict = {
+  "session.modelSwitch.changed": "Model changed from {{from}} to {{to}}.",
+  "session.modelSwitch.details": "About this model change",
+  "session.modelSwitch.nextMessage": "Applies to your next message. Any work already running keeps its current model.",
+  "session.modelSwitch.history": "This message uses the new model. Earlier conversation and completed work are retained.",
   "command.category.suggested": "Suggested",
   "command.category.view": "View",
   "command.category.project": "Project",
@@ -112,14 +116,14 @@ export const dict = {
   "provider.connect.status.waiting": "Waiting for authorization...",
   "provider.connect.status.failed": "Authorization failed: {{error}}",
   "provider.connect.apiKey.description":
-    "Enter your {{provider}} API key to connect your account and use {{provider}} models in OpenScience.",
+    "Enter your {{provider}} API key to connect your account and use {{provider}} models in OneLab.",
   "provider.connect.apiKey.label": "{{provider}} API key",
   "provider.connect.apiKey.placeholder": "API key",
   "provider.connect.apiKey.required": "API key is required",
   "provider.connect.oauth.code.visit.prefix": "Visit ",
   "provider.connect.oauth.code.visit.link": "This link",
   "provider.connect.oauth.code.visit.suffix":
-    " to collect your authorization code to connect your account and use {{provider}} models in OpenScience.",
+    " to collect your authorization code to connect your account and use {{provider}} models in OneLab.",
   "provider.connect.oauth.code.label": "{{method}} authorization code",
   "provider.connect.oauth.code.placeholder": "Authorization code",
   "provider.connect.oauth.code.required": "Authorization code is required",
@@ -127,7 +131,7 @@ export const dict = {
   "provider.connect.oauth.auto.visit.prefix": "Visit ",
   "provider.connect.oauth.auto.visit.link": "This link",
   "provider.connect.oauth.auto.visit.suffix":
-    " and enter the code below to connect your account and use {{provider}} models in OpenScience.",
+    " and enter the code below to connect your account and use {{provider}} models in OneLab.",
   "provider.connect.oauth.auto.confirmationCode": "Confirmation code",
   "provider.connect.toast.connected.title": "{{provider}} connected",
   "provider.connect.toast.connected.description": "{{provider}} models are now available to use.",
@@ -227,7 +231,7 @@ export const dict = {
   "dialog.directory.empty": "No folders found",
 
   "dialog.server.title": "Servers",
-  "dialog.server.description": "Switch which OpenScience server this app connects to.",
+  "dialog.server.description": "Switch which OneLab server this app connects to.",
   "dialog.server.search.placeholder": "Search servers",
   "dialog.server.empty": "No servers yet",
   "dialog.server.add.title": "Add a server",
@@ -353,7 +357,7 @@ export const dict = {
   "toast.session.listFailed.title": "Failed to load sessions for {{project}}",
 
   "toast.update.title": "Update available",
-  "toast.update.description": "A new version of OpenScience ({{version}}) is now available to install.",
+  "toast.update.description": "A new version of OneLab ({{version}}) is now available to install.",
   "toast.update.action.installRestart": "Install and restart",
   "toast.update.action.notYet": "Not yet",
 
@@ -364,7 +368,7 @@ export const dict = {
   "error.page.action.checking": "Checking…",
   "error.page.action.checkUpdates": "Check for Updates",
   "error.page.action.updateTo": "Update to {{version}}",
-  "error.page.report.prefix": "Please report this error to the OpenScience team",
+  "error.page.report.prefix": "Please report this error to the OneLab team",
   "error.page.report.discord": "On Discord",
   "error.page.version": "Version: {{version}}",
 
@@ -382,8 +386,7 @@ export const dict = {
   "error.chain.didYouMean": "Did you mean: {{suggestions}}",
   "error.chain.modelNotFound": "Model not found: {{provider}}/{{model}}",
   "error.chain.checkConfig": "Check your config (openscience.json) provider/model names",
-  "error.chain.mcpFailed":
-    'MCP server "{{name}}" failed. Note that OpenScience does not support MCP authentication yet.',
+  "error.chain.mcpFailed": 'MCP server "{{name}}" failed. Note that OneLab does not support MCP authentication yet.',
   "error.chain.providerAuthFailed": "Provider authentication failed ({{provider}}): {{message}}",
   "error.chain.providerInitFailed":
     'Failed to initialize provider "{{provider}}". Check credentials and configuration.',
@@ -480,12 +483,12 @@ export const dict = {
   "sidebar.workspaces.enable": "Enable workspaces",
   "sidebar.workspaces.disable": "Disable workspaces",
   "sidebar.gettingStarted.title": "Getting started",
-  "sidebar.gettingStarted.line1": "OpenScience includes free models so you can start immediately.",
+  "sidebar.gettingStarted.line1": "OneLab includes free models so you can start immediately.",
   "sidebar.gettingStarted.line2": "Connect any provider to use models, inc. Claude, GPT, Gemini etc.",
   "sidebar.project.recentSessions": "Recent sessions",
   "sidebar.project.viewAllSessions": "View all sessions",
 
-  "app.name.desktop": "OpenScience Desktop",
+  "app.name.desktop": "OneLab Desktop",
 
   "settings.section.desktop": "Desktop",
   "settings.section.server": "Server",
@@ -498,11 +501,11 @@ export const dict = {
   "settings.general.section.layout": "Layout",
   "settings.general.section.sounds": "Sound effects",
   "settings.general.row.language.title": "Language",
-  "settings.general.row.language.description": "Change the display language for OpenScience",
+  "settings.general.row.language.description": "Change the display language for OneLab",
   "settings.general.row.appearance.title": "Appearance",
-  "settings.general.row.appearance.description": "Customize how OpenScience looks on your device",
+  "settings.general.row.appearance.description": "Customize how OneLab looks on your device",
   "settings.general.row.theme.title": "Theme",
-  "settings.general.row.theme.description": "Customize how OpenScience is themed.",
+  "settings.general.row.theme.description": "Customize how OneLab is themed.",
   "settings.general.row.font.title": "Font",
   "settings.general.row.font.description": "Customize the mono font used in code blocks",
 
@@ -513,13 +516,13 @@ export const dict = {
   "settings.general.row.releaseNotes.description": "Show what's new popups after updates",
 
   "settings.updates.row.startup.title": "Check for updates on startup",
-  "settings.updates.row.startup.description": "Automatically check for updates when OpenScience launches",
+  "settings.updates.row.startup.description": "Automatically check for updates when OneLab launches",
   "settings.updates.row.check.title": "Check for updates",
   "settings.updates.row.check.description": "Manually check for updates and install if available",
   "settings.updates.action.checkNow": "Check now",
   "settings.updates.action.checking": "Checking…",
   "settings.updates.toast.latest.title": "You're up to date",
-  "settings.updates.toast.latest.description": "You're running the latest version of OpenScience.",
+  "settings.updates.toast.latest.description": "You're running the latest version of OneLab.",
   "font.option.ibmPlexMono": "IBM Plex Mono",
   "font.option.cascadiaCode": "Cascadia Code",
   "font.option.firaCode": "Fira Code",

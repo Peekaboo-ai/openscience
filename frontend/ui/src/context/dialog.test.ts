@@ -39,14 +39,57 @@ afterEach(() => {
 const mount = (view: () => JSX.Element) => {
   const host = document.createElement("div")
   document.body.append(host)
-  cleanups.push(web.render(view, host))
-  return host
+  const dispose = web.render(view, host)
+  cleanups.push(dispose)
+  return dispose
 }
 
 const panels = () =>
   [...document.querySelectorAll<HTMLElement>("[data-dialog-panel]")].map((el) => el.dataset.dialogPanel)
 
 describe("dialog stacking", () => {
+  test("unmounting the provider disposes every stacked dialog root", async () => {
+    let dialog!: DialogHandle
+    const disposed: string[] = []
+    const unmount = mount(fixture.createDialogFixture((handle) => (dialog = handle)))
+    dialog.show(fixture.panel("settings", () => disposed.push("settings")))
+    dialog.show(
+      fixture.panel("confirm", () => disposed.push("confirm")),
+      { stack: true },
+    )
+    await settle()
+    expect(panels()).toEqual(["settings", "confirm"])
+
+    unmount()
+    expect(disposed.sort()).toEqual(["confirm", "settings"])
+    expect(panels()).toEqual([])
+    expect(dialog.active).toBeUndefined()
+
+    dialog.show(fixture.panel("obsolete async response"))
+    await settle()
+    expect(dialog.active).toBeUndefined()
+    expect(panels()).toEqual([])
+  })
+
+  test("unmounting during the close animation releases roots once and cancels the timer", async () => {
+    let dialog!: DialogHandle
+    let disposed = 0
+    let closed = 0
+    const unmount = mount(fixture.createDialogFixture((handle) => (dialog = handle)))
+    dialog.show(
+      fixture.panel("settings", () => disposed++),
+      { onClose: () => closed++ },
+    )
+    await settle()
+    dialog.close()
+    unmount()
+    expect(disposed).toBe(1)
+    await settle(150)
+    expect(disposed).toBe(1)
+    expect(closed).toBe(1)
+    expect(dialog.active).toBeUndefined()
+  })
+
   test("a stacked dialog returns to the one underneath when it closes", async () => {
     let dialog!: DialogHandle
     mount(fixture.createDialogFixture((handle) => (dialog = handle)))

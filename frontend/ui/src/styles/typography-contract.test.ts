@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test"
+import { fileURLToPath } from "node:url"
 
 const theme = await Bun.file(new URL("./theme.css", import.meta.url)).text()
 const base = await Bun.file(new URL("./base.css", import.meta.url)).text()
 const tailwind = await Bun.file(new URL("./tailwind/index.css", import.meta.url)).text()
 const components = await Array.fromAsync(
   new Bun.Glob("*.css").scan({
-    cwd: new URL("../components/", import.meta.url).pathname,
+    cwd: fileURLToPath(new URL("../components/", import.meta.url)),
     absolute: true,
   }),
 )

@@ -397,7 +397,7 @@ const LocalModels: Component = () => {
         </Section>
 
         {/* ── Run locally (host it for the user) ── */}
-        <Section title="Run a model locally" description="OpenScience starts and hosts a runtime for you.">
+        <Section title="Run a model locally" description="OneLab starts and hosts a runtime for you.">
           <Card>
             <Show
               when={!status.loading}
@@ -516,7 +516,7 @@ const LocalModels: Component = () => {
         </Section>
 
         {/* ── Detected runtimes ── */}
-        <Section title="Detected on this machine" description="Servers already running here that OpenScience can use.">
+        <Section title="Detected on this machine" description="Servers already running here that OneLab can use.">
           <Card>
             <div class="settings-row">
               <RowCopy
@@ -616,7 +616,7 @@ const LocalModels: Component = () => {
                   description={
                     isOllama(source().id, source().baseURL)
                       ? "Applied to the selected models as a tuned Ollama alias. Larger windows use more memory; the alias stays out of the catalog."
-                      : "How much context OpenScience may send to these models. Match the server's configured window; this does not change the server itself."
+                      : "How much context OneLab may send to these models. Match the server's configured window; this does not change the server itself."
                   }
                 />
                 <div class="flex justify-end gap-2">
@@ -705,7 +705,7 @@ const LocalModels: Component = () => {
               <ContextField
                 value={context()}
                 onInput={setContext}
-                description="How much context OpenScience may send to the remote models. Match the server's configured window."
+                description="How much context OneLab may send to the remote models. Match the server's configured window."
               />
               <div class="flex justify-end">
                 <Button
@@ -803,7 +803,7 @@ const LocalModels: Component = () => {
                   description={
                     isOllama(undefined, listedUrl())
                       ? "Applied to the selected models as a tuned Ollama alias. Larger windows use more memory."
-                      : "How much context OpenScience may send to these models. Match the server's configured window; this does not change the server itself."
+                      : "How much context OneLab may send to these models. Match the server's configured window; this does not change the server itself."
                   }
                 />
               </Show>

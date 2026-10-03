@@ -161,6 +161,30 @@ const scratchGrant = (path: string) => ({
 })
 
 describe("files pane", () => {
+  test("a slow Results listing does not suspend browsing project files", async () => {
+    const pending = Promise.withResolvers<Response>()
+    const host = mount(() =>
+      web.createComponent(solidjs.Suspense, {
+        fallback: "Whole pane loading",
+        get children() {
+          return subject.FilesPane({
+            directory: DIRECTORY,
+            request: async (path) => {
+              if (path.startsWith("/file/artifact-store")) return pending.promise.then((response) => response.clone())
+              if (path === "/file") return listing([{ name: "ready.txt", type: "file", size: 12 }])
+              return listing([])
+            },
+          })
+        },
+      }),
+    )
+    await settle()
+    expect(host.textContent).not.toContain("Whole pane loading")
+    expect(host.querySelector('[data-file-row="ready.txt"]')).not.toBeNull()
+    pending.resolve(listing([]))
+    await settle()
+  })
+
   test("does not scope durable project listings to a session scratch capability", () => {
     expect(subject.fileListQuery("project", DIRECTORY, SESSION)).toEqual({ path: DIRECTORY })
     expect(subject.fileListQuery("session", "/scratch/session", SESSION)).toEqual({
@@ -484,6 +508,37 @@ describe("files pane", () => {
     expect(host.querySelector('[data-workspace-id="fsg_3"]')).toBeNull()
     host.querySelector<HTMLButtonElement>("[data-source-button]")?.click()
     expect(host.querySelector('[data-source-item="fsg_3"]')).not.toBeNull()
+  })
+
+  test("More can open Results and every primary location without widening the pane", async () => {
+    const host = mount(() =>
+      subject.FilesPane({
+        session: SESSION,
+        directory: DIRECTORY,
+        request: async (path) => {
+          if (path === `/session/${SESSION}/filesystem`)
+            return listing(snapshot([grant("fsg_1", "/data/spatial", "read")]))
+          if (path === "/file/artifact-store?state=active") return listing([saved("art_9", "peak_fit.ipynb")])
+          return listing([])
+        },
+      }),
+    )
+    await settle()
+
+    host.querySelector<HTMLButtonElement>("[data-source-button]")?.click()
+    for (const tab of host.querySelectorAll<HTMLElement>("[data-workspace-id]")) {
+      expect(host.querySelector(`[data-source-item="${tab.dataset.workspaceId}"]`)).not.toBeNull()
+    }
+    host.querySelector<HTMLButtonElement>('[data-source-item="artifacts"]')?.click()
+    await settle()
+    expect(host.querySelector("[data-files-browser]")?.getAttribute("data-source-kind")).toBe("artifacts")
+    expect(host.textContent).toContain("peak_fit.ipynb")
+
+    host.querySelector<HTMLButtonElement>("[data-source-button]")?.click()
+    expect(host.querySelector('[data-source-item="artifacts"]')?.getAttribute("aria-checked")).toBe("true")
+    host.querySelector<HTMLButtonElement>('[data-source-item="project"]')?.click()
+    await settle()
+    expect(host.querySelector("[data-files-browser]")?.getAttribute("data-source-kind")).toBe("project")
   })
 
   test("browses a connected folder from its tab", async () => {
@@ -1039,7 +1094,7 @@ describe("files pane", () => {
     await new Promise((resolve) => setTimeout(resolve, 50))
 
     expect(host.querySelector("[data-boundary]")).toBeNull()
-    expect(host.textContent).toContain("local OpenScience server is busy")
+    expect(host.textContent).toContain("local OneLab server is busy")
     expect(host.textContent).toContain("unchanged")
     expect(host.querySelector(".files-table")).not.toBeNull()
     expect(host.querySelector('[role="alert"][data-files-error]')).not.toBeNull()
@@ -1731,7 +1786,7 @@ describe("files pane", () => {
 
     expect(confirmation.title).toBe("Revoke access to pdebench?")
     expect(confirmation.message).toBe(
-      "OpenScience will no longer read or write files in /home/keertan/data/pdebench. " +
+      "OneLab will no longer read or write files in /home/keertan/data/pdebench. " +
         "Every project loses access to this folder, not only this one. " +
         "Affected kernels are stopped so the folder cannot stay mounted. " +
         "Nothing inside it is moved, changed, or deleted.",
@@ -1887,7 +1942,7 @@ describe("files pane", () => {
     )
     await settle()
 
-    expect(host.querySelector(".files-notice")?.textContent).toContain("local OpenScience server is busy")
+    expect(host.querySelector(".files-notice")?.textContent).toContain("local OneLab server is busy")
 
     host.querySelector<HTMLButtonElement>("[data-source-button]")?.click()
     host.querySelector<HTMLButtonElement>('[data-source-item="trash"]')?.click()

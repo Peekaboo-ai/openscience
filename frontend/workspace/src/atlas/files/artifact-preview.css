@@ -27,3 +27,11 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.atlas-stored-artifact .atlas-file-viewer-controls {
+  order: 1;
+  flex: 1 0 100%;
+  min-width: 0;
+}
+.atlas-stored-artifact .atlas-file-viewer-controls:empty {
+  display: none;
+}

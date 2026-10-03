@@ -331,7 +331,7 @@ function MzmlOverview(props: { file: MzmlFile }): JSX.Element {
           <Rug values={props.file.times} />
         </Panel>
       </div>
-      <Panel title="Run readiness" note="What OpenScience found">
+      <Panel title="Run readiness" note="What OneLab found">
         <div style={{ display: "grid", gap: "8px", padding: "4px 0" }}>
           <Check ok={props.file.spectra > 0} text="spectrum list detected" />
           <Check ok={props.file.levels.some((item) => item.name === "MS2")} text="MS/MS spectra detected" />

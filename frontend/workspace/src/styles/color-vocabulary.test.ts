@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test"
+import { fileURLToPath } from "node:url"
 
-const root = new URL("../", import.meta.url).pathname
-const files = await Array.fromAsync(new Bun.Glob("**/*.{css,ts,tsx}").scan({ cwd: root }))
+const root = fileURLToPath(new URL("../", import.meta.url))
+const files = (await Array.fromAsync(new Bun.Glob("**/*.{css,ts,tsx}").scan({ cwd: root }))).map((path) =>
+  path.replaceAll("\\", "/"),
+)
 
 /**
  * The workspace speaks one colour vocabulary, --color-*, defined once in

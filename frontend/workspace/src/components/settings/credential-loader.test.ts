@@ -3,20 +3,17 @@ import { invalidateCredentials, loadCredentials } from "./credential-loader"
 
 test("credential panels share one read and refetch only after a write invalidates it", async () => {
   const url = "http://credential-loader-test"
-  let finish!: (response: Response) => void
+  const response = Promise.withResolvers<Response>()
   let calls = 0
   const fetcher = (async () => {
     calls++
-    if (calls === 1)
-      return new Promise<Response>((resolve) => {
-        finish = resolve
-      })
+    if (calls === 1) return response.promise
     return Response.json({ services: [{ id: "github", connected: true }] })
   }) as unknown as typeof fetch
 
   const first = loadCredentials(url, fetcher)
   const second = loadCredentials(url, fetcher)
-  finish(Response.json({ services: [] }))
+  response.resolve(Response.json({ services: [] }))
   expect((await first).services).toEqual([])
   expect(await second).toBe(await first)
   expect(await loadCredentials(url, fetcher)).toBe(await first)

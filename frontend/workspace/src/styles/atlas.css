@@ -52,6 +52,7 @@
   --color-text-on-error: var(--text-on-critical-base);
   --color-text-warning: var(--text-warning-base);
   --color-border-weak: var(--border-weak-base);
+  --color-border-faint: var(--border-weaker-base);
   --color-border-hover: var(--border-hover);
   --color-border-focus: var(--border-focus);
   --color-border-error: var(--border-critical-base);
@@ -79,6 +80,7 @@
   --color-icon-invert: var(--icon-invert-base);
   --color-icon-disabled: var(--icon-disabled);
   --color-icon-success: var(--icon-success-base);
+  --color-icon-info: var(--icon-info-base);
   --color-icon-warning: var(--icon-warning-base);
   --color-icon-error: var(--icon-critical-base);
   --color-icon-error-hover: var(--icon-critical-hover);

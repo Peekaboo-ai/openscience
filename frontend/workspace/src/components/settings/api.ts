@@ -2,6 +2,9 @@
 // yet in the generated SDK (settings/credentials, settings/storage). Targets
 // the same loopback base URL the SDK uses; the app origin is allow-listed by
 // the server's host/origin guard, so a direct fetch is accepted.
+import { requestDeadline } from "@/utils/request-deadline"
+import { readTimeout } from "@/utils/read-timeout"
+
 export class SettingsApiError extends Error {
   constructor(
     message: string,
@@ -18,14 +21,26 @@ export async function settingsApi<T>(
   fetchFn: typeof fetch,
   path: string,
   init?: RequestInit,
+  timeout = !init?.method || init.method.toUpperCase() === "GET" ? readTimeout(base, path) : 120_000,
 ): Promise<T> {
+  return requestDeadline(
+    (signal) => settingsResponse<T>(base, fetchFn, path, { ...init, signal }),
+    timeout,
+    init?.signal,
+  )
+}
+
+async function settingsResponse<T>(base: string, fetchFn: typeof fetch, path: string, init: RequestInit): Promise<T> {
   // Hono's mounted settings routes are strict: `/settings/local` exists while
   // `/settings/local/` falls through to the SPA shell. Canonicalize route
   // roots here so callers can never turn an HTML fallback into a JSON error.
   const normalizedPath = path === "/" ? "" : path.replace(/\/+$/, "")
+  const headers = new Headers(init.headers)
+  if (!headers.has("content-type")) headers.set("content-type", "application/json")
+  headers.set("accept", "application/json")
   const res = await fetchFn(`${base.replace(/\/+$/, "")}${normalizedPath}`, {
     ...init,
-    headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
+    headers,
   })
   if (!res.ok) {
     const text = await res.text().catch(() => "")

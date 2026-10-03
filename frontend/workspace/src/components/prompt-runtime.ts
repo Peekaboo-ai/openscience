@@ -1,4 +1,5 @@
 import type { OpenScienceClient } from "@synsci/sdk/v2/client"
+import { requestDeadline } from "@/utils/request-deadline"
 
 type RuntimePrompt = Parameters<OpenScienceClient["runtime"]["prompt"]>[0]
 
@@ -15,6 +16,7 @@ export async function submitComposerPrompt(
   value: ComposerPromptInput,
   signal?: AbortSignal,
   onSubmit?: () => void,
+  timeout = 30_000,
 ): Promise<void> {
   const { queued, ...input } = value
   signal?.throwIfAborted()
@@ -25,9 +27,14 @@ export async function submitComposerPrompt(
     return
   }
 
-  const capabilities = await client.runtime.capabilities(
-    { directory: input.directory },
-    { throwOnError: false, responseStyle: "fields", signal },
+  const capabilities = await requestDeadline(
+    (signal) =>
+      client.runtime.capabilities(
+        { directory: input.directory },
+        { throwOnError: false, responseStyle: "fields", signal },
+      ),
+    timeout,
+    signal,
   )
   signal?.throwIfAborted()
   if (capabilities.response?.status === 404) {

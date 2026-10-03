@@ -45,7 +45,7 @@ export function requestFailure(
     return {
       kind: "ambiguous-create",
       title: "Session creation is awaiting confirmation",
-      description: `The server did not confirm whether the session was created${options.candidate ? ` (${options.candidate})` : ""}. Retry this saved draft; OpenScience will reuse the same session ID instead of creating a duplicate.`,
+      description: `The server did not confirm whether the session was created${options.candidate ? ` (${options.candidate})` : ""}. Retry this saved draft; OneLab will reuse the same session ID instead of creating a duplicate.`,
     }
   }
 
@@ -72,7 +72,7 @@ export function requestFailure(
     return {
       kind: "transport",
       title: "Local server is unreachable",
-      description: `${detail} Make sure the OpenScience server is running; your draft has been restored for retry.`,
+      description: `${detail} Make sure the OneLab server is running; your draft has been restored for retry.`,
     }
   }
   return { kind: "request", title: `${action} failed`, description: detail }

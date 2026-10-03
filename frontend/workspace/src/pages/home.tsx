@@ -212,7 +212,7 @@ export default function Home(): JSX.Element {
     {
       id: "server.switch",
       title: "Switch server",
-      description: "Choose or add an OpenScience server",
+      description: "Choose or add an OneLab server",
       category: "Application",
       onSelect: () => dialog.show(() => <DialogSelectServer />),
     },

@@ -5,6 +5,7 @@ const root = new URL("./", import.meta.url)
 const modules: Record<(typeof SETTINGS_PANEL_IDS)[number], string> = {
   general: "General",
   ace: "Ace",
+  "usage-stats": "UsageStats",
   models: "Models",
   "local-models": "LocalModels",
   skills: "Skills",
@@ -35,6 +36,7 @@ describe("settings registry source contract", () => {
     expect(SETTINGS_PANELS.map((panel) => panel.title)).toEqual([
       "General",
       "Ace",
+      "Usage Stats",
       "Models",
       "Local models",
       "Skills",

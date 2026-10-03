@@ -40,7 +40,7 @@ export function ProjectUnavailable(props: {
       <span class="app-not-found__eyebrow">Folder unavailable</span>
       <h1 id="project-unavailable-title">This project folder can’t be found</h1>
       <p>
-        OpenScience still has this project in your history, but its folder is no longer available. It won’t recreate the
+        OneLab still has this project in your history, but its folder is no longer available. It won’t recreate the
         folder or switch this session to another location.
       </p>
       <code class="project-unavailable__path" title={props.directory}>

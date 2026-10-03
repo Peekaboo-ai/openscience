@@ -1,4 +1,6 @@
 [data-component="checkbox"] {
+  /* 隐藏输入框必须定位在当前行内，否则聚焦会滚动外层裁剪容器并把设置内容卷出视口。 */
+  position: relative;
   display: flex;
   min-height: 32px;
   align-items: center;

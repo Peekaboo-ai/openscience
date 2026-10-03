@@ -24,7 +24,7 @@ const SOURCES: Record<ProviderSource, { label: string; removable: boolean; title
   api: {
     label: "local file",
     removable: true,
-    title: "API key stored in the owner-only OpenScience auth file, not the system keychain",
+    title: "API key stored in the owner-only OneLab auth file, not the system keychain",
   },
   env: {
     label: "environment",

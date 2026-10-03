@@ -1136,6 +1136,15 @@ export type EventCommandExecuted = {
   }
 }
 
+export type EventArtifactPublished = {
+  type: "artifact.published"
+  properties: {
+    projectID: string
+    sessionID: string
+    messageID: string
+  }
+}
+
 export type PermissionAction = "allow" | "deny" | "ask"
 
 export type PermissionRule = {
@@ -1376,6 +1385,7 @@ export type Event =
   | EventMcpToolsChanged
   | EventMcpBrowserOpenFailed
   | EventCommandExecuted
+  | EventArtifactPublished
   | EventSessionCreated
   | EventSessionUpdated
   | EventSessionDeleted
@@ -2377,6 +2387,152 @@ export type NotFoundError = {
   name: "NotFoundError"
   data: {
     message: string
+  }
+}
+
+export type UsageStatsReport = {
+  generatedAt: number
+  timeZone: string
+  range: "today" | "7d" | "30d" | "90d" | "all" | "custom"
+  from: string
+  to: string
+  firstRecord: string | null
+  totals: {
+    tokens: {
+      input: number
+      output: number
+      reasoning: number
+      cacheRead: number
+      cacheWrite: number
+    }
+    total: number
+    requests: number
+    sessions: number
+    unreported: number
+    background: number
+  }
+  previous: {
+    tokens: {
+      input: number
+      output: number
+      reasoning: number
+      cacheRead: number
+      cacheWrite: number
+    }
+    total: number
+    requests: number
+    sessions: number
+    unreported: number
+    background: number
+  } | null
+  cacheHitRate: number
+  activeDays: number
+  peakDay: {
+    date: string
+    total: number
+  } | null
+  models: Array<{
+    tokens: {
+      input: number
+      output: number
+      reasoning: number
+      cacheRead: number
+      cacheWrite: number
+    }
+    total: number
+    requests: number
+    sessions: number
+    unreported: number
+    background: number
+    id: string
+    label: string
+    secondary: string
+    projectID?: string
+    providerID?: string
+    modelID?: string
+    lastUsed: number
+    available: boolean
+  }>
+  projects: Array<{
+    tokens: {
+      input: number
+      output: number
+      reasoning: number
+      cacheRead: number
+      cacheWrite: number
+    }
+    total: number
+    requests: number
+    sessions: number
+    unreported: number
+    background: number
+    id: string
+    label: string
+    secondary: string
+    projectID?: string
+    providerID?: string
+    modelID?: string
+    lastUsed: number
+    available: boolean
+  }>
+  sessions: Array<{
+    tokens: {
+      input: number
+      output: number
+      reasoning: number
+      cacheRead: number
+      cacheWrite: number
+    }
+    total: number
+    requests: number
+    sessions: number
+    unreported: number
+    background: number
+    id: string
+    label: string
+    secondary: string
+    projectID?: string
+    providerID?: string
+    modelID?: string
+    lastUsed: number
+    available: boolean
+  }>
+  trend: Array<{
+    date: string
+    end: string
+    tokens: {
+      input: number
+      output: number
+      reasoning: number
+      cacheRead: number
+      cacheWrite: number
+    }
+    total: number
+    requests: number
+  }>
+  interval: "day" | "week" | "month"
+  activity: Array<{
+    date: string
+    total: number
+    requests: number
+    level: number
+  }>
+  options: {
+    projects: Array<{
+      id: string
+      label: string
+    }>
+    providers: Array<string>
+    models: Array<{
+      id: string
+      label: string
+      providerID: string
+    }>
+  }
+  quality: {
+    skipped: number
+    historical: number
+    inherited: number
   }
 }
 
@@ -9968,6 +10124,38 @@ export type SettingsUsageLoggingUpdateResponses = {
 export type SettingsUsageLoggingUpdateResponse =
   SettingsUsageLoggingUpdateResponses[keyof SettingsUsageLoggingUpdateResponses]
 
+export type SettingsUsageStatsGetData = {
+  body?: never
+  path?: never
+  query?: {
+    range?: "today" | "7d" | "30d" | "90d" | "all" | "custom"
+    timeZone?: string
+    from?: string
+    to?: string
+    project?: string
+    provider?: string
+    model?: string
+    refresh?: "0" | "1"
+  }
+  url: "/settings/usage-stats"
+}
+
+export type SettingsUsageStatsGetErrors = {
+  /**
+   * Invalid date range or time zone
+   */
+  400: unknown
+}
+
+export type SettingsUsageStatsGetResponses = {
+  /**
+   * Usage statistics for the connected server
+   */
+  200: UsageStatsReport
+}
+
+export type SettingsUsageStatsGetResponse = SettingsUsageStatsGetResponses[keyof SettingsUsageStatsGetResponses]
+
 export type PostSettingsLocalStartData = {
   body?: {
     id: string
@@ -15535,6 +15723,76 @@ export type FileArtifactsResponses = {
 }
 
 export type FileArtifactsResponse = FileArtifactsResponses[keyof FileArtifactsResponses]
+
+export type FileArtifactsPublishData = {
+  body?: {
+    sessionID: string
+    messageID: string
+    messageIDs?: Array<string>
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/file/artifacts/publish"
+}
+
+export type FileArtifactsPublishErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type FileArtifactsPublishError = FileArtifactsPublishErrors[keyof FileArtifactsPublishErrors]
+
+export type FileArtifactsPublishResponses = {
+  /**
+   * Published Results and individual file failures
+   */
+  200: {
+    artifacts: Array<{
+      schemaVersion: 1
+      id: string
+      projectID: string
+      title: string
+      kind: string
+      currentVersionID: string
+      createdAt: number
+      updatedAt: number
+      state: "active" | "trash"
+      trashedAt?: number
+      versionCount: number
+      current: {
+        id: string
+        artifactID: string
+        version: number
+        filename: string
+        mimeType: string
+        size: number
+        sha256: string
+        sessionID: string
+        messageID?: string
+        executionID?: string
+        sourcePath: string
+        captureQuality: "exact" | "declared" | "partial" | "unknown"
+        createdAt: number
+      }
+    }>
+    failures: Array<{
+      path: string
+      message: string
+    }>
+    published: number
+    truncated: boolean
+  }
+}
+
+export type FileArtifactsPublishResponse = FileArtifactsPublishResponses[keyof FileArtifactsPublishResponses]
 
 export type FileArtifactSaveData = {
   body?: {

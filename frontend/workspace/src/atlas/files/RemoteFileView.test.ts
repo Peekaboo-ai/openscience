@@ -55,6 +55,17 @@ const props = (over: Record<string, unknown> = {}) => ({
 })
 
 describe("remote file view", () => {
+  test("shows readable bytes before a slow highlighter finishes", async () => {
+    const pending = Promise.withResolvers<string>()
+    const host = mount(() => subject.RemoteFileView(props({ highlight: () => pending.promise }) as never))
+    await settle()
+    expect(host.querySelector("[data-remote-text]")?.textContent).toContain("# Objective")
+    expect(host.querySelector(".tinted")).toBeNull()
+    pending.resolve('<span class="tinted"># Objective</span>')
+    await settle()
+    expect(host.querySelector(".tinted")?.textContent).toBe("# Objective")
+  })
+
   test("renders text it fetched, tinted", async () => {
     const host = mount(() => subject.RemoteFileView(props() as never))
     await settle()

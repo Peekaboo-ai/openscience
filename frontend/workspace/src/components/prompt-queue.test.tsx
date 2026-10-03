@@ -61,6 +61,155 @@ test("send menu performs the selected action instead of only changing a mode", a
   expect(deliveries).toEqual(["guide", "queue"])
 })
 
+test.each(["local", "remote"])("%s drafts do not read a queue until a real session exists", async (mode) => {
+  const requests: string[] = []
+  let failing = false
+  const http = createServer((request, response) => {
+    const headers = {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Headers": "*",
+      "Access-Control-Allow-Methods": "GET,OPTIONS",
+    }
+    if (request.method === "OPTIONS") {
+      response.writeHead(204, headers).end()
+      return
+    }
+    requests.push(request.url!)
+    const capability = request.url?.includes("capabilities")
+    const sessionID = new URL(request.url!, "http://test").searchParams.get("sessionID")
+    response.writeHead(capability ? 200 : sessionID === "new" ? 400 : failing ? 503 : 200, headers)
+    response.end(
+      JSON.stringify(
+        capability
+          ? { promptQueue: true }
+          : failing
+            ? { message: "Queue temporarily unavailable" }
+            : { sessionID, revision: 0, paused: false, items: [] },
+      ),
+    )
+  })
+  http.listen(0, "127.0.0.1")
+  await once(http, "listening")
+  cleanups.push(() => {
+    http.close()
+    http.closeAllConnections()
+  })
+  const address = http.address() as { port: number }
+  const baseUrl = `http://127.0.0.1:${address.port}${mode === "remote" ? "/remote-workspaces/bio/api" : ""}`
+  const [sessionID, setSessionID] = solidjs.createSignal<string | undefined>("new")
+  const [refresh, setRefresh] = solidjs.createSignal(0)
+  let available = false
+  const host = document.createElement("div")
+  document.body.append(host)
+  cleanups.push(
+    web.render(
+      () =>
+        subject.PromptQueue({
+          client: createOpenScienceClient({ baseUrl }),
+          get sessionID() {
+            return sessionID()
+          },
+          get refresh() {
+            return refresh()
+          },
+          working: false,
+          locale: "zh",
+          onAvailable(value) {
+            available = value
+          },
+        }),
+      host,
+    ),
+  )
+  await Bun.sleep(50)
+  setSessionID(undefined)
+  setRefresh(1)
+  await Bun.sleep(50)
+  expect(requests).toEqual([])
+  expect(host.querySelector("section")).toBeNull()
+  expect(available).toBe(false)
+
+  setSessionID("ses_created")
+  await wait(() => requests.some((url) => url.includes("/runtime/queue?sessionID=ses_created")))
+  expect(available).toBe(true)
+  failing = true
+  setRefresh(2)
+  await wait(
+    () => host.querySelector('[role="alert"]')?.textContent?.includes("Queue temporarily unavailable") === true,
+  )
+
+  setSessionID("new")
+  await wait(() => !available && host.querySelector("section") === null)
+  const count = requests.length
+  setRefresh(3)
+  await Bun.sleep(50)
+  expect(requests.length).toBe(count)
+  expect(requests.some((url) => url.includes("sessionID=new"))).toBe(false)
+})
+
+test("a late capability response cannot enable the queue after navigating to a draft", async () => {
+  const requests: string[] = []
+  let release: (() => void) | undefined
+  const http = createServer((request, response) => {
+    const headers = {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Headers": "*",
+    }
+    if (request.method === "OPTIONS") {
+      response.writeHead(204, headers).end()
+      return
+    }
+    requests.push(request.url!)
+    release = () => response.writeHead(200, headers).end(JSON.stringify({ promptQueue: true }))
+  })
+  http.listen(0, "127.0.0.1")
+  await once(http, "listening")
+  cleanups.push(() => {
+    http.close()
+    http.closeAllConnections()
+  })
+  const address = http.address() as { port: number }
+  // 模拟已完成传输、无法及时取消的响应，验证组件自身的会话生命周期保护。
+  const client = createOpenScienceClient({
+    baseUrl: `http://127.0.0.1:${address.port}`,
+    fetch: Object.assign(
+      (request: RequestInfo | URL) => fetch(new Request(request, { signal: new AbortController().signal })),
+      { preconnect: fetch.preconnect },
+    ),
+  })
+  const [sessionID, setSessionID] = solidjs.createSignal("ses_previous")
+  let available = false
+  const host = document.createElement("div")
+  document.body.append(host)
+  cleanups.push(
+    web.render(
+      () =>
+        subject.PromptQueue({
+          client,
+          get sessionID() {
+            return sessionID()
+          },
+          refresh: 0,
+          working: false,
+          locale: "en",
+          onAvailable(value) {
+            available = value
+          },
+        }),
+      host,
+    ),
+  )
+  await wait(() => !!release)
+  setSessionID("new")
+  release!()
+  await Bun.sleep(80)
+  expect(available).toBe(false)
+  expect(requests).toEqual(["/runtime/capabilities"])
+  expect(host.querySelector("section")).toBeNull()
+})
+
 test("a deleted session stays retired when prompt refresh or working state changes", async () => {
   let requests = 0
   const http = createServer((request, response) => {

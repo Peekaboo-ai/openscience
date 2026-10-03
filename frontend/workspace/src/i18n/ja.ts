@@ -112,14 +112,14 @@ export const dict = {
   "provider.connect.status.waiting": "認証を待機中...",
   "provider.connect.status.failed": "認証に失敗しました: {{error}}",
   "provider.connect.apiKey.description":
-    "{{provider}}のAPIキーを入力してアカウントを接続し、OpenScienceで{{provider}}モデルを使用します。",
+    "{{provider}}のAPIキーを入力してアカウントを接続し、OneLabで{{provider}}モデルを使用します。",
   "provider.connect.apiKey.label": "{{provider}} APIキー",
   "provider.connect.apiKey.placeholder": "APIキー",
   "provider.connect.apiKey.required": "APIキーが必要です",
   "provider.connect.oauth.code.visit.prefix": " ",
   "provider.connect.oauth.code.visit.link": "このリンク",
   "provider.connect.oauth.code.visit.suffix":
-    " にアクセスして認証コードを取得し、アカウントを接続してOpenScienceで{{provider}}モデルを使用してください。",
+    " にアクセスして認証コードを取得し、アカウントを接続してOneLabで{{provider}}モデルを使用してください。",
   "provider.connect.oauth.code.label": "{{method}} 認証コード",
   "provider.connect.oauth.code.placeholder": "認証コード",
   "provider.connect.oauth.code.required": "認証コードが必要です",
@@ -127,7 +127,7 @@ export const dict = {
   "provider.connect.oauth.auto.visit.prefix": " ",
   "provider.connect.oauth.auto.visit.link": "このリンク",
   "provider.connect.oauth.auto.visit.suffix":
-    " にアクセスし、以下のコードを入力してアカウントを接続し、OpenScienceで{{provider}}モデルを使用してください。",
+    " にアクセスし、以下のコードを入力してアカウントを接続し、OneLabで{{provider}}モデルを使用してください。",
   "provider.connect.oauth.auto.confirmationCode": "確認コード",
   "provider.connect.toast.connected.title": "{{provider}}が接続されました",
   "provider.connect.toast.connected.description": "{{provider}}モデルが使用可能になりました。",
@@ -217,7 +217,7 @@ export const dict = {
   "dialog.directory.empty": "フォルダが見つかりません",
 
   "dialog.server.title": "サーバー",
-  "dialog.server.description": "このアプリが接続するOpenScienceサーバーを切り替えます。",
+  "dialog.server.description": "このアプリが接続するOneLabサーバーを切り替えます。",
   "dialog.server.search.placeholder": "サーバーを検索",
   "dialog.server.empty": "サーバーはまだありません",
   "dialog.server.add.title": "サーバーを追加",
@@ -322,7 +322,7 @@ export const dict = {
   "toast.session.listFailed.title": "{{project}}のセッション読み込みに失敗しました",
 
   "toast.update.title": "アップデートが利用可能です",
-  "toast.update.description": "OpenScienceの新しいバージョン ({{version}}) がインストール可能です。",
+  "toast.update.description": "OneLabの新しいバージョン ({{version}}) がインストール可能です。",
   "toast.update.action.installRestart": "インストールして再起動",
   "toast.update.action.notYet": "今はしない",
 
@@ -333,7 +333,7 @@ export const dict = {
   "error.page.action.checking": "確認中...",
   "error.page.action.checkUpdates": "アップデートを確認",
   "error.page.action.updateTo": "{{version}}にアップデート",
-  "error.page.report.prefix": "このエラーをOpenScienceチームに報告してください: ",
+  "error.page.report.prefix": "このエラーをOneLabチームに報告してください: ",
   "error.page.report.discord": "Discord",
   "error.page.version": "バージョン: {{version}}",
 
@@ -351,8 +351,7 @@ export const dict = {
   "error.chain.didYouMean": "もしかして: {{suggestions}}",
   "error.chain.modelNotFound": "モデルが見つかりません: {{provider}}/{{model}}",
   "error.chain.checkConfig": "config (openscience.json) のプロバイダー/モデル名を確認してください",
-  "error.chain.mcpFailed":
-    'MCPサーバー "{{name}}" が失敗しました。注意: OpenScienceはまだMCP認証をサポートしていません。',
+  "error.chain.mcpFailed": 'MCPサーバー "{{name}}" が失敗しました。注意: OneLabはまだMCP認証をサポートしていません。',
   "error.chain.providerAuthFailed": "プロバイダー認証に失敗しました ({{provider}}): {{message}}",
   "error.chain.providerInitFailed":
     'プロバイダー "{{provider}}" の初期化に失敗しました。認証情報と設定を確認してください。',
@@ -447,12 +446,12 @@ export const dict = {
   "sidebar.workspaces.enable": "ワークスペースを有効化",
   "sidebar.workspaces.disable": "ワークスペースを無効化",
   "sidebar.gettingStarted.title": "はじめに",
-  "sidebar.gettingStarted.line1": "OpenScienceには無料モデルが含まれているため、すぐに開始できます。",
+  "sidebar.gettingStarted.line1": "OneLabには無料モデルが含まれているため、すぐに開始できます。",
   "sidebar.gettingStarted.line2": "プロバイダーを接続して、Claude、GPT、Geminiなどのモデルを使用できます。",
   "sidebar.project.recentSessions": "最近のセッション",
   "sidebar.project.viewAllSessions": "すべてのセッションを表示",
 
-  "app.name.desktop": "OpenScience Desktop",
+  "app.name.desktop": "OneLab Desktop",
   "settings.section.desktop": "デスクトップ",
   "settings.section.server": "サーバー",
   "settings.tab.general": "一般",
@@ -465,11 +464,11 @@ export const dict = {
   "settings.general.section.sounds": "効果音",
 
   "settings.general.row.language.title": "言語",
-  "settings.general.row.language.description": "OpenScienceの表示言語を変更します",
+  "settings.general.row.language.description": "OneLabの表示言語を変更します",
   "settings.general.row.appearance.title": "外観",
-  "settings.general.row.appearance.description": "デバイスでのOpenScienceの表示をカスタマイズします",
+  "settings.general.row.appearance.description": "デバイスでのOneLabの表示をカスタマイズします",
   "settings.general.row.theme.title": "テーマ",
-  "settings.general.row.theme.description": "OpenScienceのテーマをカスタマイズします。",
+  "settings.general.row.theme.description": "OneLabのテーマをカスタマイズします。",
   "settings.general.row.font.title": "フォント",
   "settings.general.row.font.description": "コードブロックで使用する等幅フォントをカスタマイズします",
   "settings.general.layout.showChanges.title": "show changes view",
@@ -479,13 +478,13 @@ export const dict = {
   "settings.general.row.releaseNotes.description": "アップデート後に「新機能」ポップアップを表示",
 
   "settings.updates.row.startup.title": "起動時にアップデートを確認",
-  "settings.updates.row.startup.description": "OpenScience の起動時に自動でアップデートを確認します",
+  "settings.updates.row.startup.description": "OneLab の起動時に自動でアップデートを確認します",
   "settings.updates.row.check.title": "アップデートを確認",
   "settings.updates.row.check.description": "手動でアップデートを確認し、利用可能ならインストールします",
   "settings.updates.action.checkNow": "今すぐ確認",
   "settings.updates.action.checking": "確認中...",
   "settings.updates.toast.latest.title": "最新です",
-  "settings.updates.toast.latest.description": "OpenScience は最新バージョンです。",
+  "settings.updates.toast.latest.description": "OneLab は最新バージョンです。",
 
   "font.option.ibmPlexMono": "IBM Plex Mono",
   "font.option.cascadiaCode": "Cascadia Code",

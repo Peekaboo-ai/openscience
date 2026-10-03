@@ -7,6 +7,7 @@ import { Global } from "@/global"
 import { Cleanup } from "@/util/cleanup"
 import { FileLease } from "@/util/file-lease"
 import { Lock } from "@/util/lock"
+import { Log } from "@/util/log"
 
 export namespace ArtifactStore {
   export const MAX_VERSION_BYTES = 1024 * 1024 * 1024
@@ -91,6 +92,8 @@ export namespace ArtifactStore {
     mimeType?: string
     messageID?: string
     captureQuality?: CaptureQuality
+    /** Reuse a completed message's saved version and respect an explicit trash. */
+    deduplicate?: boolean
     execution?: Omit<Execution, "id" | "artifactVersionID" | "createdAt">
   }
 
@@ -115,6 +118,11 @@ export namespace ArtifactStore {
   const database = path.join(root, "artifacts.db")
   const lock = path.join(root, ".write")
   const scanned = { at: 0 }
+  const maintenance = { at: 0, pending: undefined as Promise<number> | undefined }
+  const reader = {
+    pending: undefined as Promise<Database> | undefined,
+    identity: undefined as { dev: number; ino: number } | undefined,
+  }
 
   type VersionRow = {
     id: string
@@ -239,16 +247,75 @@ export namespace ArtifactStore {
   async function prepare() {
     await Promise.all([fs.mkdir(blobs, { recursive: true }), fs.mkdir(partials, { recursive: true })])
     const db = new Database(database, { create: true })
-    db.exec("PRAGMA busy_timeout = 5000")
-    db.exec("PRAGMA journal_mode = WAL")
-    db.exec("PRAGMA synchronous = FULL")
-    db.exec(schema)
-    const columns = db.query("PRAGMA table_info(artifacts)").all() as Array<{ name: string }>
-    if (!columns.some((column) => column.name === "trashed_at")) {
-      db.exec("ALTER TABLE artifacts ADD COLUMN trashed_at INTEGER")
+    try {
+      db.exec("PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON; PRAGMA synchronous = FULL")
+      // NFS 上一次无意义的同步写入也会阻塞整个 Bun 事件循环；已迁移的数据库只打开读取。
+      const metadata = db.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'store_meta'").get()
+      const current = metadata
+        ? (db.query("SELECT value FROM store_meta WHERE key = 'schema_version'").get() as { value: string } | null)
+        : undefined
+      if (Number(current?.value) >= 2) return db
+      db.exec("PRAGMA journal_mode = WAL")
+      db.exec(schema)
+      const columns = db.query("PRAGMA table_info(artifacts)").all() as Array<{ name: string }>
+      if (!columns.some((column) => column.name === "trashed_at")) {
+        db.exec("ALTER TABLE artifacts ADD COLUMN trashed_at INTEGER")
+      }
+      db.query("UPDATE store_meta SET value = '2' WHERE key = 'schema_version'").run()
+      return db
+    } catch (error) {
+      db.close()
+      throw error
     }
-    db.query("UPDATE store_meta SET value = '2' WHERE key = 'schema_version'").run()
-    return db
+  }
+
+  async function reading() {
+    const exists = await fs.stat(database).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return
+      throw error
+    })
+    // 数据目录切换或库被重建后不能继续读取旧文件句柄；异步 stat 不阻塞健康检查。
+    if (reader.identity && (exists?.dev !== reader.identity.dev || exists?.ino !== reader.identity.ino)) {
+      const previous = reader.pending
+      const db = await previous
+      if (reader.pending === previous) {
+        db?.close()
+        reader.pending = undefined
+        reader.identity = undefined
+      }
+    }
+    // 只读连接保留 SQLite 的正常快照语义，不缓存查询结果；其他进程提交后下一次查询即可看见。
+    // NFS 上打开、关闭连接及设置 synchronous 都有显著延迟，浏览期间只初始化一次。
+    reader.pending ??= (async () => {
+      const db = exists ? new Database(database, { readonly: true }) : undefined
+      try {
+        const current = db?.query("SELECT value FROM store_meta WHERE key = 'schema_version'").get() as
+          { value: string } | undefined
+        if (Number(current?.value) >= 2 && db && exists) {
+          reader.identity = { dev: exists.dev, ino: exists.ino }
+          return db
+        }
+      } catch (error) {
+        // 旧库或初始化中断时仍走原有迁移；I/O 与权限错误必须原样报告。
+        if (!(error instanceof Error) || !error.message.includes("no such table: store_meta")) {
+          db?.close()
+          throw error
+        }
+      }
+      db?.close()
+      using _ = await Lock.write(lock)
+      await using lease = await FileLease.acquire(lock)
+      const initialized = await prepare()
+      initialized.close()
+      const stat = await fs.stat(database)
+      reader.identity = { dev: stat.dev, ino: stat.ino }
+      return new Database(database, { readonly: true })
+    })().catch((error) => {
+      reader.pending = undefined
+      reader.identity = undefined
+      throw error
+    })
+    return reader.pending
   }
 
   function version(row: VersionRow): Version {
@@ -446,6 +513,28 @@ export namespace ArtifactStore {
   export async function save(input: SaveInput): Promise<Artifact> {
     using _ = await Lock.write(lock)
     await using lease = await FileLease.acquire(lock)
+    if (input.deduplicate && input.messageID) {
+      const db = await prepare()
+      try {
+        const prior = db
+          .query(select + " WHERE a.project_id = ?1 AND a.source_key = ?2")
+          .get(input.projectID, input.sourcePath.replaceAll("\\", "/")) as ArtifactRow | null
+        if (prior?.state === "trash") return artifact(prior)
+        const saved = prior
+          ? (db
+              .query(
+                "SELECT * FROM versions WHERE artifact_id = ?1 AND session_id = ?2 AND message_id = ?3 ORDER BY version DESC LIMIT 1",
+              )
+              .get(prior.artifact_record_id, input.sessionID, input.messageID) as VersionRow | null)
+          : undefined
+        if (prior && saved) {
+          const current = version(saved)
+          return { ...artifact(prior), currentVersionID: current.id, current }
+        }
+      } finally {
+        db.close()
+      }
+    }
     // Capacity is a store-wide invariant. Serialize the reservation check and
     // stream itself so concurrent large saves cannot each observe the same
     // free bytes and collectively consume the safety reserve.
@@ -615,11 +704,24 @@ export namespace ArtifactStore {
   }
 
   export async function list(projectID: string, state: "active" | "trash" = "active"): Promise<Artifact[]> {
-    await sweep()
-    const db = await prepare()
+    const db = await reading()
     const result = rows(db, projectID, undefined, state).map(artifact)
-    db.close()
-    return result
+    // 过期内容立即从列表隐藏，物理清理独立完成；浏览不能等待跨进程写锁或 NFS 目录扫描。
+    const now = Date.now()
+    if (!maintenance.at || Math.abs(now - maintenance.at) >= 60_000) {
+      maintenance.at = now
+      maintenance.pending ??= sweep(now)
+        .catch((error) => {
+          Log.Default.error("artifact maintenance failed", { error })
+          return 0
+        })
+        .finally(() => {
+          maintenance.pending = undefined
+        })
+    }
+    return result.filter(
+      (item) => item.state !== "trash" || !item.trashedAt || item.trashedAt > now - TRASH_RETENTION_MS,
+    )
   }
 
   export async function rename(projectID: string, artifactID: string, title: string): Promise<Artifact | undefined> {
@@ -662,13 +764,31 @@ export namespace ArtifactStore {
   }
 
   export async function sweep(now = Date.now()) {
+    const snapshot = await reading()
     using _ = await Lock.write(lock)
     await using lease = await FileLease.acquire(lock)
-    const db = await prepare()
     const cutoff = now - TRASH_RETENTION_MS
-    const orphaned = (() => {
+    // 空清理复用只读连接，避免仅为检查到期时间就打开写连接并重复执行 NFS 同步设置。
+    const dirty = snapshot
+      .query(
+        `SELECT 1 FROM artifacts WHERE state = 'trash' AND trashed_at <= ?1
+         UNION ALL SELECT 1 FROM blobs WHERE NOT EXISTS (SELECT 1 FROM versions WHERE versions.sha256 = blobs.sha256) LIMIT 1`,
+      )
+      .get(cutoff)
+    const orphaned = await (async () => {
+      if (!dirty) {
+        const referenced = snapshot.query("SELECT path FROM blobs").all() as Array<{ path: string }>
+        return {
+          stale: 0,
+          unused: [] as Array<{ path: string }>,
+          referenced: new Set(referenced.map((item) => item.path)),
+        }
+      }
+      const db = await prepare()
+      let transaction = false
       try {
         db.exec("BEGIN IMMEDIATE")
+        transaction = true
         const stale = db
           .query("SELECT id FROM artifacts WHERE state = 'trash' AND trashed_at <= ?1")
           .all(cutoff) as Array<{ id: string }>
@@ -686,7 +806,7 @@ export namespace ArtifactStore {
         db.exec("COMMIT")
         return { stale: stale.length, unused, referenced: new Set(referenced.map((item) => item.path)) }
       } catch (error) {
-        db.exec("ROLLBACK")
+        if (transaction) db.exec("ROLLBACK")
         throw error
       } finally {
         db.close()
@@ -714,10 +834,9 @@ export namespace ArtifactStore {
   }
 
   export async function get(projectID: string, artifactID: string): Promise<Detail | undefined> {
-    const db = await prepare()
+    const db = await reading()
     const row = rows(db, projectID, artifactID)[0]
     if (!row) {
-      db.close()
       return
     }
     const versions = (
@@ -727,7 +846,6 @@ export namespace ArtifactStore {
     const run = current?.executionID
       ? (db.query("SELECT * FROM executions WHERE id = ?1").get(current.executionID) as ExecutionRow | null)
       : null
-    db.close()
     return {
       ...artifact(row),
       versions,
@@ -738,7 +856,7 @@ export namespace ArtifactStore {
   /** Immutable artifact versions produced by one session, including versions
    * whose originating tool part is no longer present in message history. */
   export async function listSessionVersions(projectID: string, sessionID: string): Promise<Version[]> {
-    const db = await prepare()
+    const db = await reading()
     const versions = (
       db
         .query(
@@ -750,8 +868,34 @@ export namespace ArtifactStore {
         )
         .all(projectID, sessionID) as VersionRow[]
     ).map(version)
-    db.close()
     return versions
+  }
+
+  // 按会话保留各自产物版本；同一路径被后续会话重写时，旧会话仍能打开自己的不可变结果。
+  export async function listResults(
+    projectID: string,
+    state: "active" | "trash" = "active",
+    options: { sessionID?: string; messageIDs?: string[] } = {},
+  ): Promise<Artifact[]> {
+    if (options.messageIDs?.length === 0) return []
+    const params = [projectID, state]
+    const session = options.sessionID ? ` AND v.session_id = ?${params.push(options.sessionID)}` : ""
+    const messages = options.messageIDs
+      ? ` AND other.message_id IN (${options.messageIDs.map((id) => `?${params.push(id)}`).join(",")})`
+      : ""
+    const db = await reading()
+    const result = db
+      .query(
+        select.replace("JOIN versions v ON v.id = a.current_version_id", "JOIN versions v ON v.artifact_id = a.id") +
+          ` WHERE a.project_id = ?1 AND a.state = ?2${session}
+            AND v.version = (SELECT max(other.version) FROM versions other
+              WHERE other.artifact_id = a.id AND other.session_id = v.session_id${messages})
+            ORDER BY v.created_at DESC, a.id`,
+      )
+      .all(...params) as ArtifactRow[]
+    return result
+      .filter((row) => row.state !== "trash" || !row.trashed_at || row.trashed_at > Date.now() - TRASH_RETENTION_MS)
+      .map((row) => ({ ...artifact(row), currentVersionID: row.id }))
   }
 
   export async function read(
@@ -759,7 +903,7 @@ export namespace ArtifactStore {
     artifactID: string,
     versionID?: string,
   ): Promise<{ info: Version; content: BunFile } | undefined> {
-    const db = await prepare()
+    const db = await reading()
     const row = db
       .query(
         `SELECT v.*
@@ -769,11 +913,9 @@ export namespace ArtifactStore {
       )
       .get(projectID, artifactID, versionID ?? null) as VersionRow | null
     if (!row) {
-      db.close()
       return
     }
     const stored = db.query("SELECT path FROM blobs WHERE sha256 = ?1").get(row.sha256) as { path: string } | null
-    db.close()
     if (!stored) return
     const filepath = path.join(root, stored.path)
     const stat = await fs.lstat(filepath).catch(() => undefined)
@@ -784,9 +926,15 @@ export namespace ArtifactStore {
   }
 
   export async function reset() {
+    await maintenance.pending
+    const db = await reader.pending
     using _ = await Lock.write(lock)
     await using lease = await FileLease.acquire(lock)
+    db?.close()
+    reader.pending = undefined
+    reader.identity = undefined
     await Cleanup.remove(root)
     scanned.at = 0
+    maintenance.at = 0
   }
 }

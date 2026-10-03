@@ -312,7 +312,7 @@ const Compute: Component = () => {
     showToast({
       variant: "success",
       title: "Modal configured and enabled",
-      description: "OpenScience will use the active profile in ~/.modal.toml only for approved Modal operations.",
+      description: "OneLab will use the active profile in ~/.modal.toml only for approved Modal operations.",
     })
   }
 
@@ -672,7 +672,7 @@ const Compute: Component = () => {
         <PanelBody>
           <Section
             title="Local runtimes"
-            description="OpenScience owns shared, reproducible starter environments and keeps your system Python, R, and shell untouched."
+            description="OneLab owns shared, reproducible starter environments and keeps your system Python, R, and shell untouched."
           >
             <Card>
               <div class="settings-row settings-compute-summary-row">
@@ -1241,8 +1241,8 @@ const Compute: Component = () => {
                     <div class="min-w-0">
                       <h4 class="text-14-medium text-text-strong">New SSH host</h4>
                       <p class="mt-0.5 text-12-regular text-text-weak">
-                        OpenScience pins tested host keys and uses your agent or a selected private-key path. Key bytes
-                        are never copied into OpenScience storage.
+                        OneLab pins tested host keys and uses your agent or a selected private-key path. Key bytes are
+                        never copied into OneLab storage.
                       </p>
                     </div>
                   </div>

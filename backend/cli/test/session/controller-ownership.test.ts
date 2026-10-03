@@ -3,7 +3,7 @@ import { Instance } from "../../src/project/instance"
 import { CommandRuntime } from "../../src/science/command/registry"
 import { Session } from "../../src/session"
 import { SessionPrompt } from "../../src/session/prompt"
-import { tmpdir, trustProject } from "../fixture/fixture"
+import { fullAccessExecution, tmpdir, trustProject } from "../fixture/fixture"
 
 async function waitUntil(check: () => boolean, timeout = 5_000) {
   const deadline = Date.now() + timeout
@@ -15,6 +15,8 @@ async function waitUntil(check: () => boolean, timeout = 5_000) {
 }
 
 test("a stale loop disposer cannot cancel the current controller, while explicit cancel can", async () => {
+  // 本例验证控制器归属；在无 OS 沙箱的 Windows 上也要显式允许夹具子进程执行。
+  await using access = await fullAccessExecution()
   await using tmp = await tmpdir({ git: true })
   await Instance.provide({
     directory: tmp.path,

@@ -234,7 +234,7 @@ test("local desktop restart ignores incomplete cloud onboarding without overwrit
 test("a fresh desktop starts at the account step with no way to skip it", async () => {
   const app = fixture()
   const view = app.mount()
-  await until(() => heading(view.host) === "Welcome to OpenScience")
+  await until(() => heading(view.host) === "Welcome to OneLab")
   expect(button(view.host, "Continue with Synthetic Sciences").disabled).toBe(false)
   expect(Array.from(view.host.querySelectorAll("button")).some((el) => /skip/i.test(el.textContent ?? ""))).toBe(false)
   expect(view.host.textContent).not.toContain("Research workspace loaded")
@@ -259,7 +259,7 @@ test("the desktop shows the loader with its caption until the setup state arrive
   expect(view.host.textContent).not.toContain("Research workspace loaded")
   await until(() => typeof release === "function")
   release!()
-  await until(() => heading(view.host) === "Welcome to OpenScience")
+  await until(() => heading(view.host) === "Welcome to OneLab")
   expect(view.host.querySelector('[aria-label="Loading desktop setup"]')).toBeNull()
 })
 
@@ -267,7 +267,7 @@ test("browser sign-in waits for workspace approval, then advances to Ace", async
   let release: (() => void) | undefined
   const app = fixture({ login: () => new Promise((resolve) => (release = () => resolve(Response.json({ ok: true })))) })
   const view = app.mount()
-  await until(() => heading(view.host) === "Welcome to OpenScience")
+  await until(() => heading(view.host) === "Welcome to OneLab")
   button(view.host, "Continue with Synthetic Sciences").click()
   await until(() => view.host.textContent?.includes("Waiting for your browser") === true)
   expect(view.host.querySelector('[role="status"]')?.textContent).toContain("Finish signing in in your browser")
@@ -282,14 +282,14 @@ test("browser sign-in waits for workspace approval, then advances to Ace", async
 test("a sign-in key is an alternative to the browser, and a bad key stays on the step", async () => {
   const app = fixture()
   const view = app.mount()
-  await until(() => heading(view.host) === "Welcome to OpenScience")
+  await until(() => heading(view.host) === "Welcome to OneLab")
   button(view.host, "Use a sign-in key").click()
   await until(() => view.host.querySelector("input") !== null)
   setInput(view.host, "nope")
   button(view.host, "Sign in").click()
   await until(() => view.host.querySelector('[role="alert"]') !== null)
   expect(view.host.querySelector('[role="alert"]')?.textContent).toContain("not accepted")
-  expect(heading(view.host)).toBe("Welcome to OpenScience")
+  expect(heading(view.host)).toBe("Welcome to OneLab")
   setInput(view.host, "valid-key")
   button(view.host, "Sign in").click()
   await until(() => heading(view.host) === "Turn on Ace")
@@ -299,12 +299,12 @@ test("a sign-in key is an alternative to the browser, and a bad key stays on the
 test("browser sign-in gives up after its deadline and can be retried", async () => {
   const app = fixture({ login: () => new Promise(() => {}) })
   const view = app.mount(true, { signInDeadlineMs: 50 })
-  await until(() => heading(view.host) === "Welcome to OpenScience")
+  await until(() => heading(view.host) === "Welcome to OneLab")
   button(view.host, "Continue with Synthetic Sciences").click()
   await until(() => view.host.querySelector('[role="alert"]') !== null)
   expect(view.host.querySelector('[role="alert"]')?.textContent).toContain("Sign-in did not complete in time")
   expect(button(view.host, "Continue with Synthetic Sciences").disabled).toBe(false)
-  expect(heading(view.host)).toBe("Welcome to OpenScience")
+  expect(heading(view.host)).toBe("Welcome to OneLab")
 })
 
 test("turning on Ace opens billing, polls the wallet, then selects managed models", async () => {
@@ -391,18 +391,18 @@ test("finishing records the setup revision and reveals the workspace", async () 
 
   const resumed = app.mount()
   await until(() => resumed.host.textContent?.includes("Research workspace loaded") === true)
-  expect(resumed.host.textContent).not.toContain("Welcome to OpenScience")
+  expect(resumed.host.textContent).not.toContain("Welcome to OneLab")
 })
 
 test("a signed-in install resumes at the stored step; the account step is never shown again", async () => {
   const app = fixture({ connected: true, step: "connect" })
   const view = app.mount()
   await until(() => heading(view.host) === "Connect your models")
-  expect(view.host.textContent).not.toContain("Welcome to OpenScience")
+  expect(view.host.textContent).not.toContain("Welcome to OneLab")
 
   const stale = fixture({ connected: false, step: "connect" })
   const other = stale.mount()
-  await until(() => heading(other.host) === "Welcome to OpenScience")
+  await until(() => heading(other.host) === "Welcome to OneLab")
 })
 
 test("an install that finished an older revision opens its workspace after an update", async () => {
@@ -417,14 +417,14 @@ test("server reset overrides a cached onboarding completion", async () => {
   localStorage.setItem(versionKey, String(subject.ONBOARDING_VERSION))
   const app = fixture({ version: 0 })
   const view = app.mount()
-  await until(() => heading(view.host) === "Welcome to OpenScience")
+  await until(() => heading(view.host) === "Welcome to OneLab")
   expect(view.host.textContent).not.toContain("Research workspace loaded")
 })
 
 test("an unavailable account check leaves sign-in usable", async () => {
   const app = fixture({ session: () => Response.json({ error: "Account check unavailable" }, { status: 503 }) })
   const view = app.mount()
-  await until(() => heading(view.host) === "Welcome to OpenScience")
+  await until(() => heading(view.host) === "Welcome to OneLab")
   expect(view.host.querySelector('[role="alert"]')?.textContent).toContain("Account check unavailable")
   expect(button(view.host, "Continue with Synthetic Sciences").disabled).toBe(false)
 })

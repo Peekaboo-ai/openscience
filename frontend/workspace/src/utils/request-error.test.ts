@@ -26,7 +26,7 @@ describe("requestFailure", () => {
       kind: "ambiguous-create",
       title: "Session creation is awaiting confirmation",
       description:
-        "The server did not confirm whether the session was created (ses_stable). Retry this saved draft; OpenScience will reuse the same session ID instead of creating a duplicate.",
+        "The server did not confirm whether the session was created (ses_stable). Retry this saved draft; OneLab will reuse the same session ID instead of creating a duplicate.",
     })
   })
 

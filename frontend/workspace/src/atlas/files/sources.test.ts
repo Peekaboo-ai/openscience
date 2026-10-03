@@ -136,7 +136,7 @@ describe("pane sources", () => {
   test("groups in a fixed order and drops empty groups", () => {
     const groups = groupSources(buildSources({ projectRoot: "/p", projectName: "p", grants: [] }))
 
-    expect(groups.map((g) => g.group)).toEqual(["Working files", "Results", "Recovery"])
+    expect(groups.map((g) => g.group)).toEqual(["Results", "Working files", "Recovery"])
   })
 
   // One entry per provider. Remote will hold AWS, GCP and the rest, and an
@@ -166,7 +166,7 @@ describe("pane sources", () => {
   test("keeps remote sources after local ones so the picker order is stable", () => {
     const groups = groupSources(buildSources({ projectRoot: "/p", projectName: "p", grants: [], modal: true }))
 
-    expect(groups.map((g) => g.group)).toEqual(["Working files", "Results", "Remote", "Recovery"])
+    expect(groups.map((g) => g.group)).toEqual(["Results", "Working files", "Remote", "Recovery"])
   })
 })
 

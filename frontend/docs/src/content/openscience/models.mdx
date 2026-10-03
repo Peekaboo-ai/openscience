@@ -42,6 +42,12 @@ Other examples include `OPENAI_API_KEY`, `GEMINI_API_KEY`, and `DEEPSEEK_API_KEY
 
 Remove a saved connection in Customize or with `openscience keys rm`. If a key is still present in your environment or shared workspace, remove that source too.
 
+Custom gateways that translate Anthropic Messages to another model protocol may keep temporary continuation state. If such a gateway explicitly reports `synthetic previous_response_id is unavailable or expired`, OneLab retries that rejected request once using the saved conversation and completed tool results with fresh continuation identifiers. Completed tools are not run again by this recovery. Other HTTP 400 parameter errors remain visible because they do not prove that continuation state expired; check the selected model and protocol or the provider's error details before retrying.
+
+For GPT models on a custom gateway that supports **OpenAI Responses**, select that protocol in the connection settings after verifying its model and tool support. OneLab uses complete history with `store: false`, without a server-side `previous_response_id`. If the gateway's Messages route reports expired synthetic references or `previous_response_id is not available for this user`, its protocol translation may depend on unavailable account-bound state. A verified native Responses connection avoids that translation layer and can continue the existing conversation with its saved tool results.
+
+For a custom Messages gateway confirmed to have unstable history references, set `provider.<connection-id>.options.anthropicContinuation` to `"stateless"` in your user configuration. This mode sends the complete conversation and completed tool results with fresh tool references, omitting opaque history signatures for translated non-Claude models. It preserves thinking settings for new output and the reasoning already saved in the conversation. Native Claude models keep their original signatures. Editing the connection on the same endpoint preserves this setting; changing its endpoint or protocol clears it. Stateless history may reduce the gateway's history-cache reuse. It does not retry unrelated HTTP 400 errors or rerun completed tools, and cannot prevent a gateway from injecting its own unavailable continuation references. Use a verified native protocol when that issue persists.
+
 ## Use a supported provider sign-in
 
 Where a connection offers browser sign-in, follow that flow instead of entering an API key. For supported ChatGPT access:

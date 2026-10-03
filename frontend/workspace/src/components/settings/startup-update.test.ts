@@ -113,13 +113,13 @@ describe("startup update notice", () => {
       "download-and-restart",
     )
     expect(notice?.kind).toBe("available")
-    expect(notice?.title).toBe("OpenScience 2.0.127 is available")
+    expect(notice?.title).toBe("OneLab 2.0.127 is available")
     expect(notice?.primary).toEqual({ label: "Download and restart", busy: false })
   })
 
   test("offers the newer release from a plain launch too", () => {
     expect(updateNotice({ phase: "idle", available: "2.0.127" }, "download-and-restart")?.title).toBe(
-      "OpenScience 2.0.127 is available",
+      "OneLab 2.0.127 is available",
     )
   })
 
@@ -129,7 +129,7 @@ describe("startup update notice", () => {
       "download-and-restart",
     )
     expect(notice?.kind).toBe("succeeded")
-    expect(notice?.title).toBe("Updated to OpenScience 2.0.127")
+    expect(notice?.title).toBe("Updated to OneLab 2.0.127")
     expect(notice?.primary).toBeUndefined()
   })
 
@@ -177,7 +177,7 @@ describe("startup update notice", () => {
 
   test("a restart in flight names the version it is finishing", () => {
     const notice = updateNotice({ phase: "restarting", version: "2.0.127" }, "download-and-restart")
-    expect(notice?.title).toBe("Restarting OpenScience 2.0.127")
+    expect(notice?.title).toBe("Restarting OneLab 2.0.127")
     expect(notice?.primary?.busy).toBe(true)
   })
 
@@ -186,7 +186,7 @@ describe("startup update notice", () => {
 
     const banner = updateNotice(offer, "download-and-restart")
     expect(banner?.primary?.label).toBe("Download and restart")
-    expect(banner?.detail).toBe("One press downloads and verifies the signed update, then restarts OpenScience.")
+    expect(banner?.detail).toBe("One press downloads and verifies the signed update, then restarts OneLab.")
 
     // Customize → General downloads; the restart is a second press there.
     const settings = updateNotice(offer, "download")
@@ -198,12 +198,12 @@ describe("startup update notice", () => {
     const installer = updateNotice(offer, "installer")
     expect(installer?.primary?.label).toBe("Download installer")
     expect(installer?.detail).toBe("Download in the background, then choose when to restart.")
-    expect(installer?.title).toBe("OpenScience 2.0.127 is available")
+    expect(installer?.title).toBe("OneLab 2.0.127 is available")
   })
 
   test("says the same thing in one sentence for a single copy slot", () => {
     expect(updateNoticeLine(updateNotice({ phase: "idle", available: "2.0.127" }, "download")!)).toBe(
-      "OpenScience 2.0.127 is available. Download the signed update and restart when you are ready.",
+      "OneLab 2.0.127 is available. Download the signed update and restart when you are ready.",
     )
     expect(
       updateNoticeLine(
@@ -212,9 +212,9 @@ describe("startup update notice", () => {
           "download",
         )!,
       ),
-    ).toBe("Preparing OpenScience 2.0.127. 1.4 MiB of 2.9 MiB downloaded.")
+    ).toBe("Preparing OneLab 2.0.127. 1.4 MiB of 2.9 MiB downloaded.")
     expect(updateNoticeLine(updateNotice({ phase: "failed", version: "2.0.127" }, "download")!)).toBe(
-      "OpenScience could not prepare the update.",
+      "OneLab could not prepare the update.",
     )
   })
 })

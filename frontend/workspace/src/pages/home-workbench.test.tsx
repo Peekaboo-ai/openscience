@@ -1,5 +1,6 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test"
 import { fileURLToPath } from "node:url"
+import { DateTime } from "luxon"
 import type { JSX } from "solid-js"
 import { createTestServer as createServer } from "../../test/vite"
 import solid from "vite-plugin-solid"
@@ -86,10 +87,15 @@ describe("ProjectsWorkbench", () => {
         }),
       )
       await Promise.resolve()
-      expect(host.querySelector("time")?.textContent).toContain("1 day")
+      const activity = DateTime.fromMillis(now - 86_400_000)
+      expect(host.querySelector("time")?.textContent).toContain(
+        activity.toRelative({ base: DateTime.fromMillis(now) })!,
+      )
       Date.now = () => now + 172_800_000
       document.dispatchEvent(new Event("visibilitychange"))
-      expect(host.querySelector("time")?.textContent).toContain("3 days")
+      expect(host.querySelector("time")?.textContent).toContain(
+        activity.toRelative({ base: DateTime.fromMillis(now + 172_800_000) })!,
+      )
     } finally {
       Date.now = original
     }
@@ -144,7 +150,7 @@ describe("ProjectsWorkbench", () => {
     expect(host.querySelector('button[aria-label="Settings"]')).toBeTruthy()
     expect(host.querySelector('button[aria-label="Local server"]')).toBeTruthy()
     expect(host.querySelector("button.atlas-wordmark")).toBeNull()
-    expect(host.querySelector('[role="img"][aria-label="OpenScience"]')).toBeTruthy()
+    expect(host.querySelector('[role="img"][aria-label="OneLab"]')).toBeTruthy()
     const wordmark = host.querySelector<HTMLElement>(".atlas-wordmark > span")
     expect(wordmark?.style.fontSize).toBe("14.5px")
     expect(wordmark?.style.fontWeight).toBe("var(--font-weight-emphasis)")

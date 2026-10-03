@@ -287,7 +287,7 @@ export const ErrorPage: Component<ErrorPageProps> = (props) => {
       return "A model provider rejected its credentials. Reload first; if it returns, reconnect that provider in Settings."
     }
     if (text.includes("config") || text.includes("json")) {
-      return "OpenScience could not read part of its configuration. The technical details below identify the file to repair."
+      return "OneLab could not read part of its configuration. The technical details below identify the file to repair."
     }
     if (text.includes("fetch") || text.includes("network") || text.includes("connection")) {
       return "The app lost contact with its server. Make sure the local server is running, then reload."
@@ -296,7 +296,7 @@ export const ErrorPage: Component<ErrorPageProps> = (props) => {
   }
   const diagnostics = () =>
     [
-      "OpenScience diagnostic",
+      "OneLab diagnostic",
       `time: ${new Date().toISOString()}`,
       `version: ${platform.version ?? "unknown"}`,
       `platform: ${platform.platform}${platform.os ? `/${platform.os}` : ""}`,
@@ -368,7 +368,7 @@ export const ErrorPage: Component<ErrorPageProps> = (props) => {
                 "letter-spacing": "-0.025em",
               }}
             >
-              OpenScience hit a problem
+              OneLab hit a problem
             </h1>
             <p style={{ margin: 0, color: "var(--color-text-muted)", "font-size": "13px", "line-height": 1.6 }}>
               {hint()}
@@ -481,7 +481,7 @@ export const ErrorPage: Component<ErrorPageProps> = (props) => {
             "font-size": "10px",
           }}
         >
-          <span>OpenScience {platform.version ?? "development build"}</span>
+          <span>OneLab {platform.version ?? "development build"}</span>
           <span style={{ display: "inline-flex", "align-items": "center", gap: "5px" }}>
             Still stuck?
             <button

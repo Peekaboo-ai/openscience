@@ -223,7 +223,7 @@ export default function Connectors() {
     if (busy(key)) return
     const confirmed = await confirmDialog(dialog, {
       title: `Remove "${name}"?`,
-      message: "This disconnects the connector and deletes it from your global OpenScience configuration.",
+      message: "This disconnects the connector and deletes it from your global OneLab configuration.",
       confirmLabel: "Remove connector",
       danger: true,
     })

@@ -151,7 +151,8 @@ export class RemoteClient {
     init.signal?.addEventListener("abort", abort, { once: true })
     if (init.signal?.aborted) abort()
     else
-      await this.wire
+      // SSH 写入可能被断网或远端背压阻塞；取消与超时必须立即返回，不能等待写入回调。
+      void this.wire
         .send({
           id,
           type: "request",

@@ -42,14 +42,18 @@ export function PromptQueue(props: {
     const controller = new AbortController()
     let timer: ReturnType<typeof setTimeout> | undefined
     let supported = false
-    if (!sessionID) {
-      setState("snapshot", undefined)
+    // new 是草稿路由，还没有服务端会话；不能探测或轮询一个尚未存在的队列。
+    if (!sessionID || sessionID === "new") {
+      props.onAvailable(false)
+      setState({ snapshot: undefined, error: undefined })
       return
     }
     const refresh = async () => {
       try {
         if (!supported) {
           const result = await client.runtime.capabilities({}, { signal: controller.signal })
+          // 切换到新草稿后，迟到的能力探测不能重新启用旧会话的队列。
+          if (controller.signal.aborted) return
           supported = result.data?.promptQueue === true
           if (!supported) return
           props.onAvailable(true)

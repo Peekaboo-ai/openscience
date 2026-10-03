@@ -44,24 +44,37 @@ describe("markdown asset resolution", () => {
   })
 
   test("resolves relative references against the previewed file's directory", () => {
-    expect(assetUrl("figures/plot.png", { base: "notes/paper.md", url: raw })).toBe(raw("notes/figures/plot.png"))
-    expect(assetUrl("./figures/plot.png", { base: "notes/paper.md", url: raw })).toBe(raw("notes/figures/plot.png"))
-    expect(assetUrl("../shared/logo.svg", { base: "docs/guide/intro.md", url: raw })).toBe(raw("docs/shared/logo.svg"))
-    expect(assetUrl("plot.png", { base: "readme.md", url: raw })).toBe(raw("plot.png"))
+    expect(
+      assetUrl("figures/plot.png", { base: "notes/paper.md", url: raw, pageOrigin: "http://127.0.0.1:3000" }),
+    ).toBe(raw("notes/figures/plot.png"))
+    expect(
+      assetUrl("./figures/plot.png", { base: "notes/paper.md", url: raw, pageOrigin: "http://127.0.0.1:3000" }),
+    ).toBe(raw("notes/figures/plot.png"))
+    expect(
+      assetUrl("../shared/logo.svg", { base: "docs/guide/intro.md", url: raw, pageOrigin: "http://127.0.0.1:3000" }),
+    ).toBe(raw("docs/shared/logo.svg"))
+    expect(assetUrl("plot.png", { base: "readme.md", url: raw, pageOrigin: "http://127.0.0.1:3000" })).toBe(
+      raw("plot.png"),
+    )
   })
 
   test("resolves against the workspace root when no base file is given", () => {
-    expect(assetUrl("results/output.png", { url: raw })).toBe(raw("results/output.png"))
-    expect(assetUrl("results/../output.png", { url: raw })).toBe(raw("output.png"))
+    expect(assetUrl("results/output.png", { url: raw, pageOrigin: "http://127.0.0.1:3000" })).toBe(
+      raw("results/output.png"),
+    )
+    expect(assetUrl("results/../output.png", { url: raw, pageOrigin: "http://127.0.0.1:3000" })).toBe(raw("output.png"))
   })
 
   test("routes absolute local images through the authenticated raw-file endpoint", () => {
-    expect(assetUrl("/Users/research/CERBench/figures/result.png", { url: raw })).toBe(
-      raw("/Users/research/CERBench/figures/result.png"),
-    )
-    expect(assetUrl("file:///Users/research/CERBench/figures/result%20plot.png", { url: raw })).toBe(
-      raw("/Users/research/CERBench/figures/result plot.png"),
-    )
+    expect(
+      assetUrl("/Users/research/CERBench/figures/result.png", { url: raw, pageOrigin: "http://127.0.0.1:3000" }),
+    ).toBe(raw("/Users/research/CERBench/figures/result.png"))
+    expect(
+      assetUrl("file:///Users/research/CERBench/figures/result%20plot.png", {
+        url: raw,
+        pageOrigin: "http://127.0.0.1:3000",
+      }),
+    ).toBe(raw("/Users/research/CERBench/figures/result plot.png"))
   })
 
   test("classifies relative and absolute file anchors without capturing external links", () => {
@@ -86,6 +99,7 @@ describe("markdown asset resolution", () => {
       assetUrl("/private/tmp/generated.png", {
         root: "/work/project",
         url: raw,
+        pageOrigin: "http://127.0.0.1:3000",
       }),
     ).toBe("/private/tmp/generated.png")
   })
@@ -116,11 +130,15 @@ describe("markdown asset resolution", () => {
   })
 
   test("decodes markdown-encoded references before building the query", () => {
-    expect(assetUrl("figures/final%20plot.png", { base: "paper.md", url: raw })).toBe(raw("figures/final plot.png"))
+    expect(
+      assetUrl("figures/final%20plot.png", { base: "paper.md", url: raw, pageOrigin: "http://127.0.0.1:3000" }),
+    ).toBe(raw("figures/final plot.png"))
   })
 
   test("keeps malformed percent-escapes rather than throwing", () => {
-    expect(assetUrl("figures/100%.png", { base: "paper.md", url: raw })).toBe(raw("figures/100%.png"))
+    expect(assetUrl("figures/100%.png", { base: "paper.md", url: raw, pageOrigin: "http://127.0.0.1:3000" })).toBe(
+      raw("figures/100%.png"),
+    )
   })
 
   test("leaves external, embedded, and anchor references untouched", () => {
@@ -133,7 +151,7 @@ describe("markdown asset resolution", () => {
       "#section",
       "mailto:someone@example.com",
     ])
-      expect(assetUrl(src, { base: "notes/paper.md", url: raw })).toBe(src)
+      expect(assetUrl(src, { base: "notes/paper.md", url: raw, pageOrigin: "http://127.0.0.1:3000" })).toBe(src)
   })
 
   test("normalizes windows separators and duplicate slashes", () => {

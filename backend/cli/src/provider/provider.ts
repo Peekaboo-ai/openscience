@@ -36,6 +36,7 @@ import { CustomModelLimits } from "./custom-model-limits"
 import { managedModelRoute } from "./managed-routing"
 import { ManagedPricing } from "./managed-pricing"
 import { gatewayTiming, type GatewayTiming } from "./gateway-timing"
+import { normalizeAnthropicContinuation, retrySyntheticContinuation } from "./anthropic-continuation"
 
 // Direct imports for bundled providers
 import { createAmazonBedrock, type AmazonBedrockProviderSettings } from "@ai-sdk/amazon-bedrock"
@@ -3072,6 +3073,9 @@ export namespace Provider {
             headers.set("anthropic-beta", [...beta].join(","))
             opts.headers = headers
           }
+          if (provider.options.customConnection === true) {
+            opts.body = normalizeAnthropicContinuation(opts.body, provider.options.anthropicContinuation)
+          }
         }
 
         // Strip openai itemId metadata following what codex does
@@ -3150,7 +3154,24 @@ export namespace Provider {
             totalTimeout: options["timeout"],
             managed,
           })
-        const response = await request()
+        const response = await retrySyntheticContinuation({
+          response: await request(),
+          enabled:
+            !managed &&
+            provider.options.customConnection === true &&
+            model.api.npm === "@ai-sdk/anthropic" &&
+            opts.method === "POST",
+          body: typeof opts.body === "string" ? opts.body : undefined,
+          signal: opts.signal,
+          retry: (body) => {
+            log.warn("rebuilding expired gateway continuation", {
+              providerID: model.providerID,
+              modelID: requestModel(body) ?? model.id,
+            })
+            opts.body = body
+            return request()
+          },
+        })
         const settled = await retryManagedPaymentRequired({
           response,
           managed,

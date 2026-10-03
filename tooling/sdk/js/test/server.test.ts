@@ -72,7 +72,8 @@ describe("owned OpenScience server processes", () => {
     const closing = child.close()
     assert.equal(child.close(), closing)
     await closing
-    assert.equal(await readFile(path.join(cwd, "stopped"), "utf8"), "closed")
+    // Windows 的 SIGTERM 会直接结束进程，不执行 Node 的信号处理器；各平台仍验证子进程已退出。
+    if (process.platform !== "win32") assert.equal(await readFile(path.join(cwd, "stopped"), "utf8"), "closed")
     assert.equal(alive(child.pid), false)
   })
 

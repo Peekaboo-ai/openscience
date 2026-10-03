@@ -59,6 +59,35 @@ const ok = (body: unknown) =>
 // listener never registered. These tests exist so that cannot happen again
 // unnoticed: delete or unwire any of it and one of them goes red.
 describe("stored artifacts resource", () => {
+  test("a stalled trash response has a deadline and preserves the active Results", async () => {
+    const snapshot = await loadStoredArtifacts(
+      async (path) => {
+        if (path.includes("state=active")) return ok([artifact("art_1", "active")])
+        return new Promise<Response>(() => undefined)
+      },
+      { timeout: 10 },
+    )
+    expect(snapshot.active.map((item) => item.id)).toEqual(["art_1"])
+    expect(snapshot.errors.active).toBeUndefined()
+    expect(snapshot.errors.trash).toContain("too long")
+  })
+
+  test("closing the Results scope cancels both unfinished lists", async () => {
+    const signals: AbortSignal[] = []
+    const dispose = solidjs.createRoot((dispose) => {
+      createArtifactsResource(async (_, init) => {
+        signals.push(init!.signal!)
+        return new Promise<Response>(() => undefined)
+      })
+      return dispose
+    })
+    await settle()
+    expect(signals).toHaveLength(2)
+    dispose()
+    await settle()
+    expect(signals.every((signal) => signal.aborted)).toBe(true)
+  })
+
   test("reads both halves, and one broken half does not empty the other", async () => {
     const snapshot = await loadStoredArtifacts(async (path) => {
       if (path.includes("state=trash")) return ok([artifact("art_2", "trash")])

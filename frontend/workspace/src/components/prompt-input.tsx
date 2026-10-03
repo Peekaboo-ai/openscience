@@ -53,7 +53,7 @@ import { Binary } from "@synsci/util/binary"
 import { showToast } from "@synsci/ui/toast"
 import { uiStore } from "@/atlas/store/ui"
 import { confirmDialog } from "@/atlas/dialogs"
-import { projectHref, projectPathname } from "@/utils/project-route"
+import { projectHref, projectPathname, projectScopeKey, projectSegment } from "@/utils/project-route"
 import { createMediaQuery } from "@solid-primitives/media"
 import { ModelSettingsPopover } from "./model-settings-popover"
 import { ComposerTools } from "./composer-tools"
@@ -87,13 +87,16 @@ import {
   type DelegationSettings,
   publishCapabilityPreferences,
 } from "./prompt-capabilities"
-import { canRestoreFailedSubmission } from "./prompt-submission"
+import { createPromptRecovery } from "./prompt-submission"
+import { createPendingPrompts, pendingPromptKey as pendingKey } from "./prompt-pending"
+import { createPromptActivity } from "./prompt-activity"
 import { getNodeLength, isPillNode, setCursorPosition } from "./prompt-editor-cursor"
 import { applyHighlight, clearHighlight, slashTokenRanges } from "./prompt-highlight"
 import { submitComposerPrompt, type ComposerPromptInput } from "./prompt-runtime"
 import { PromptQueue } from "./prompt-queue"
 import { PromptSendOptions } from "./prompt-send-options"
 import { requestFailure, requestStatus } from "@/utils/request-error"
+import { readTimeout } from "@/utils/read-timeout"
 import {
   slashBlurb,
   slashGroup,
@@ -120,12 +123,8 @@ import {
   type ResearchAccessMode,
 } from "./research-access"
 
-type PendingPrompt = {
-  abort: AbortController
-  cleanup: VoidFunction
-}
-
-const pending = new Map<string, PendingPrompt>()
+const pending = createPendingPrompts()
+const promptActivity = createPromptActivity()
 
 interface PromptInputProps {
   class?: string
@@ -215,6 +214,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const dialog = useDialog()
   const command = useCommand()
   const language = useLanguage()
+  let disposed = false
+  onCleanup(() => (disposed = true))
   let editorRef!: HTMLDivElement
   let fileInputRef!: HTMLInputElement
   let scrollRef!: HTMLDivElement
@@ -551,8 +552,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     intent: SlashMode | null
     slashInline: boolean
     applyingHistory: boolean
-    bootstrapID?: string
-    bootstrapDirectory?: string
     queueAvailable: boolean
     queueVersion: number
   }>({
@@ -564,13 +563,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     intent: null,
     slashInline: false,
     applyingHistory: false,
-    bootstrapID: undefined,
-    bootstrapDirectory: undefined,
     queueAvailable: false,
     queueVersion: 0,
   })
 
-  const [submitting, setSubmitting] = createSignal(false)
+  const [submissions, setSubmissions] = createStore<Record<string, boolean | undefined>>({})
+  const bootstraps = new Map<string, { id: string; directory: string }>()
+  const composerKey = () => pendingKey(sdk.url, sdk.scope, params.id ?? "new")
+  const submitting = () => submissions[composerKey()] === true
   const queueText = (en: string, zh: string) => (language.locale().startsWith("zh") ? zh : en)
   const showStop = () => working() && !prompt.dirty()
 
@@ -679,7 +679,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const [composing, setComposing] = createSignal(false)
   const isImeComposing = (event: KeyboardEvent) => event.isComposing || composing() || event.keyCode === 229
 
-  const addAttachment = async (file: File) => {
+  const addAttachment = async (file: File, draft = prompt.capture()) => {
+    const cursorPosition = draft.cursor() ?? getCursorPosition(editorRef)
     const mime = attachmentMime(file)
     if (!mime) {
       showToast({
@@ -724,8 +725,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       dataUrl,
       size: file.size,
     }
-    const cursorPosition = prompt.cursor() ?? getCursorPosition(editorRef)
-    prompt.set([...prompt.current(), attachment], cursorPosition)
+    draft.set([...draft.current(), attachment], cursorPosition)
   }
 
   const removeImageAttachment = (id: string) => {
@@ -750,7 +750,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     })
 
     if (files.length > 0) {
-      for (const file of files) await addAttachment(file)
+      const draft = prompt.capture()
+      for (const file of files) await addAttachment(file, draft)
       return
     }
 
@@ -795,8 +796,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     const dropped = event.dataTransfer?.files
     if (!dropped) return
 
+    const draft = prompt.capture()
     for (const file of Array.from(dropped)) {
-      await addAttachment(file)
+      await addAttachment(file, draft)
     }
   }
 
@@ -1713,18 +1715,16 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const abort = async () => {
     const sessionID = params.id
     if (!sessionID) return Promise.resolve()
-    const queued = pending.get(sessionID)
-    if (queued) {
-      queued.abort.abort()
-      queued.cleanup()
-      pending.delete(sessionID)
-      return Promise.resolve()
-    }
+    const key = pendingKey(sdk.url, sdk.directory, sessionID)
+    pending.abort(key)
     return sdk.client.session
       .abort({
         sessionID,
       })
-      .catch(() => {})
+      .catch((error) => {
+        const failure = requestFailure(error, "Stop task")
+        showToast({ title: failure.title, description: failure.description })
+      })
   }
 
   const addToHistory = (prompt: Prompt, mode: "normal" | "shell") => {
@@ -1955,7 +1955,32 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     // flight while the composer is showing its immediate acknowledgement.
     if (submitting()) return
 
-    const currentPrompt = prompt.current()
+    const sourceKey = composerKey()
+    let composer = prompt.capture()
+    let viewKey = sourceKey
+    const currentPrompt = clonePromptParts(composer.current())
+    const recovery = createPromptRecovery(composer, currentPrompt, promptLength(currentPrompt))
+    const currentComposer = () => !disposed && composerKey() === viewKey
+    const setSubmitting = (value: boolean) =>
+      setSubmissions(
+        produce((draft) => {
+          if (value) draft[sourceKey] = true
+          else delete draft[sourceKey]
+        }),
+      )
+    const sourceID = params.id
+    // 后续等待可以跨越项目切换，读写都必须留在提交时的客户端、状态仓库和上下文。
+    const sourceURL = sdk.url
+    const projectID = sdk.projectID
+    const projectDirectory = sdk.directory
+    const projectScope = sdk.scope
+    const projectData = sync.data
+    const setProject = sync.set
+    const project = sync.project
+    const clientAtSubmit = sdk.client
+    const context = composer.context.items().slice()
+    const capabilitySnapshot = capabilities()
+    const workingRoot = pendingWorkingRoot()
     const text = action ? `/${action}` : currentPrompt.map((part) => ("content" in part ? part.content : "")).join("")
     const images = action ? [] : imageAttachments().slice()
     const mode = action ? "normal" : store.mode
@@ -1975,26 +2000,27 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     const errorMessage = (err: unknown) => requestFailure(err, "Request").description
 
     const clearInput = () => {
-      prompt.reset()
+      recovery.clear()
       setStore("mode", "normal")
       setStore("popover", null)
     }
 
     const restoreInput = () => {
-      prompt.set(currentPrompt, promptLength(currentPrompt))
+      if (!recovery.restore(currentComposer() ? store.mode : "normal")) return false
+      if (!currentComposer()) return true
       setStore("mode", mode)
       setStore("popover", null)
       requestAnimationFrame(() => {
+        if (!currentComposer()) return
         editorRef.focus()
         setCursorPosition(editorRef, promptLength(currentPrompt))
         queueScroll()
       })
+      return true
     }
 
     const restoreInputAfterFailure = () => {
-      if (!canRestoreFailedSubmission(prompt.current(), store.mode)) return false
-      restoreInput()
-      return true
+      return restoreInput()
     }
 
     // Acknowledge Enter before the first network boundary. Persisting up to
@@ -2015,7 +2041,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     const name = text.startsWith("/") ? head.slice(1) : undefined
     const command = name ? sync.data.command.find((item) => item.name === name) : undefined
     const native = command?.source === "builtin" && command.menu
-    const active = info()
+    const active = projectData.session.find((session) => session.id === sourceID)
     if (native && active && mode === "normal" && images.length === 0) {
       acknowledgeSubmit()
       props.onSubmit?.()
@@ -2031,7 +2057,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         delegation: boolean
         delegationSettings: DelegationSettings
       }
-      sdk.client.session.command(request).catch((err) => {
+      clientAtSubmit.session.command(request).catch((err) => {
         showToast({
           title: language.t("prompt.toast.commandSendFailed.title"),
           description: errorMessage(err),
@@ -2068,12 +2094,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
     acknowledgeSubmit()
 
-    const projectDirectory = sdk.directory
-    const isNewSession = !params.id || params.id === "new"
+    const isNewSession = !sourceID || sourceID === "new"
     const worktreeSelection = props.newSessionWorktree ?? "main"
 
     let sessionDirectory = projectDirectory
-    let client = sdk.client
+    let client = clientAtSubmit
 
     if (isNewSession) {
       if (worktreeSelection === "create") {
@@ -2106,26 +2131,36 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
       if (sessionDirectory !== projectDirectory) {
         client = createOpenScienceClient({
-          baseUrl: sdk.url,
+          baseUrl: sourceURL,
           fetch: platform.fetch,
           directory: sessionDirectory,
-          projectID: sdk.projectID,
+          projectID,
           throwOnError: true,
         })
-        globalSync.child(sessionDirectory, { projectID: sdk.projectID })
+        globalSync.child(sessionDirectory, { projectID })
       }
 
-      props.onNewSessionWorktreeReset?.()
+      if (currentComposer()) props.onNewSessionWorktreeReset?.()
     }
 
-    let session = info()
+    let session = active
+    if (!session && sourceID && !isNewSession) {
+      // 历史消息可能比会话元数据先到；提前发送时等待原会话就绪，不能悄悄吞掉提交。
+      try {
+        await sync.session.sync(sourceID)
+        session = projectData.session.find((entry) => entry.id === sourceID)
+        if (!session) throw new Error("The conversation is not available. Reopen it and try again.")
+      } catch (error) {
+        const failure = requestFailure(error, "Load conversation")
+        showToast({ title: failure.title, description: failure.description })
+        restoreBootstrap()
+        return
+      }
+    }
     if (!session && isNewSession) {
-      const candidate =
-        store.bootstrapID && store.bootstrapDirectory === sessionDirectory
-          ? store.bootstrapID
-          : Identifier.descending("session")
-      setStore({ bootstrapID: candidate, bootstrapDirectory: sessionDirectory })
-      const workingRoot = pendingWorkingRoot()
+      const existing = bootstraps.get(sourceKey)
+      const candidate = existing?.directory === sessionDirectory ? existing.id : Identifier.descending("session")
+      bootstraps.set(sourceKey, { id: candidate, directory: sessionDirectory })
       session = await client.session
         .create({ id: candidate, ...(workingRoot ? { workingRoot } : {}) })
         .then((x) => x.data ?? undefined)
@@ -2147,19 +2182,28 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           return undefined
         })
       if (session) {
-        setStore({ bootstrapID: undefined, bootstrapDirectory: undefined })
-        const project = sync.project
+        bootstraps.delete(sourceKey)
+        // 新工作树的路由会改变草稿命名空间；恢复目标必须与导航后的 SDK scope 一致。
+        const destinationScope = project
+          ? projectScopeKey(sourceURL, projectSegment(project, sessionDirectory))
+          : projectScope
         const href = project
           ? projectHref(project, sessionDirectory, session.id)
-          : projectPathname(sdk.scope, session.id)
-        navigate(href)
+          : projectPathname(projectScope, session.id)
+        const follow = currentComposer()
+        if (!disposed) {
+          composer = prompt.capture(session.id, destinationScope)
+          recovery.transfer(composer)
+        }
+        viewKey = pendingKey(sourceURL, destinationScope, session.id)
+        if (follow) navigate(href)
       }
     }
     if (!session) {
       restoreBootstrap()
       return
     }
-    props.onSubmit?.()
+    if (currentComposer()) props.onSubmit?.()
 
     if (mode === "shell") {
       client.session
@@ -2224,8 +2268,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       // Catalogs load after first paint; an early slash command must not become
       // ordinary prompt text just because that background request is pending.
       const commands =
-        sessionDirectory === projectDirectory && sync.data.command.some((command) => command.name === commandName)
-          ? sync.data.command
+        sessionDirectory === projectDirectory && projectData.command.some((command) => command.name === commandName)
+          ? projectData.command
           : await client.command
               .list()
               .then((response) => response.data)
@@ -2340,8 +2384,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       label: attachment.label,
     }))
     const specialist = delegatedSpecialist(
-      capabilities()?.delegation_enabled ?? true,
-      capabilities()?.delegation_specialist ?? null,
+      capabilitySnapshot?.delegation_enabled ?? true,
+      capabilitySnapshot?.delegation_specialist ?? null,
       agentAttachments.map((attachment) => attachment.name),
     )
     const delegationParts = specialist
@@ -2356,8 +2400,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       : []
 
     const usedUrls = new Set(fileAttachmentParts.map((part) => part.url))
-
-    const context = prompt.context.items().slice()
 
     const commentItems = context.filter((item) => item.type === "file" && !!item.comment?.trim())
 
@@ -2430,7 +2472,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       filename: attachment.filename,
     }))
 
-    const known = sessionDirectory === projectDirectory ? sync.data : globalSync.child(sessionDirectory)[0]
+    const [known, setSession] =
+      sessionDirectory === projectDirectory
+        ? [projectData, setProject]
+        : globalSync.child(sessionDirectory, { projectID })
     const messageID = Identifier.after("message", known.message[session.id]?.at(-1)?.id)
     const textPart = {
       id: Identifier.ascending("part"),
@@ -2464,58 +2509,21 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     }
 
     const addOptimisticMessage = () => {
-      if (sessionDirectory === projectDirectory) {
-        sync.set(
-          produce((draft) => {
-            const messages = draft.message[session.id]
-            if (!messages) {
-              draft.message[session.id] = [optimisticMessage]
-            } else {
-              const result = Binary.search(messages, messageID, (m) => m.id)
-              messages.splice(result.index, 0, optimisticMessage)
-            }
-            draft.part[messageID] = optimisticParts
-              .filter((p) => !!p?.id)
-              .slice()
-              .sort((a, b) => a.id.localeCompare(b.id))
-          }),
-        )
-        return
-      }
-
-      globalSync.child(sessionDirectory)[1](
+      setSession(
         produce((draft) => {
           const messages = draft.message[session.id]
-          if (!messages) {
-            draft.message[session.id] = [optimisticMessage]
-          } else {
+          if (!messages) draft.message[session.id] = [optimisticMessage]
+          else {
             const result = Binary.search(messages, messageID, (m) => m.id)
-            messages.splice(result.index, 0, optimisticMessage)
+            if (!result.found) messages.splice(result.index, 0, optimisticMessage)
           }
-          draft.part[messageID] = optimisticParts
-            .filter((p) => !!p?.id)
-            .slice()
-            .sort((a, b) => a.id.localeCompare(b.id))
+          draft.part[messageID] = optimisticParts.filter((part) => !!part?.id).sort((a, b) => a.id.localeCompare(b.id))
         }),
       )
     }
 
     const removeOptimisticMessage = () => {
-      if (sessionDirectory === projectDirectory) {
-        sync.set(
-          produce((draft) => {
-            const messages = draft.message[session.id]
-            if (messages) {
-              const result = Binary.search(messages, messageID, (m) => m.id)
-              if (result.found) messages.splice(result.index, 1)
-            }
-            delete draft.part[messageID]
-          }),
-        )
-        return
-      }
-
-      globalSync.child(sessionDirectory)[1](
+      setSession(
         produce((draft) => {
           const messages = draft.message[session.id]
           if (messages) {
@@ -2527,43 +2535,38 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       )
     }
 
+    const key = pendingKey(sourceURL, sessionDirectory, session.id)
+    const settleActivity = queuedDelivery
+      ? undefined
+      : promptActivity.add(key, (known.session_status[session.id]?.type ?? "idle") !== "idle")
+
     for (const item of commentItems) {
-      prompt.context.remove(item.key)
+      composer.context.remove(item.key)
     }
 
     if (!queuedDelivery) addOptimisticMessage()
     setSubmitting(false)
 
     const restoreSubmission = () => {
-      if (sessionDirectory === projectDirectory && !wasWorking && !queuedDelivery) {
-        sync.set("session_status", session.id, { type: "idle" })
-      }
       removeOptimisticMessage()
-      for (const item of commentItems) {
-        prompt.context.add({
-          type: "file",
-          path: item.path,
-          selection: item.selection,
-          comment: item.comment,
-          commentID: item.commentID,
-          commentOrigin: item.commentOrigin,
-          preview: item.preview,
-        })
-      }
-      restoreInputAfterFailure()
+      const idle = settleActivity?.(false)
+      const newer = known.message[session.id]?.some((message) => message.role === "user" && message.id > messageID)
+      if (idle && !newer) setSession("session_status", session.id, { type: "idle" })
+      if (!restoreInputAfterFailure()) return
+      for (const item of commentItems) composer.context.add(item)
     }
 
     const waitForWorktree = async () => {
       const worktree = WorktreeState.get(sessionDirectory)
       if (!worktree || worktree.status !== "pending") return true
 
-      if (sessionDirectory === projectDirectory) {
-        sync.set("session_status", session.id, { type: "busy" })
+      if (!queuedDelivery) {
+        setSession("session_status", session.id, { type: "busy" })
       }
 
       const controller = new AbortController()
 
-      pending.set(session.id, { abort: controller, cleanup: restoreSubmission })
+      const release = pending.add(key, { abort: controller, cleanup: restoreSubmission })
 
       const abort = new Promise<Awaited<ReturnType<typeof WorktreeState.wait>>>((resolve) => {
         if (controller.signal.aborted) {
@@ -2588,10 +2591,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       })
 
       const result = await Promise.race([WorktreeState.wait(sessionDirectory), abort, timeout]).finally(() => {
+        release()
         if (timer.id === undefined) return
         clearTimeout(timer.id)
       })
-      pending.delete(session.id)
       if (controller.signal.aborted) return false
       if (result.status === "failed") throw new Error(result.message)
       return true
@@ -2615,18 +2618,22 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         queued: queuedDelivery,
       }
       const controller = new AbortController()
-      pending.set(session.id, { abort: controller, cleanup: restoreSubmission })
-      if (sessionDirectory === projectDirectory && !queuedDelivery) {
-        sync.set("session_status", session.id, { type: "busy" })
-      }
-      const submitted = () => {
-        if (pending.get(session.id)?.abort === controller) pending.delete(session.id)
+      const submitted = pending.add(key, { abort: controller, cleanup: restoreSubmission })
+      if (!queuedDelivery) {
+        setSession("session_status", session.id, { type: "busy" })
       }
       // Stop owns capability negotiation locally; once submission begins the
       // session's server cancellation path owns the running request.
-      await submitComposerPrompt(client, request, controller.signal, submitted)
+      await submitComposerPrompt(
+        client,
+        request,
+        controller.signal,
+        submitted,
+        readTimeout(sourceURL, "/runtime/capabilities"),
+      )
         .then(() => {
-          setStore("queueVersion", (value) => value + 1)
+          settleActivity?.(true)
+          if (currentComposer()) setStore("queueVersion", (value) => value + 1)
           if (queuedDelivery) showToast({ title: queueText("Message queued", "消息已加入队列") })
           else if (wasWorking)
             showToast({
@@ -2641,7 +2648,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     }
 
     void send().catch((err) => {
-      pending.delete(session.id)
       const failure = requestFailure(err, "Send prompt")
       showToast({ title: failure.title, description: failure.description })
       restoreSubmission()
@@ -2897,7 +2903,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       </Show>
       <PromptQueue
         client={sdk.client}
-        sessionID={params.id}
+        sessionID={params.id && params.id !== "new" ? params.id : undefined}
         refresh={store.queueVersion}
         working={working()}
         locale={language.locale()}
@@ -3179,7 +3185,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                           <div
                             class="workspace-composer__research-choice-menu"
                             role="radiogroup"
-                            aria-label="How should OpenScience actions be approved?"
+                            aria-label="How should OneLab actions be approved?"
                             aria-busy={researchAccessSaving() ? "true" : undefined}
                             onKeyDown={navigateResearchChoices}
                           >

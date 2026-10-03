@@ -5,6 +5,8 @@ import {
   projectAliasID,
   projectHref,
   projectScope,
+  projectScopeKey,
+  projectSegment,
   resolveProjectAlias,
   resolveProjectRoute,
 } from "./project-route"
@@ -51,6 +53,29 @@ describe("project routes", () => {
     expect(projectScope(projects, alpha.worktree)).toBe("prj_alpha")
     expect(projectScope(projects, beta.worktree)).toBe("prj_beta")
     expect(projectScope(projects, alpha.worktree)).not.toBe(projectScope(projects, beta.worktree))
+  })
+
+  test.each(["http://127.0.0.1:4106", "http://127.0.0.1:4106/remote-workspaces/bio/api"])(
+    "new-worktree drafts use the destination route scope on %s",
+    (serverURL) => {
+      const route = resolveProjectRoute(projectHref(alpha, sandbox, "created").split("/")[1], projects)!
+      const destination = projectScopeKey(serverURL, projectSegment(alpha, sandbox))
+      expect(destination).toBe(projectScopeKey(serverURL, route.segment))
+      expect(destination).not.toBe(projectScopeKey(serverURL, alpha.id))
+      expect(projectScopeKey(serverURL, projectSegment(alpha, alpha.worktree))).toBe(
+        projectScopeKey(serverURL, alpha.id),
+      )
+      if (serverURL.includes("/remote-workspaces/")) expect(destination).toStartWith(`${serverURL}::prj_alpha~`)
+      else expect(destination).toStartWith("prj_alpha~")
+    },
+  )
+
+  test("identical worktree routes on different remote servers keep separate drafts", () => {
+    const segment = projectSegment(alpha, sandbox)
+    const local = projectScopeKey("http://127.0.0.1:4106", segment)
+    const bio = projectScopeKey("http://127.0.0.1:4106/remote-workspaces/bio/api", segment)
+    const other = projectScopeKey("http://127.0.0.1:4106/remote-workspaces/other/api", segment)
+    expect(new Set([local, bio, other]).size).toBe(3)
   })
 
   test("does not reinterpret an unknown opaque project ID as base64", () => {

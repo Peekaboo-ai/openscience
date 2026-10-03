@@ -1,10 +1,13 @@
 import { createEffect, createMemo, createResource, createSignal, For, onCleanup, Show, type JSX } from "solid-js"
+import { createStore } from "solid-js/store"
 import type { ExperimentRun, ExperimentSeries, LocalGpu, Study, StudyOverview } from "@synsci/sdk/v2/client"
 import { Button } from "@synsci/ui/button"
 import { TextField } from "@synsci/ui/text-field"
 import { useSDK } from "@/context/sdk"
 import { uiStore } from "@/atlas/store/ui"
 import { IconActivity } from "@/atlas/shared/Icon"
+import { progressive } from "@/components/settings/_shared"
+import { requestDeadline } from "@/utils/request-deadline"
 import { colorFor, formatValue, HillClimbChart, MetricChart, type ClimbPoint } from "./experiments/MetricChart"
 import "./AutoresearchPane.css"
 
@@ -60,17 +63,50 @@ function clock(at: number) {
  * activity. The pane is an instrument: Pause, Resume, Halt and Write up are
  * the operator's controls; the science stays in the session.
  */
-export function AutoresearchPane(): JSX.Element {
-  const sdk = useSDK()
+type ResearchServices = {
+  request: (path: string, init?: RequestInit, query?: Record<string, string>) => Promise<Response>
+  event: Pick<ReturnType<typeof useSDK>["event"], "on">
+  scope?: string
+}
+
+export function AutoresearchPane(props: { services?: ResearchServices } = {}): JSX.Element {
+  const sdk = props.services ?? useSDK()
+  // 路由可复用同一侧栏；研究数据和请求生命周期必须随项目作用域重新挂载。
+  return (
+    <Show when={sdk.scope ?? "research"} keyed>
+      {(_scope) => <ResearchPane services={sdk} />}
+    </Show>
+  )
+}
+
+function ResearchPane(props: { services: ResearchServices }): JSX.Element {
+  const sdk = props.services
+  let alive = true
+  const abort = new AbortController()
+  onCleanup(() => {
+    alive = false
+    abort.abort()
+  })
+  const [actions, setActions] = createStore({
+    pending: {} as Record<string, boolean | undefined>,
+    errors: {} as Record<string, string | undefined>,
+    drafts: {} as Record<string, string | undefined>,
+    steering: {} as Record<string, boolean | undefined>,
+  })
   const [now, setNow] = createSignal(Date.now())
   const tick = setInterval(() => setNow(Date.now()), 1000)
   onCleanup(() => clearInterval(tick))
 
-  const read = async <T,>(path: string, query?: Record<string, string>) => {
-    const response = await sdk.request(path, undefined, query)
-    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`)
-    return (await response.json()) as T
-  }
+  const read = <T,>(path: string, query?: Record<string, string>) =>
+    requestDeadline(
+      async (signal) => {
+        const response = await sdk.request(path, { signal }, query)
+        if (!response.ok) throw new Error(`${response.status} ${response.statusText}`)
+        return (await response.json()) as T
+      },
+      30_000,
+      abort.signal,
+    )
 
   const [version, setVersion] = createSignal(0)
   const [pointsVersion, setPointsVersion] = createSignal(0)
@@ -98,12 +134,15 @@ export function AutoresearchPane(): JSX.Element {
     onCleanup(() => subscriptions.forEach((unsubscribe) => unsubscribe()))
   })
 
-  const [studies] = createResource(version, () => read<Study[]>("/experiments/studies"))
-  const [allRuns] = createResource(version, () => read<ExperimentRun[]>("/experiments/runs", { limit: "300" }))
-  const [gpus] = createResource(
-    () => Math.floor(now() / 5000),
-    () => read<LocalGpu[]>("/experiments/gpus"),
+  const [studies] = progressive(createResource(version, () => read<Study[]>("/experiments/studies")))
+  const [allRuns] = progressive(
+    createResource(version, () => read<ExperimentRun[]>("/experiments/runs", { limit: "300" })),
   )
+  const [gpus, gpuActions] = progressive(createResource(() => read<LocalGpu[]>("/experiments/gpus")))
+  const gpuPoll = setInterval(() => {
+    if (!document.hidden && !gpus.loading) void gpuActions.refetch()
+  }, 5000)
+  onCleanup(() => clearInterval(gpuPoll))
 
   // One tab per study. Nothing chosen means the live study, else the newest.
   const [chosen, setChosen] = createSignal<string>()
@@ -112,16 +151,21 @@ export function AutoresearchPane(): JSX.Element {
     const picked = chosen() ? list.find((item) => item.id === chosen()) : undefined
     return picked ?? list.find((item) => item.status === "running" || item.status === "paused") ?? list[0]
   })
-  const [overview] = createResource(
-    () => (study() ? `${study()!.id}:${version()}` : undefined),
-    (key) => read<StudyOverview>(`/experiments/studies/${key.split(":")[0]}`),
+  const [overview] = progressive(
+    createResource(
+      () => (study() ? `${study()!.id}:${version()}` : undefined),
+      (key) => read<StudyOverview>(`/experiments/studies/${key.split(":")[0]}`),
+    ),
   )
+  // 切换研究时仅保留同一研究的历史快照，避免上一研究的结果被误读为当前研究。
+  const details = () => (overview.latest?.study.id === study()?.id ? overview.latest : undefined)
+  const score = () => details()?.best?.headline ?? details()?.baseline?.headline
   // The study's own overview carries every run; the project-wide list is
   // capped and only bridges the moment before the overview arrives.
   const runs = createMemo(() => {
     const current = study()
     if (!current) return []
-    const own = overview.latest
+    const own = details()
     if (own && own.study.id === current.id) return own.runs
     return (allRuns.latest ?? []).filter((run) => run.studyID === current.id)
   })
@@ -162,16 +206,17 @@ export function AutoresearchPane(): JSX.Element {
     setPanel(undefined)
   }
 
-  const [keys] = createResource(
-    () => `${[...selected()].join(",")}:${version()}`,
-    (key) => {
-      const ids = key.split(":")[0]!
-      return ids ? read<string[]>("/experiments/keys", { run_ids: ids }) : Promise.resolve([])
-    },
+  const selectedIDs = () => [...selected()].sort().join(",")
+  const [keys] = progressive(
+    createResource(
+      () => ({ ids: selectedIDs(), version: version() }),
+      async ({ ids }) => ({ ids, keys: ids ? await read<string[]>("/experiments/keys", { run_ids: ids }) : [] }),
+    ),
   )
+  const metrics = () => (keys.latest?.ids === selectedIDs() ? keys.latest.keys : [])
   const [key, setKey] = createSignal<string>()
   const metric = createMemo(() => {
-    const available = keys.latest ?? []
+    const available = metrics()
     const wanted = key()
     if (wanted && available.includes(wanted)) return wanted
     const current = study()
@@ -180,19 +225,24 @@ export function AutoresearchPane(): JSX.Element {
   })
   const [smoothing, setSmoothing] = createSignal(0)
   const [log, setLog] = createSignal(false)
-  const [series] = createResource(
-    () => {
-      const ids = [...selected()].join(",")
-      const name = metric()
-      return ids && name ? `${ids}|${name}|${pointsVersion()}|${version()}` : undefined
-    },
-    (spec) => {
-      const [ids, name] = spec.split("|")
-      return read<ExperimentSeries>("/experiments/series", { run_ids: ids!, keys: name!, max: "400" })
-    },
+  const [series] = progressive(
+    createResource(
+      () => {
+        const ids = [...selected()].join(",")
+        const name = metric()
+        return ids && name ? `${ids}|${name}|${pointsVersion()}|${version()}` : undefined
+      },
+      (spec) => {
+        const [ids, name] = spec.split("|")
+        return read<ExperimentSeries>("/experiments/series", { run_ids: ids!, keys: name!, max: "400" })
+      },
+    ),
   )
   const curveSeries = createMemo(() =>
     (series.latest ?? [])
+      .filter(
+        (item) => item.key === metric() && selected().has(item.runID) && runs().some((run) => run.id === item.runID),
+      )
       .map((item) => {
         const run = runs().find((candidate) => candidate.id === item.runID)
         return {
@@ -209,29 +259,66 @@ export function AutoresearchPane(): JSX.Element {
   const [curves, setCurves] = createSignal(false)
   const [panel, setPanel] = createSignal<"about" | "queue" | "lessons" | "activity">()
   const flip = (value: NonNullable<ReturnType<typeof panel>>) => setPanel(panel() === value ? undefined : value)
-  const queued = createMemo(() => (overview.latest?.ideas ?? []).filter((idea) => idea.status === "queued"))
-  const dropped = createMemo(() => (overview.latest?.ideas ?? []).filter((idea) => idea.status === "dropped"))
+  const queued = createMemo(() => (details()?.ideas ?? []).filter((idea) => idea.status === "queued"))
+  const dropped = createMemo(() => (details()?.ideas ?? []).filter((idea) => idea.status === "dropped"))
   const gainSign = () => {
     const gain = improvement()
     return gain ? (gain.percent >= 0 ? "up" : "down") : undefined
   }
-  const [steering, setSteering] = createSignal(false)
-  const [directive, setDirective] = createSignal("")
+  const steering = () => !!actions.steering[study()?.id ?? ""]
+  const setSteering = (value: boolean) => {
+    const id = study()?.id
+    if (id) setActions("steering", id, value)
+  }
+  const directive = () => actions.drafts[study()?.id ?? ""] ?? ""
+  const setDirective = (value: string) => {
+    const id = study()?.id
+    if (id) setActions("drafts", id, value)
+  }
+  const mutate = async (current: Study, path: string, body?: object) => {
+    if (actions.pending[current.id]) return false
+    setActions("pending", current.id, true)
+    setActions("errors", current.id, undefined)
+    try {
+      const response = await requestDeadline(
+        (signal) =>
+          sdk.request(`/experiments/studies/${current.id}/${path}`, {
+            method: "POST",
+            signal,
+            ...(body ? { headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {}),
+          }),
+        120_000,
+        abort.signal,
+      )
+      if (!response.ok)
+        throw new Error(`Study update failed (${response.status} ${response.statusText}). Please retry.`)
+      if (!alive) return false
+      bump()
+      return true
+    } catch (error) {
+      if (alive)
+        setActions(
+          "errors",
+          current.id,
+          error instanceof Error ? error.message : "Could not update this study. Please retry.",
+        )
+      return false
+    } finally {
+      if (alive) setActions("pending", current.id, undefined)
+    }
+  }
   const steer = async (current: Study) => {
-    const text = directive().trim()
+    const draft = actions.drafts[current.id] ?? ""
+    const text = draft.trim()
     if (!text) return
-    await sdk.request(`/experiments/studies/${current.id}/directives`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text }),
-    })
-    setDirective("")
-    setSteering(false)
-    bump()
+    if (!(await mutate(current, "directives", { text }))) return
+    // 回复只能清除本次已提交的草稿；用户切换研究或继续编辑时保留新内容。
+    if (actions.drafts[current.id] !== draft) return
+    setActions("drafts", current.id, "")
+    setActions("steering", current.id, false)
   }
   const retire = async (current: Study, id: string) => {
-    await sdk.request(`/experiments/studies/${current.id}/directives/${id}/retire`, { method: "POST" })
-    bump()
+    await mutate(current, `directives/${id}/retire`)
   }
   const statusTitle = (current: Study) =>
     [
@@ -241,10 +328,13 @@ export function AutoresearchPane(): JSX.Element {
     ]
       .filter(Boolean)
       .join(" · ")
-  const [openSeries] = createResource(
-    () => (open() ? `${open()}|${pointsVersion()}|${version()}` : undefined),
-    (spec) => read<ExperimentSeries>("/experiments/series", { run_ids: spec.split("|")[0]!, max: "200" }),
+  const [openSeries] = progressive(
+    createResource(
+      () => (open() ? `${open()}|${pointsVersion()}|${version()}` : undefined),
+      (spec) => read<ExperimentSeries>("/experiments/series", { run_ids: spec.split("|")[0]!, max: "200" }),
+    ),
   )
+  const runSeries = () => (openSeries.latest ?? []).filter((item) => item.runID === open())
 
   const verdict = (run: ExperimentRun): ClimbPoint["verdict"] => {
     const current = study()
@@ -252,7 +342,7 @@ export function AutoresearchPane(): JSX.Element {
     if (run.status === "running") return "running"
     if (run.status === "killed") return "killed"
     if (run.status === "failed" || run.status === "cancelled") return "failed"
-    const idea = (overview.latest?.ideas ?? []).find((item) => item.runID === run.id)
+    const idea = (details()?.ideas ?? []).find((item) => item.runID === run.id)
     if (idea?.status === "kept") return "kept"
     if (idea?.status === "reverted") return "reverted"
     return "pending"
@@ -261,8 +351,8 @@ export function AutoresearchPane(): JSX.Element {
     ordered().map((run) => ({ id: run.id, label: run.name, value: run.headline, verdict: verdict(run) })),
   )
   const improvement = createMemo(() => {
-    const best = overview.latest?.best
-    const base = overview.latest?.baseline
+    const best = details()?.best
+    const base = details()?.baseline
     if (!best || !base || best.headline === null || base.headline === null || base.headline === 0) return
     const current = study()!
     const raw = ((best.headline - base.headline) / Math.abs(base.headline)) * 100
@@ -273,8 +363,7 @@ export function AutoresearchPane(): JSX.Element {
   const control = async (current: Study, action: "pause" | "resume" | "halt") => {
     if (action === "halt" && !window.confirm(`Halt "${current.name}"? Live runs are cancelled and the loop stops.`))
       return
-    await sdk.request(`/experiments/studies/${current.id}/${action}`, { method: "POST" })
-    bump()
+    await mutate(current, action)
   }
   const writeUp = (current: Study) => {
     uiStore.setPrefill(
@@ -361,13 +450,13 @@ export function AutoresearchPane(): JSX.Element {
               </div>
             </dl>
             <div class="ar-run__curves">
-              <For each={[...new Set((openSeries.latest ?? []).map((item) => item.key))]}>
+              <For each={[...new Set(runSeries().map((item) => item.key))]}>
                 {(name) => (
                   <div class="ar-run__curve">
                     <span>{name}</span>
                     <MetricChart
                       height={96}
-                      series={(openSeries.latest ?? [])
+                      series={runSeries()
                         .filter((item) => item.key === name)
                         .map((item) => ({ id: item.runID, label: name, color: color(run()), points: item.points }))}
                     />
@@ -421,6 +510,14 @@ export function AutoresearchPane(): JSX.Element {
       </header>
 
       <div class="autoresearch__body">
+        <Show when={studies.error || allRuns.error || overview.error || keys.error || series.error || openSeries.error}>
+          <div class="ar-empty" role="alert">
+            <span>Research data could not be refreshed. Check the connection and retry.</span>
+            <Button type="button" variant="secondary" size="small" onClick={() => setVersion((value) => value + 1)}>
+              Retry
+            </Button>
+          </div>
+        </Show>
         <Show
           when={study()}
           fallback={
@@ -429,7 +526,9 @@ export function AutoresearchPane(): JSX.Element {
                 <IconActivity size={18} strokeWidth={1.5} />
               </span>
               <div class="ar-empty__copy">
-                <strong>No studies yet</strong>
+                <strong>
+                  {studies.loading ? "Loading studies…" : studies.error ? "Studies unavailable" : "No studies yet"}
+                </strong>
                 <span>
                   Ask in the session for an autoresearch study: the metric to improve, the budget, and the script to
                   run. Each study appears here with its score, its runs and its queue.
@@ -456,16 +555,9 @@ export function AutoresearchPane(): JSX.Element {
                     <span class="ar-score__metric">
                       {current().direction === "maximize" ? "Maximize" : "Minimize"} {current().metric}
                     </span>
-                    <strong>
-                      {overview.latest?.best?.headline !== null && overview.latest?.best?.headline !== undefined
-                        ? formatValue(overview.latest.best.headline)
-                        : overview.latest?.baseline?.headline !== null &&
-                            overview.latest?.baseline?.headline !== undefined
-                          ? formatValue(overview.latest.baseline.headline)
-                          : "—"}
-                    </strong>
+                    <strong>{score() == null ? "—" : formatValue(score()!)}</strong>
                     <span class="ar-score__gain" data-sign={gainSign()}>
-                      <Show when={improvement()} fallback={overview.latest?.baseline ? "Baseline" : "No runs yet"}>
+                      <Show when={improvement()} fallback={details()?.baseline ? "Baseline" : "No runs yet"}>
                         {(gain) => (
                           <>
                             {gain().percent >= 0 ? "▲" : "▼"}{" "}
@@ -485,6 +577,7 @@ export function AutoresearchPane(): JSX.Element {
                         type="button"
                         variant="ghost"
                         size="small"
+                        disabled={!!actions.pending[current().id]}
                         onClick={() => void control(current(), "pause")}
                       >
                         Pause
@@ -495,6 +588,7 @@ export function AutoresearchPane(): JSX.Element {
                         type="button"
                         variant="ghost"
                         size="small"
+                        disabled={!!actions.pending[current().id]}
                         onClick={() => void control(current(), "resume")}
                       >
                         Resume
@@ -506,6 +600,7 @@ export function AutoresearchPane(): JSX.Element {
                         variant="ghost"
                         size="small"
                         data-danger
+                        disabled={!!actions.pending[current().id]}
                         onClick={() => void control(current(), "halt")}
                       >
                         Halt
@@ -571,10 +666,20 @@ export function AutoresearchPane(): JSX.Element {
                       placeholder="A standing rule for the rest of the study, e.g. only vary the optimizer"
                       onChange={setDirective}
                     />
-                    <Button type="submit" variant="secondary" size="small" disabled={!directive().trim()}>
+                    <Button
+                      type="submit"
+                      variant="secondary"
+                      size="small"
+                      disabled={!directive().trim() || !!actions.pending[current().id]}
+                    >
                       Send
                     </Button>
                   </form>
+                </Show>
+                <Show when={actions.errors[current().id]}>
+                  <p class="ar-run__reason" role="alert">
+                    {actions.errors[current().id]}
+                  </p>
                 </Show>
                 <Show when={current().directives.some((item) => item.active)}>
                   <ul class="ar-directives" aria-label="Standing directives">
@@ -585,6 +690,7 @@ export function AutoresearchPane(): JSX.Element {
                           <button
                             type="button"
                             aria-label="Retire directive"
+                            disabled={!!actions.pending[current().id]}
                             onClick={() => void retire(current(), item.id)}
                           >
                             ×
@@ -661,7 +767,7 @@ export function AutoresearchPane(): JSX.Element {
                         value={metric() ?? ""}
                         onChange={(event) => setKey(event.currentTarget.value)}
                       >
-                        <For each={keys.latest ?? []}>{(name) => <option value={name}>{name}</option>}</For>
+                        <For each={metrics()}>{(name) => <option value={name}>{name}</option>}</For>
                       </select>
                       <label>
                         <span>Smooth</span>
@@ -728,7 +834,7 @@ export function AutoresearchPane(): JSX.Element {
                     size="small"
                     aria-expanded={panel() === "activity"}
                     onClick={() => flip("activity")}
-                    disabled={!(overview.latest?.events ?? []).length}
+                    disabled={!(details()?.events ?? []).length}
                   >
                     Activity
                   </Button>
@@ -780,7 +886,7 @@ export function AutoresearchPane(): JSX.Element {
                 <Show when={panel() === "activity"}>
                   <div class="ar-panel" aria-label="Activity">
                     <ol class="ar-activity">
-                      <For each={(overview.latest?.events ?? []).slice(0, 12)}>
+                      <For each={(details()?.events ?? []).slice(0, 12)}>
                         {(event) => (
                           <li data-kind={event.kind}>
                             <time>{clock(event.createdAt)}</time>

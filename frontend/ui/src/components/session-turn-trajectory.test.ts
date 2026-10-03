@@ -92,10 +92,12 @@ type Store = Parameters<typeof data.DataProvider>[0]["data"]
 type Callbacks = {
   saveArtifact?: (path: string) => Promise<void>
   openFile?: (path: string) => void
+  openArtifact?: Parameters<typeof data.DataProvider>[0]["onOpenArtifact"]
   loadComputeJob?: Parameters<typeof data.DataProvider>[0]["onLoadComputeJob"]
   resolveFileReceipts?: Parameters<typeof data.DataProvider>[0]["onResolveFileReceipts"]
   resendTurn?: Parameters<typeof data.DataProvider>[0]["onResendTurn"]
   navigateToSession?: Parameters<typeof data.DataProvider>[0]["onNavigateToSession"]
+  renderArtifacts?: Parameters<typeof data.DataProvider>[0]["renderArtifacts"]
 }
 const mount = (view: () => JSX.Element, store: Store, callbacks: Callbacks = {}) => {
   const host = document.createElement("div")
@@ -109,10 +111,12 @@ const mount = (view: () => JSX.Element, store: Store, callbacks: Callbacks = {})
           directory: "/research",
           onSaveArtifact: callbacks.saveArtifact,
           onOpenFile: callbacks.openFile,
+          onOpenArtifact: callbacks.openArtifact,
           onLoadComputeJob: callbacks.loadComputeJob,
           onResolveFileReceipts: callbacks.resolveFileReceipts,
           onResendTurn: callbacks.resendTurn,
           onNavigateToSession: callbacks.navigateToSession,
+          renderArtifacts: callbacks.renderArtifacts,
           get children() {
             return dialog.DialogProvider({
               get children() {
@@ -2516,7 +2520,94 @@ describe("turns that ended early", () => {
   })
 })
 
+describe("saved output version navigation", () => {
+  const saved = {
+    id: "art_report",
+    versionID: "ver_first_session",
+    title: "Report",
+    kind: "report",
+    path: "/research/report.md",
+    version: 1,
+    size: 25,
+    sha256: "a".repeat(64),
+  }
+  const receipt = (): ToolPart => ({
+    ...read("prt_saved", saved.path, 1000),
+    tool: "artifact",
+    state: {
+      status: "completed",
+      input: { action: "save", path: saved.path },
+      title: saved.title,
+      output: "Saved",
+      metadata: { savedArtifact: saved },
+      time: { start: 1000, end: 2000 },
+    },
+  })
+
+  test("the saved tool card opens its recorded immutable version", async () => {
+    const opened: Array<[string, string | undefined]> = []
+    const host = mount(() => parts.Part({ part: receipt(), message: assistant(3000), defaultOpen: true }), empty(), {
+      openArtifact: (id, versionID) => opened.push([id, versionID]),
+    })
+    await ready(() => !!host.querySelector('[data-component="saved-artifact-tool"] button'))
+    host.querySelector<HTMLButtonElement>('[data-component="saved-artifact-tool"] button')!.click()
+    expect(opened).toEqual([[saved.id, saved.versionID]])
+  })
+
+  test("the shared gallery fallback retains a result's producing version", async () => {
+    const message = { ...assistant(3000), finish: "stop" }
+    const opened: Array<[string, string | undefined]> = []
+    const store: Store = {
+      ...empty(),
+      message: { [sessionID]: [user, message] },
+      part: {
+        [user.id]: [],
+        [message.id]: [
+          receipt(),
+          { id: "prt_answer", sessionID, messageID: message.id, type: "text", text: "Analysis complete." },
+        ],
+      },
+    }
+    const host = mount(() => turn.SessionTurn({ sessionID, messageID: user.id }), store, {
+      openArtifact: (id, versionID) => opened.push([id, versionID]),
+    })
+    await ready(() => !!host.querySelector('[data-slot="session-turn-generated"] button'))
+    host.querySelector<HTMLButtonElement>('[data-slot="session-turn-generated"] button')!.click()
+    expect(opened).toEqual([[saved.id, saved.versionID]])
+  })
+})
+
 describe("shell-written outputs", () => {
+  test("delegates a completed answer's whole turn to the saved output gallery even without artifact tool calls", async () => {
+    const message = { ...assistant(3000), finish: "stop" }
+    const toolMessage = { ...assistant(2000), id: "msg_00015", finish: "tool-calls" }
+    const rendered: Array<{ sessionID: string; finalMessageID?: string; messageIDs: string[] }> = []
+    const store: Store = {
+      ...empty(),
+      message: { [sessionID]: [user, toolMessage, message] },
+      part: {
+        [user.id]: [],
+        [toolMessage.id]: [],
+        [message.id]: [
+          { id: "prt_final", sessionID, messageID: message.id, type: "text", text: "[Report](/research/report.md)" },
+        ],
+      },
+    }
+    const host = mount(() => turn.SessionTurn({ sessionID, messageID: user.id }), store, {
+      renderArtifacts: (props) => {
+        rendered.push({
+          sessionID: props.sessionID,
+          finalMessageID: props.finalMessageID,
+          messageIDs: props.messageIDs,
+        })
+        return document.createTextNode("Saved output gallery")
+      },
+    })
+    await ready(() => host.textContent!.includes("Saved output gallery"))
+    expect(rendered.at(-1)).toEqual({ sessionID, finalMessageID: message.id, messageIDs: [toolMessage.id, message.id] })
+    expect(host.querySelector('[data-slot="session-turn-generated"]')).toBeNull()
+  })
+
   test("files a command changed are offered as session outputs from the recorded diff, resolved like file links", async () => {
     const message = assistant(3_000)
     const command: ToolPart = {

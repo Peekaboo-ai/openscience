@@ -187,7 +187,7 @@ const platform: Platform = {
     }>
     return releases.slice(0, 5).map((release) => ({
       version: release.tag_name?.replace(/^v/, "") ?? "Release",
-      name: release.name || release.tag_name || "OpenScience release",
+      name: release.name || release.tag_name || "OneLab release",
       notes: release.body?.trim() || "Maintenance and reliability improvements.",
       publishedAt: release.published_at,
       url: release.html_url || URLS.releases,

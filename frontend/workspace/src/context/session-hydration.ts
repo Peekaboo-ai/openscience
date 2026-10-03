@@ -1,4 +1,6 @@
 export const SESSION_MESSAGE_CHUNK = 400
+// 首屏优先展示最近对话；断线补齐继续使用较大的窗口，避免丢失离线期间的消息。
+export const SESSION_INITIAL_MESSAGES = 80
 
 export type SessionHydrationInput = {
   hasSession: boolean
@@ -56,6 +58,37 @@ export function nextReconnectHydrationLimit(input: { limit: number; snapshotCoun
   return input.limit + Math.max(input.limit, SESSION_MESSAGE_CHUNK)
 }
 
+// 缓存与最新窗口之间必须有交集，否则扩大窗口直到连续，不能把丢失的历史误判为已加载。
+export async function fetchMessageWindow<T extends { info: { id: string; role?: string } }>(input: {
+  limit: number
+  cached: readonly { id: string }[]
+  fetch: (limit: number) => Promise<T[]>
+}) {
+  const cached = new Set(input.cached.map((message) => message.id))
+  let limit = input.limit
+  for (;;) {
+    const items = await input.fetch(limit)
+    // 长工具调用链可能占满窗口；至少包含一个用户提问，时间线才有完整的回合入口。
+    if (
+      items.length === limit &&
+      items.some((item) => item.info.role) &&
+      !items.some((item) => item.info.role === "user")
+    ) {
+      limit *= 2
+      continue
+    }
+    const next = cached.size
+      ? nextReconnectHydrationLimit({
+          limit,
+          snapshotCount: items.length,
+          overlapsCached: items.some((message) => cached.has(message.info.id)),
+        })
+      : undefined
+    if (next === undefined) return { items, limit }
+    limit = next
+  }
+}
+
 /** Only the newest reconnect request for one session may update its transcript. */
 export function createReconnectGenerationGuard() {
   const active = new Map<string, number>()
@@ -76,7 +109,7 @@ export function createReconnectGenerationGuard() {
 }
 
 function initialLimit(count: number) {
-  if (count <= SESSION_MESSAGE_CHUNK) return SESSION_MESSAGE_CHUNK
+  if (count <= SESSION_INITIAL_MESSAGES) return SESSION_INITIAL_MESSAGES
   return Math.ceil(count / SESSION_MESSAGE_CHUNK) * SESSION_MESSAGE_CHUNK
 }
 
@@ -92,7 +125,9 @@ export function sessionHydrationPlan(input: SessionHydrationInput): SessionHydra
   const hydrated = input.hydratedLimit !== undefined
   const refresh = input.refresh === true
   const limit = refresh
-    ? Math.max(input.hydratedLimit ?? 0, input.messageCount + SESSION_MESSAGE_CHUNK, SESSION_MESSAGE_CHUNK)
+    ? input.messageCount === 0 && !hydrated
+      ? SESSION_INITIAL_MESSAGES
+      : Math.max(input.hydratedLimit ?? 0, input.messageCount + SESSION_INITIAL_MESSAGES)
     : hydrated
       ? (input.hydratedLimit ?? SESSION_MESSAGE_CHUNK)
       : initialLimit(input.messageCount)

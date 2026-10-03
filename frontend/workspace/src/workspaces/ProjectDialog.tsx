@@ -27,7 +27,7 @@ export function ProjectDialog(props: { remote?: RemoteWorkspace; mode?: "local" 
   const dialog = useDialog()
   const [state, setState] = createStore({
     mode: props.mode ?? (props.remote ? "remote" : "local"),
-    step: props.remote ? 2 : 0,
+    step: props.remote ? (props.remote.state === "connected" ? 3 : 2) : 0,
     kind: props.remote?.target.kind ?? ("ssh" as RemoteTarget["kind"]),
     name: props.remote?.name ?? "",
     host: props.remote?.target.kind === "ssh" ? props.remote.target.host_id : "",
@@ -54,6 +54,12 @@ export function ProjectDialog(props: { remote?: RemoteWorkspace; mode?: "local" 
   const operationID = crypto.randomUUID()
   let saved = !!props.remote?.projectID
   const abort = new AbortController()
+  let browsing: AbortController | undefined
+  const cancelBrowse = () => {
+    browsing?.abort()
+    browsing = undefined
+    setState("loading", false)
+  }
   const report = (error: unknown) => {
     if (alive) setState("error", error instanceof Error ? error.message : "Operation failed")
   }
@@ -61,6 +67,10 @@ export function ProjectDialog(props: { remote?: RemoteWorkspace; mode?: "local" 
   const defaultDirectory = () =>
     `${(state.listing?.workingDirectory ?? state.connection?.home ?? "").replace(/\/$/, "")}/${state.name.trim() || "project-name"}`
   async function browse(directory?: string, select = true) {
+    if (state.busy) return
+    browsing?.abort()
+    const current = new AbortController()
+    browsing = current
     setState({ loading: true, error: "" })
     try {
       const base =
@@ -69,17 +79,20 @@ export function ProjectDialog(props: { remote?: RemoteWorkspace; mode?: "local" 
         base,
         workspaces.fetch,
         `/workspace/directories${directory ? `?path=${encodeURIComponent(directory)}` : ""}`,
-        { signal: abort.signal },
+        { signal: AbortSignal.any([abort.signal, current.signal]) },
       )
-      if (alive) setState({ listing, ...(select ? { directory: listing.directory } : {}) })
+      if (alive && browsing === current) setState({ listing, ...(select ? { directory: listing.directory } : {}) })
     } catch (error) {
-      report(error)
+      if (browsing === current && !current.signal.aborted) report(error)
     } finally {
-      if (alive) setState("loading", false)
+      if (alive && browsing === current) {
+        browsing = undefined
+        setState("loading", false)
+      }
     }
   }
   async function newFolder() {
-    if (!state.listing || !state.folderName.trim() || state.creatingFolder) return
+    if (!state.listing || !state.folderName.trim() || state.creatingFolder || state.loading || state.busy) return
     setState({ creatingFolder: true, error: "" })
     try {
       const base =
@@ -187,7 +200,7 @@ export function ProjectDialog(props: { remote?: RemoteWorkspace; mode?: "local" 
   }
   async function save(event: SubmitEvent) {
     event.preventDefault()
-    if (state.busy || !state.name.trim()) return
+    if (state.busy || state.loading || state.creatingFolder || !state.name.trim()) return
     setState({ busy: true, error: "" })
     try {
       if (state.mode === "remote") {
@@ -197,8 +210,9 @@ export function ProjectDialog(props: { remote?: RemoteWorkspace; mode?: "local" 
           method: "POST",
           body: JSON.stringify({ name: state.name, directory: state.directory.trim() || undefined }),
         })
-        await workspaces.refresh()
         saved = true
+        await workspaces.refresh()
+        if (!alive) return
         workspaces.open(remote.projectID!, undefined, remote.id)
       } else {
         const project = state.directory.trim()
@@ -212,8 +226,9 @@ export function ProjectDialog(props: { remote?: RemoteWorkspace; mode?: "local" 
               method: "POST",
               body: JSON.stringify({ name: state.name, sources: [], operation_id: operationID }),
             })
-        await workspaces.refresh()
         saved = true
+        await workspaces.refresh()
+        if (!alive) return
         workspaces.open(project.id)
       }
       if (alive) dialog.close()
@@ -235,7 +250,8 @@ export function ProjectDialog(props: { remote?: RemoteWorkspace; mode?: "local" 
           })
       })
       .catch(report)
-    if (props.remote) void connect()
+    if (props.remote?.state === "connected") void browse(props.remote.directory, !!props.remote.directory)
+    else if (props.remote && props.remote.state !== "connecting") void connect()
     let polling = false
     const timer = setInterval(() => {
       if (!polling) {
@@ -247,11 +263,12 @@ export function ProjectDialog(props: { remote?: RemoteWorkspace; mode?: "local" 
     }, 1000)
     onCleanup(() => {
       alive = false
+      browsing?.abort()
       abort.abort()
       clearInterval(timer)
-      if (!saved && state.connection) void workspaces.remove(state.connection.id).catch(() => undefined)
-      else if (state.connection?.state === "connecting")
-        void workspaces.disconnect(state.connection.id).catch(() => undefined)
+      // 已有书签的连接由工作台持有；关闭目录向导不能取消侧栏发起的连接。
+      if (!props.remote && !saved && state.connection)
+        void workspaces.remove(state.connection.id).catch(() => undefined)
     })
   })
   return (
@@ -259,7 +276,7 @@ export function ProjectDialog(props: { remote?: RemoteWorkspace; mode?: "local" 
       title={state.mode === "remote" ? "Remote connection" : "Add project"}
       description={
         state.mode === "remote"
-          ? "Connect a workspace and run OpenScience on its host."
+          ? "Connect a workspace and run OneLab on its host."
           : "Keep research conversations and files together."
       }
       class="workspace-project-dialog"
@@ -447,8 +464,8 @@ export function ProjectDialog(props: { remote?: RemoteWorkspace; mode?: "local" 
               </label>
             </Show>
             <p class="workspace-hint">
-              The matching OpenScience backend will be installed in the target user's home. Model credentials are
-              configured separately on that backend.
+              The matching OneLab backend will be installed in the target user's home. Model credentials are configured
+              separately on that backend.
             </p>
           </Show>
           <Show when={state.mode === "remote" && state.step === 2}>
@@ -467,7 +484,12 @@ export function ProjectDialog(props: { remote?: RemoteWorkspace; mode?: "local" 
                 <input
                   id="workspace-working-directory"
                   value={state.directory}
-                  onInput={(event) => setState("directory", event.currentTarget.value)}
+                  disabled={state.busy || state.creatingFolder}
+                  onInput={(event) => {
+                    // 手工输入是新的目录选择，旧浏览响应不得覆盖它。
+                    cancelBrowse()
+                    setState("directory", event.currentTarget.value)
+                  }}
                   placeholder={
                     state.mode === "remote" ? defaultDirectory() : "Use a managed project, or choose a folder"
                   }
@@ -475,7 +497,7 @@ export function ProjectDialog(props: { remote?: RemoteWorkspace; mode?: "local" 
                 <Button
                   type="button"
                   variant="secondary"
-                  disabled={state.loading}
+                  disabled={state.loading || state.busy || state.creatingFolder}
                   onClick={() => void browse(state.directory || undefined)}
                 >
                   Browse
@@ -492,13 +514,21 @@ export function ProjectDialog(props: { remote?: RemoteWorkspace; mode?: "local" 
             <Show when={state.listing}>
               {(listing) => (
                 <nav class="workspace-directories" aria-label="Choose working directory">
-                  <button type="button" disabled={state.loading} onClick={() => void browse(listing().parent)}>
+                  <button
+                    type="button"
+                    disabled={state.loading || state.busy || state.creatingFolder}
+                    onClick={() => void browse(listing().parent)}
+                  >
                     <IconChevronLeft />
                     Parent directory
                   </button>
                   <For each={listing().entries}>
                     {(entry) => (
-                      <button type="button" disabled={state.loading} onClick={() => void browse(entry.path)}>
+                      <button
+                        type="button"
+                        disabled={state.loading || state.busy || state.creatingFolder}
+                        onClick={() => void browse(entry.path)}
+                      >
                         <IconFolder />
                         <span>{entry.name}</span>
                       </button>
@@ -519,6 +549,7 @@ export function ProjectDialog(props: { remote?: RemoteWorkspace; mode?: "local" 
                     maxlength={100}
                     placeholder="Folder name"
                     value={state.folderName}
+                    disabled={state.busy || state.creatingFolder || state.loading}
                     onInput={(event) => setState("folderName", event.currentTarget.value)}
                     onKeyDown={(event) => {
                       if (event.key === "Enter") {
@@ -530,7 +561,7 @@ export function ProjectDialog(props: { remote?: RemoteWorkspace; mode?: "local" 
                   <Button
                     type="button"
                     variant="secondary"
-                    disabled={state.creatingFolder || state.loading || !state.folderName.trim()}
+                    disabled={state.creatingFolder || state.loading || state.busy || !state.folderName.trim()}
                     onClick={() => void newFolder()}
                   >
                     {state.creatingFolder ? "Creating…" : "Create folder"}
@@ -547,7 +578,11 @@ export function ProjectDialog(props: { remote?: RemoteWorkspace; mode?: "local" 
         </div>
         <footer class="workspace-form-footer">
           <Button type="button" variant="ghost" onClick={() => dialog.close()}>
-            {state.busy ? "Cancel connection" : "Cancel"}
+            {props.remote
+              ? "Close"
+              : state.mode === "remote" && state.step === 2 && state.busy
+                ? "Cancel connection"
+                : "Cancel"}
           </Button>
           <Show
             when={!props.remote && state.mode === "remote" && (state.step === 1 || (state.step === 2 && !!state.error))}
@@ -588,7 +623,7 @@ export function ProjectDialog(props: { remote?: RemoteWorkspace; mode?: "local" 
             </Button>
           </Show>
           <Show when={state.mode === "local" || state.step === 3}>
-            <Button type="submit" disabled={state.busy || state.creatingFolder || !state.name.trim()}>
+            <Button type="submit" disabled={state.busy || state.loading || state.creatingFolder || !state.name.trim()}>
               {state.busy ? "Opening…" : "Open project"}
             </Button>
           </Show>

@@ -11,7 +11,7 @@ import { useModels } from "@/context/models"
 import { confirmDialog } from "@/atlas/dialogs"
 import { useDialog } from "@synsci/ui/context/dialog"
 import { settingsApi } from "./api"
-import { FilterMenu, steady } from "./_shared"
+import { FilterMenu, progressive } from "./_shared"
 
 const protocols = [
   { id: "openai-chat-completions", label: "OpenAI Chat Completions" },
@@ -68,7 +68,7 @@ export function CustomModels() {
   const models = useModels()
   const call = <T,>(path = "", init?: RequestInit) =>
     settingsApi<T>(sdk.url, platform.fetch ?? fetch, `/settings/model-connections${path}`, init)
-  const [connections, { refetch, mutate }] = steady(
+  const [connections, { refetch, mutate }] = progressive(
     createResource(() => call<{ connections: Connection[] }>().then((data) => data.connections)),
   )
   const [state, setState] = createStore(empty())
@@ -289,6 +289,11 @@ export function CustomModels() {
               Retry
             </Button>
           </Show>
+        </div>
+      </Show>
+      <Show when={connections.loading}>
+        <div role="status" class="models-custom-notice text-12-regular text-text-weak">
+          Loading API connections…
         </div>
       </Show>
       <Show when={state.open}>

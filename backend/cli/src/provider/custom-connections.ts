@@ -254,6 +254,12 @@ export namespace CustomConnections {
           typeof previous.options.streaming === "boolean"
             ? { streaming: previous.options.streaming }
             : {}),
+          ...(protocol === "anthropic-messages" &&
+          previous?.npm === adapters[protocol] &&
+          previous.options?.baseURL === baseURL &&
+          previous.options.anthropicContinuation === "stateless"
+            ? { anthropicContinuation: "stateless" }
+            : {}),
           customModelLimits: Object.fromEntries(
             models.map((id) => [id, { mode: limits[id].mode, source: limits[id].source }]),
           ),

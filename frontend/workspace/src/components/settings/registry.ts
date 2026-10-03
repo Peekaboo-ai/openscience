@@ -31,6 +31,7 @@ export type SettingsSection = "inference" | "capabilities" | "runtime" | "app"
 export const SETTINGS_PANEL_IDS = [
   "general",
   "ace",
+  "usage-stats",
   "models",
   "local-models",
   "skills",
@@ -77,6 +78,13 @@ export const SETTINGS_PANELS: SettingsPanel[] = [
     icon: "sparkles",
     section: "app",
     component: lazy(() => import("./Ace")),
+  },
+  {
+    id: "usage-stats",
+    title: "Usage Stats",
+    icon: "activity",
+    section: "app",
+    component: lazy(() => import("./UsageStats")),
   },
   // ── Inference ──
   {

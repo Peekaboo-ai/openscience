@@ -11,7 +11,7 @@ export default function General() {
   return (
     <PanelScroll>
       <div class="settings-preferences-panel settings-preferences-panel--general">
-        <PanelHeader title="General" description="How OpenScience looks and behaves on this device." />
+        <PanelHeader title="General" description="How OneLab looks and behaves on this device." />
         <PanelBody>
           <AppearanceSections />
         </PanelBody>

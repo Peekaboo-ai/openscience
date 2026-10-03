@@ -5,6 +5,14 @@ description: "Retain a completed output, download its exact file, and manage sav
 
 A **Result** is a retained copy of a file you choose to keep from a conversation. Use it for a finished figure, table, report, or other deliverable that should remain available even as the working file changes.
 
+## Completed conversation outputs
+
+Readable files explicitly linked in a successfully completed answer are automatically saved to **Results**. The response ends with a **Generated** thumbnail gallery: select a file to open its existing renderer, or select **+N more** to expand the gallery. Historical conversations register missing linked outputs when opened; files already saved keep their original immutable version.
+
+**Files → Results → This session** shows the outputs associated with that conversation. **This project** groups outputs by their producing session. If another session saves a newer version at the same path, the earlier session retains its own saved version. Reopening a response does not create duplicate versions or restore a Result you moved to Trash.
+
+Automatic capture saves up to 64 linked files, 64 MiB per file and 256 MiB per response. Missing, inaccessible or larger files stay linked in the response. An individual failure is shown with a retry action while the other Results remain available; larger files can be saved individually with **Save as Result**. Intermediate files without a final delivery link remain in the workspace.
+
 ## Files and Results serve different purposes
 
 | Item | Use it for |

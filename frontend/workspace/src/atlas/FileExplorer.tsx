@@ -123,8 +123,8 @@ export function ExternalFileAccess(props: { file: ContextFile; active: boolean; 
             <div class="external-file-access__copy">
               <h2>Connect a folder</h2>
               <p>
-                <strong>{props.file.name}</strong> is outside this project. Choose the access OpenScience needs; the
-                folder will stay connected to this project until you remove it.
+                <strong>{props.file.name}</strong> is outside this project. Choose the access OneLab needs; the folder
+                will stay connected to this project until you remove it.
               </p>
             </div>
             <Show
@@ -149,8 +149,8 @@ export function ExternalFileAccess(props: { file: ContextFile; active: boolean; 
                 />
                 <small>
                   {state.access === "write"
-                    ? "OpenScience can read, create, and update files in this folder."
-                    : "OpenScience can inspect files but cannot change them."}
+                    ? "OneLab can read, create, and update files in this folder."
+                    : "OneLab can inspect files but cannot change them."}
                 </small>
               </label>
               <Show when={state.error ?? (snapshot.error ? errorMessage(snapshot.error) : undefined)}>

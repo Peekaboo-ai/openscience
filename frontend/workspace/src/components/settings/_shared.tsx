@@ -2,6 +2,7 @@ import {
   For,
   Show,
   createSignal,
+  createMemo,
   createUniqueId,
   onMount,
   type JSX,
@@ -47,6 +48,22 @@ export function steady<T, A>(value: [Resource<T>, A]): [Resource<T>, A] {
     error: { get: () => resource.error },
     loading: { get: () => resource.loading },
     latest: { get: () => resource.latest },
+  })
+  return [read, actions]
+}
+
+// 独立区块自行展示 loading/error，避免一个慢接口遮住整个设置页。刷新失败仍保留上次内容。
+export function progressive<T, A>(value: [Resource<T>, A]): [Resource<T>, A] {
+  const [resource, actions] = value
+  const latest = createMemo<T | undefined>((previous) =>
+    resource.state === "ready" || resource.state === "refreshing" ? resource.latest : previous,
+  )
+  const read = (() => latest()) as Resource<T>
+  Object.defineProperties(read, {
+    state: { get: () => resource.state },
+    error: { get: () => resource.error },
+    loading: { get: () => resource.loading },
+    latest: { get: () => latest() },
   })
   return [read, actions]
 }

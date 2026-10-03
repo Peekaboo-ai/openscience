@@ -86,6 +86,7 @@ import { Auth } from "@/auth"
 import { SafeFileIO } from "@/file/safe-io"
 import { UpdateQuiescence } from "@/process/update-quiescence"
 import { SubtaskAttachments } from "./subtask-attachments"
+import { ArtifactPublication } from "@/artifact/publication"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -1170,6 +1171,17 @@ export namespace SessionPrompt {
           await enqueue({ user: lastUser, kind: "harness", epoch: turn, text: finish.message })
           continue
         }
+        // 保存明确交付的文件不依赖模型再次调用工具，浏览器关闭后也能完成 Results 登记。
+        await ArtifactPublication.publish({
+          sessionID,
+          messageID: lastAssistant.id,
+          messageIDs: epochTurns.map((message) => message.info.id),
+        })
+          .then((report) => {
+            if (report.failures.length)
+              log.warn("completed output publication incomplete", { sessionID, failures: report.failures })
+          })
+          .catch((error) => log.warn("completed output publication failed", { sessionID, error }))
         log.info("exiting loop", { sessionID, bareMode })
         break
       }

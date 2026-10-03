@@ -8,6 +8,35 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 
 ## Unreleased
 
+- **Completed research outputs.** Automatically retain readable files linked in a completed answer as Results, including historical conversations. Show a compact, expandable thumbnail gallery beneath the response using the existing scientific renderers. Keep each session's immutable versions visible when another session overwrites the same path, avoid duplicate saves, respect Trash, and report individual publication failures without hiding available outputs. Keep preview names, actions and viewer controls accessible in narrow inspectors.
+
+- **Custom gateway continuation.** Document verified native Responses connections for GPT gateways with expired or account-bound Messages continuation references, and test complete research tool history plus encrypted reasoning using `store: false`. Add an opt-in Messages history mode with fresh references while retaining completed tool results, native Claude signatures, cancellation and ordinary parameter errors. Preserve this mode when editing the same connection and clear it when changing endpoints or protocols.
+
+- **Workbench reliability audit.** Keep failed prompt drafts, attachments and optimistic activity with their original conversation, server and worktree; cancel every pending submission without leaving a busy indicator. Isolate late Results, file inspection and project-picker responses, bound stalled reads, retain retryable data, and dispose closed dialog roots. Serialize model preference saves, clear stale token reports on server changes, and keep archive navigation available after its final item is restored.
+- **Scientific controls and runtime lifecycle.** Report failed Autoresearch controls without losing directives or mixing studies and metrics. Suppress completion notifications after failures and cancellation. Preserve replacement terminals during reconnect, keep an old run's completion from pausing newer queued work, and allow SSH request cancellation even when its write pipe is blocked. Align added UI styles with the existing theme and typography tokens.
+- **Documentation on Windows.** Normalize checked-out line endings and file paths so skill links, generated-document checks, TypeScript examples, and text exports work on Windows. Restore the existing remote-workspace guide to workspace navigation.
+
+- **Model changes in conversations.** Show a quiet inline divider when switching models in an existing conversation. Preview the final selection before sending and retain the change beside the message that uses it, including after refresh and in remote projects. Distinguish provider changes and explain when a new selection takes effect.
+
+- **Expired custom gateway continuation.** Recover once when a custom Anthropic Messages gateway explicitly rejects an expired synthetic response reference. Rebuild transient history identifiers while retaining conversation text and completed tool results. Preserve cancellation and report other parameter errors without automatic replay.
+
+- **Conversation activity.** Session lists show a spinner while work runs and a blue unread dot when a background task finishes. Indicators follow local and remote work across project switches, recover after reconnecting, and clear when the conversation is viewed.
+- **Model settings stability.** Keep checkbox focus inside its model row so selecting a scrolled model cannot move the settings panel out of view. Preserve expanded catalog rows and focus when changing model visibility.
+
+- **New conversation drafts.** Start prompt-queue requests only after a real session exists, preventing the erroneous “Queued messages · 0 / Request failed” banner on new conversations. Ignore capability responses that arrive after leaving the session.
+
+- **Files navigation at narrow widths.** Keep Results and every file location reachable from More even when their tabs are outside the visible strip. Preserve the More button, place search on a separate row in narrow panes, and constrain the source menu to the pane's visible bounds with scrollable contents.
+
+- **Remote workspace stalls.** Reuse read-only artifact database connections on shared storage without caching query results; avoid repeated migrations and empty write transactions, and clean expired files without holding up Results. Reopen readers when the data directory changes. Keep connected conversations mounted when the workspace catalog refresh fails. Give SSH reads a separate timeout budget, reuse project-wide artifact lists across conversations, and display files before optional Results or syntax-highlighting work completes.
+
+- **Responsive conversations and settings.** Load a smaller recent transcript first, preserve live updates and cached history, and prefetch child sessions one at a time after the active conversation. Start session lists independently of slow model configuration. Bound settings reads and transcript requests, keep model sections and loaded sandbox controls visible during refresh, and offer local retry instead of indefinite loading or a blank settings panel.
+
+- **Background remote reconnect.** Reconnect saved projects from the sidebar's refresh button while continuing local or other project work. Show connection progress, completion notifications and expandable errors without a blocking wizard or automatic navigation. Cancel explicitly from the project menu; closing an existing project's setup dialog no longer disconnects it.
+
+- **Usage Stats.** Settings now shows token totals, input/output, cache and reasoning breakdowns, usage trends, activity, and sortable model/project/session details with date filters and CSV export. Keep new provider usage in a local numeric ledger, retain existing session usage, and report missing usage explicitly. Usage Stats tracks tokens only across built-in and third-party providers.
+
+- **OneLab branding.** Use the supplied transparent molecular mark in the workspace and browser icons, with black and white variants following the active light or dark appearance. Display OneLab throughout the workspace while retaining the existing layout and typography.
+
 - **Viewable research deliveries.** Research archive saves require key preview files or an explicit reason for a download-only bundle. The artifact tool publishes selected files as individual Results in the producing session, preserving provenance and existing renderers alongside the complete download archive. Delivery instructions prioritize figures, structures, result tables and reports over intermediate files and duplicate exports.
 
 - **Remote SSH startup.** Reuse the authenticated connection for platform detection, cached-runtime verification and backend startup, avoiding three independent logins through slow SSH gateways. Retry transient failures of the initial read-only probe at most twice without replaying research work or retrying authentication errors. Preserve buffered protocol frames during startup handoff and bound startup output, cancellation and timeouts.

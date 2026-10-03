@@ -74,6 +74,43 @@ const server = Bun.serve({
 afterAll(() => server.stop(true))
 const base = server.url.toString().replace(/\/$/, "")
 
+test.each(["endpoint", "protocol"])("retains stateless Messages history only until the %s changes", async (change) => {
+  const created = await CustomConnections.save({
+    name: "Stateless gateway",
+    url: base,
+    key: "fixture-key",
+    protocol: "anthropic-messages",
+    models: ["gpt-6.1-sol"],
+  })
+  try {
+    const saved = (await Config.getGlobal()).provider![created.id]
+    await Config.setProvider(
+      created.id,
+      { ...saved, options: { ...saved.options, anthropicContinuation: "stateless" } },
+      "global",
+      { preserveInstances: true },
+    )
+    await CustomConnections.save({
+      id: created.id,
+      name: "Edited gateway",
+      url: base,
+      models: ["gpt-6.1-sol", "gpt-5.6-sol"],
+    })
+    expect((await Config.getGlobal()).provider![created.id].options?.anthropicContinuation).toBe("stateless")
+    await CustomConnections.save({
+      id: created.id,
+      name: "Changed gateway",
+      url: change === "endpoint" ? `${base}/other` : base,
+      key: "fixture-key",
+      protocol: change === "protocol" ? "openai-responses" : "anthropic-messages",
+      models: ["gpt-6.1-sol"],
+    })
+    expect((await Config.getGlobal()).provider![created.id].options?.anthropicContinuation).toBeUndefined()
+  } finally {
+    await CustomConnections.remove(created.id)
+  }
+})
+
 test("normalizes base URLs without changing gateway prefixes", () => {
   for (const suffix of ["responses", "messages"]) {
     expect(CustomConnections.normalizeURL(`https://api.example.com/gateway/v1/${suffix}`)).toBe(

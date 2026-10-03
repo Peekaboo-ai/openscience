@@ -16,7 +16,7 @@ for (const tab of config.navigation.tabs) {
   for (const group of tab.groups) {
     index.push("## " + group.group, "")
     for (const name of group.pages) {
-      const raw = await Bun.file(path.join(directory, name + ".mdx")).text()
+      const raw = (await Bun.file(path.join(directory, name + ".mdx")).text()).replace(/\r\n/g, "\n")
       const title = raw.match(/^title: "(.+)"$/m)?.[1] ?? name
       const description = raw.match(/^description: "(.+)"$/m)?.[1] ?? ""
       const url = "https://openscience.sh/docs/#/openscience/" + name

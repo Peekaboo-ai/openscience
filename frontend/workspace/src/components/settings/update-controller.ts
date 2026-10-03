@@ -135,9 +135,7 @@ export function createUpdateController(
   const mutate = <T>(action: string, run: () => Promise<T>) => {
     if (mutation) {
       if (mutation.action === action) return mutation.promise as Promise<T>
-      return Promise.reject(
-        new Error(`OpenScience is already ${mutation.action === "apply" ? "restarting" : "updating"}`),
-      )
+      return Promise.reject(new Error(`OneLab is already ${mutation.action === "apply" ? "restarting" : "updating"}`))
     }
     // The user acted, so the supervisor is expected to move again soon.
     polls = 0

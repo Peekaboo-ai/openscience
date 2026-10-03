@@ -508,7 +508,7 @@ export function CommandPalette(props: CommandPaletteProps): JSX.Element {
           </div>
 
           <footer class="command-palette__footer" aria-hidden="true">
-            <span class="command-palette__footer-source">{active() ? "Local project search" : "OpenScience"}</span>
+            <span class="command-palette__footer-source">{active() ? "Local project search" : "OneLab"}</span>
             <span class="command-palette__footer-spacer" />
             <Hint k="↑↓" l="Navigate" />
             <Hint k="↵" l="Open" />

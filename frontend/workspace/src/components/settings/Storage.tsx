@@ -72,7 +72,7 @@ export function storageRelocationCopy(value: Relocation) {
   if (value.phase === "recovery_required") {
     return {
       title: "Storage move needs attention",
-      detail: value.error ?? "OpenScience could not safely read the recovery record.",
+      detail: value.error ?? "OneLab could not safely read the recovery record.",
       tone: "critical" as const,
     }
   }
@@ -100,13 +100,13 @@ export function storageRelocationCopy(value: Relocation) {
   if (value.phase === "published") {
     return {
       title: "Switching storage location",
-      detail: "The verified destination is ready. OpenScience is switching running servers together.",
+      detail: "The verified destination is ready. OneLab is switching running servers together.",
       tone: "neutral" as const,
     }
   }
   return {
     title: "Finalizing storage location",
-    detail: "The new location is active. OpenScience is finishing recovery metadata.",
+    detail: "The new location is active. OneLab is finishing recovery metadata.",
     tone: "neutral" as const,
   }
 }
@@ -173,7 +173,7 @@ export const Storage: Component = () => {
     setPicker(undefined)
     if (!platform.openDirectoryPickerDialog) return
     const choice = await storageLocationChoice(() =>
-      platform.openDirectoryPickerDialog!({ title: "Choose a new OpenScience data location", serverUrl: sdk.url }),
+      platform.openDirectoryPickerDialog!({ title: "Choose a new OneLab data location", serverUrl: sdk.url }),
     )
     if (choice.kind === "error") {
       setPicker(`The system folder picker could not open. ${choice.message} Enter a path manually below.`)
@@ -200,7 +200,7 @@ export const Storage: Component = () => {
       setEditing(false)
       setTarget("")
       setStatus(
-        `Moved ${fmt(result.bytes)} across ${result.files} files. Every running OpenScience server now uses ${result.target}.${result.warning ? ` ${result.warning}` : ""}`,
+        `Moved ${fmt(result.bytes)} across ${result.files} files. Every running OneLab server now uses ${result.target}.${result.warning ? ` ${result.warning}` : ""}`,
       )
       await load({ refresh: true })
     } catch (err) {
@@ -419,7 +419,7 @@ export const Storage: Component = () => {
                       id="storage-location-input"
                       class="settings-field settings-storage-location-input min-w-0 flex-1 basis-[240px] font-mono"
                       value={target()}
-                      placeholder="/Users/you/OpenScience-data"
+                      placeholder="/Users/you/OneLab-data"
                       spellcheck={false}
                       autofocus
                       onInput={(event) => setTarget(event.currentTarget.value)}
@@ -430,8 +430,8 @@ export const Storage: Component = () => {
                       }}
                     />
                     <p class="max-w-[68ch] text-12-regular text-text-weak">
-                      OpenScience verifies files and SQLite data, pauses active writes, and switches every running
-                      server together. The current directory remains untouched as a safety copy.
+                      OneLab verifies files and SQLite data, pauses active writes, and switches every running server
+                      together. The current directory remains untouched as a safety copy.
                     </p>
                     <div class="settings-inline-editor__actions">
                       <Show when={platform.openDirectoryPickerDialog}>
@@ -483,7 +483,7 @@ export const Storage: Component = () => {
               <div class="settings-card settings-preferences-card">
                 <div class="settings-storage-cache settings-row settings-preference-row">
                   <div class="settings-row-copy">
-                    <strong>OpenScience cache</strong>
+                    <strong>OneLab cache</strong>
                     <span class="min-w-0 truncate" title={usage()?.cache_dir}>
                       {usage()?.cache_dir}
                     </span>

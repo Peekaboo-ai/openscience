@@ -38,7 +38,7 @@ export type UpdatePress = "download-and-restart" | "download" | "installer"
 
 const offerCopy: Record<UpdatePress, (version: string) => { detail: string; label: string }> = {
   "download-and-restart": () => ({
-    detail: "One press downloads and verifies the signed update, then restarts OpenScience.",
+    detail: "One press downloads and verifies the signed update, then restarts OneLab.",
     label: "Download and restart",
   }),
   download: (version) => ({
@@ -62,7 +62,7 @@ export function updateNotice(state: NoticeState, press: UpdatePress): UpdateNoti
     const copy = offerCopy[press](offered)
     return {
       kind: "available",
-      title: `OpenScience ${offered} is available`,
+      title: `OneLab ${offered} is available`,
       detail: copy.detail,
       primary: { label: copy.label, busy: false },
     }
@@ -70,9 +70,9 @@ export function updateNotice(state: NoticeState, press: UpdatePress): UpdateNoti
   if (state.phase === "ready") {
     return {
       kind: "ready",
-      title: `OpenScience ${state.version ?? state.available} is verified`,
+      title: `OneLab ${state.version ?? state.available} is verified`,
       detail: state.migration_required
-        ? "This copy is administrator-owned. OpenScience will install the verified update in your user Applications folder, then reopen there."
+        ? "This copy is administrator-owned. OneLab will install the verified update in your user Applications folder, then reopen there."
         : "Ready when you are. Restart only after your current work is finished.",
       primary: { label: state.migration_required ? "Move & restart" : "Restart to update", busy: false },
     }
@@ -80,22 +80,22 @@ export function updateNotice(state: NoticeState, press: UpdatePress): UpdateNoti
   if (state.phase === "succeeded") {
     return {
       kind: "succeeded",
-      title: `Updated to OpenScience ${state.version}`,
+      title: `Updated to OneLab ${state.version}`,
       detail: "The signed update is installed and your workspace is healthy.",
     }
   }
   if (state.phase === "restarting") {
     return {
       kind: "restarting",
-      title: `Restarting OpenScience ${state.version ?? ""}`.trim(),
-      detail: "Finishing the update. OpenScience will reopen automatically.",
+      title: `Restarting OneLab ${state.version ?? ""}`.trim(),
+      detail: "Finishing the update. OneLab will reopen automatically.",
       primary: { label: "Restarting…", busy: true },
     }
   }
   if (state.phase === "restart_blocked") {
     return {
       kind: "blocked",
-      title: "OpenScience is waiting to restart safely",
+      title: "OneLab is waiting to restart safely",
       detail: state.error ?? "Finish or close the active runtime, then retry the restart.",
       primary: { label: "Retry restart", busy: false },
     }
@@ -103,7 +103,7 @@ export function updateNotice(state: NoticeState, press: UpdatePress): UpdateNoti
   if (state.phase === "failed") {
     return {
       kind: "failed",
-      title: "OpenScience could not prepare the update",
+      title: "OneLab could not prepare the update",
       detail: state.error,
       primary: { label: "Retry", busy: false },
     }
@@ -111,7 +111,7 @@ export function updateNotice(state: NoticeState, press: UpdatePress): UpdateNoti
   if (state.phase === "idle") return undefined
   return {
     kind: "preparing",
-    title: `Preparing OpenScience ${state.version ?? state.available}`,
+    title: `Preparing OneLab ${state.version ?? state.available}`,
     detail:
       state.phase === "downloading"
         ? `${formatUpdateBytes(state.transferred)}${state.total ? ` of ${formatUpdateBytes(state.total)}` : ""} downloaded`
@@ -184,8 +184,8 @@ export const StartupUpdateCheck: Component = () => {
           title: "Pause running work and restart?",
           message: (
             <>
-              {error.blockers.join(", ")} still running. Restarting now pauses each turn; OpenScience continues them
-              where they stopped once it is back. Compute jobs already on Modal keep running.
+              {error.blockers.join(", ")} still running. Restarting now pauses each turn; OneLab continues them where
+              they stopped once it is back. Compute jobs already on Modal keep running.
             </>
           ),
           confirmLabel: "Pause and restart",
@@ -195,7 +195,7 @@ export const StartupUpdateCheck: Component = () => {
         await updates.apply({ mode: "now" }).catch((again: unknown) => {
           showToast({
             variant: "error",
-            title: "OpenScience could not restart",
+            title: "OneLab could not restart",
             description: again instanceof Error ? again.message : String(again),
           })
         })
@@ -203,7 +203,7 @@ export const StartupUpdateCheck: Component = () => {
       }
       showToast({
         variant: "error",
-        title: "OpenScience is still running",
+        title: "OneLab is still running",
         description: error instanceof Error ? error.message : String(error),
       })
     })
@@ -228,7 +228,7 @@ export const StartupUpdateCheck: Component = () => {
     await updates.cancel().catch((error: unknown) => {
       showToast({
         variant: "error",
-        title: "OpenScience kept the update",
+        title: "OneLab kept the update",
         description: error instanceof Error ? error.message : String(error),
       })
     })
@@ -254,7 +254,7 @@ export const StartupUpdateCheck: Component = () => {
       <aside
         class="startup-update"
         data-phase={updates.state.phase}
-        aria-label="OpenScience update"
+        aria-label="OneLab update"
         aria-live="polite"
         aria-busy={notice()?.primary?.busy === true}
       >

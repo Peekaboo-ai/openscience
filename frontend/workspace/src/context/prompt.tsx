@@ -1,6 +1,6 @@
 import { createStore } from "solid-js/store"
 import { createSimpleContext } from "@synsci/ui/context"
-import { batch, createMemo, createRoot, onCleanup } from "solid-js"
+import { batch, createMemo, createRoot, getOwner, onCleanup, runWithOwner } from "solid-js"
 import { useParams } from "@solidjs/router"
 import type { FileSelection } from "@/context/file"
 import { attachBytes, detachBytes, dropBytelessAttachments } from "./prompt-attachments"
@@ -132,6 +132,7 @@ type PromptCacheEntry = {
 
 function createPromptSession(dir: string, id: string | undefined) {
   const legacy = `${dir}/prompt${id ? "/" + id : ""}.v2`
+  let revision = 0
 
   const [store, setStore, _, ready] = persisted(
     { ...Persist.scoped(dir, id, "prompt", [legacy]), migrate: dropBytelessAttachments },
@@ -168,6 +169,7 @@ function createPromptSession(dir: string, id: string | undefined) {
 
   return {
     ready,
+    revision: () => revision,
     current: createMemo(() => attachBytes(store.prompt)),
     cursor: createMemo(() => store.cursor),
     dirty: createMemo(() => !isPromptEqual(store.prompt, DEFAULT_PROMPT)),
@@ -184,12 +186,14 @@ function createPromptSession(dir: string, id: string | undefined) {
     },
     set(prompt: Prompt, cursorPosition?: number) {
       const next = detachBytes(clonePrompt(prompt))
+      revision++
       batch(() => {
         setStore("prompt", next)
         if (cursorPosition !== undefined) setStore("cursor", cursorPosition)
       })
     },
     reset() {
+      revision++
       batch(() => {
         setStore("prompt", clonePrompt(DEFAULT_PROMPT))
         setStore("cursor", 0)
@@ -202,6 +206,7 @@ export const { use: usePrompt, provider: PromptProvider } = createSimpleContext(
   name: "Prompt",
   gate: false,
   init: () => {
+    const owner = getOwner()!
     const params = useParams()
     const sdk = useSDK()
     const cache = new Map<string, PromptCacheEntry>()
@@ -247,6 +252,8 @@ export const { use: usePrompt, provider: PromptProvider } = createSimpleContext(
     const session = createMemo(() => load(sdk.scope, params.id))
 
     return {
+      // 异步发送固定引用原会话草稿，迟到的失败不能恢复到用户后来打开的会话。
+      capture: (id = params.id, scope = sdk.scope) => runWithOwner(owner, () => load(scope, id))!,
       ready: () => session().ready(),
       current: () => session().current(),
       cursor: () => session().cursor(),

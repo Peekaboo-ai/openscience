@@ -26,7 +26,7 @@ export async function waitForUpdatedServer(input: {
     const current = !input.version || health?.version === input.version
     if (health?.healthy && changed && current) return health
     if (attempt >= attempts - 1) {
-      throw new Error("The update installed, but OpenScience did not restart in time.")
+      throw new Error("The update installed, but OneLab did not restart in time.")
     }
     await sleep(input.delayMs ?? 250)
     return poll(attempt + 1)

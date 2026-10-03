@@ -116,14 +116,14 @@ export const dict = {
   "provider.connect.status.waiting": "Warten auf Autorisierung...",
   "provider.connect.status.failed": "Autorisierung fehlgeschlagen: {{error}}",
   "provider.connect.apiKey.description":
-    "Geben Sie Ihren {{provider}} API-Schlüssel ein, um Ihr Konto zu verbinden und {{provider}} Modelle in OpenScience zu nutzen.",
+    "Geben Sie Ihren {{provider}} API-Schlüssel ein, um Ihr Konto zu verbinden und {{provider}} Modelle in OneLab zu nutzen.",
   "provider.connect.apiKey.label": "{{provider}} API-Schlüssel",
   "provider.connect.apiKey.placeholder": "API-Schlüssel",
   "provider.connect.apiKey.required": "API-Schlüssel ist erforderlich",
   "provider.connect.oauth.code.visit.prefix": "Besuchen Sie ",
   "provider.connect.oauth.code.visit.link": "diesen Link",
   "provider.connect.oauth.code.visit.suffix":
-    ", um Ihren Autorisierungscode zu erhalten, Ihr Konto zu verbinden und {{provider}} Modelle in OpenScience zu nutzen.",
+    ", um Ihren Autorisierungscode zu erhalten, Ihr Konto zu verbinden und {{provider}} Modelle in OneLab zu nutzen.",
   "provider.connect.oauth.code.label": "{{method}} Autorisierungscode",
   "provider.connect.oauth.code.placeholder": "Autorisierungscode",
   "provider.connect.oauth.code.required": "Autorisierungscode ist erforderlich",
@@ -131,7 +131,7 @@ export const dict = {
   "provider.connect.oauth.auto.visit.prefix": "Besuchen Sie ",
   "provider.connect.oauth.auto.visit.link": "diesen Link",
   "provider.connect.oauth.auto.visit.suffix":
-    " und geben Sie den untenstehenden Code ein, um Ihr Konto zu verbinden und {{provider}} Modelle in OpenScience zu nutzen.",
+    " und geben Sie den untenstehenden Code ein, um Ihr Konto zu verbinden und {{provider}} Modelle in OneLab zu nutzen.",
   "provider.connect.oauth.auto.confirmationCode": "Bestätigungscode",
   "provider.connect.toast.connected.title": "{{provider}} verbunden",
   "provider.connect.toast.connected.description": "{{provider}} Modelle sind jetzt verfügbar.",
@@ -222,7 +222,7 @@ export const dict = {
   "dialog.directory.empty": "Keine Ordner gefunden",
 
   "dialog.server.title": "Server",
-  "dialog.server.description": "Wechseln Sie den OpenScience-Server, mit dem sich diese App verbindet.",
+  "dialog.server.description": "Wechseln Sie den OneLab-Server, mit dem sich diese App verbindet.",
   "dialog.server.search.placeholder": "Server durchsuchen",
   "dialog.server.empty": "Noch keine Server",
   "dialog.server.add.title": "Server hinzufügen",
@@ -327,7 +327,7 @@ export const dict = {
   "toast.session.listFailed.title": "Sitzungen für {{project}} konnten nicht geladen werden",
 
   "toast.update.title": "Update verfügbar",
-  "toast.update.description": "Eine neue Version von OpenScience ({{version}}) ist zur Installation verfügbar.",
+  "toast.update.description": "Eine neue Version von OneLab ({{version}}) ist zur Installation verfügbar.",
   "toast.update.action.installRestart": "Installieren und neu starten",
   "toast.update.action.notYet": "Noch nicht",
 
@@ -338,7 +338,7 @@ export const dict = {
   "error.page.action.checking": "Prüfen...",
   "error.page.action.checkUpdates": "Nach Updates suchen",
   "error.page.action.updateTo": "Auf {{version}} aktualisieren",
-  "error.page.report.prefix": "Bitte melden Sie diesen Fehler dem OpenScience-Team",
+  "error.page.report.prefix": "Bitte melden Sie diesen Fehler dem OneLab-Team",
   "error.page.report.discord": "auf Discord",
   "error.page.version": "Version: {{version}}",
 
@@ -357,7 +357,7 @@ export const dict = {
   "error.chain.modelNotFound": "Modell nicht gefunden: {{provider}}/{{model}}",
   "error.chain.checkConfig": "Überprüfen Sie Ihre Konfiguration (openscience.json) auf Anbieter-/Modellnamen",
   "error.chain.mcpFailed":
-    'MCP-Server "{{name}}" fehlgeschlagen. Hinweis: OpenScience unterstützt noch keine MCP-Authentifizierung.',
+    'MCP-Server "{{name}}" fehlgeschlagen. Hinweis: OneLab unterstützt noch keine MCP-Authentifizierung.',
   "error.chain.providerAuthFailed": "Anbieter-Authentifizierung fehlgeschlagen ({{provider}}): {{message}}",
   "error.chain.providerInitFailed":
     'Anbieter "{{provider}}" konnte nicht initialisiert werden. Überprüfen Sie Anmeldeinformationen und Konfiguration.',
@@ -453,13 +453,13 @@ export const dict = {
   "sidebar.workspaces.enable": "Arbeitsbereiche aktivieren",
   "sidebar.workspaces.disable": "Arbeitsbereiche deaktivieren",
   "sidebar.gettingStarted.title": "Erste Schritte",
-  "sidebar.gettingStarted.line1": "OpenScience enthält kostenlose Modelle, damit Sie sofort loslegen können.",
+  "sidebar.gettingStarted.line1": "OneLab enthält kostenlose Modelle, damit Sie sofort loslegen können.",
   "sidebar.gettingStarted.line2":
     "Verbinden Sie einen beliebigen Anbieter, um Modelle wie Claude, GPT, Gemini usw. zu nutzen.",
   "sidebar.project.recentSessions": "Letzte Sitzungen",
   "sidebar.project.viewAllSessions": "Alle Sitzungen anzeigen",
 
-  "app.name.desktop": "OpenScience Desktop",
+  "app.name.desktop": "OneLab Desktop",
   "settings.section.desktop": "Desktop",
   "settings.section.server": "Server",
   "settings.tab.general": "Allgemein",
@@ -472,11 +472,11 @@ export const dict = {
   "settings.general.section.sounds": "Soundeffekte",
 
   "settings.general.row.language.title": "Sprache",
-  "settings.general.row.language.description": "Die Anzeigesprache für OpenScience ändern",
+  "settings.general.row.language.description": "Die Anzeigesprache für OneLab ändern",
   "settings.general.row.appearance.title": "Erscheinungsbild",
-  "settings.general.row.appearance.description": "Anpassen, wie OpenScience auf Ihrem Gerät aussieht",
+  "settings.general.row.appearance.description": "Anpassen, wie OneLab auf Ihrem Gerät aussieht",
   "settings.general.row.theme.title": "Thema",
-  "settings.general.row.theme.description": "Das Thema von OpenScience anpassen.",
+  "settings.general.row.theme.description": "Das Thema von OneLab anpassen.",
   "settings.general.row.font.title": "Schriftart",
   "settings.general.row.font.description": "Die in Codeblöcken verwendete Monospace-Schriftart anpassen",
   "settings.general.layout.showChanges.title": "show changes view",
@@ -486,13 +486,13 @@ export const dict = {
   "settings.general.row.releaseNotes.description": '"Neuigkeiten"-Pop-ups nach Updates anzeigen',
 
   "settings.updates.row.startup.title": "Beim Start nach Updates suchen",
-  "settings.updates.row.startup.description": "Beim Start von OpenScience automatisch nach Updates suchen",
+  "settings.updates.row.startup.description": "Beim Start von OneLab automatisch nach Updates suchen",
   "settings.updates.row.check.title": "Nach Updates suchen",
   "settings.updates.row.check.description": "Manuell nach Updates suchen und installieren, wenn verfügbar",
   "settings.updates.action.checkNow": "Jetzt prüfen",
   "settings.updates.action.checking": "Wird geprüft...",
   "settings.updates.toast.latest.title": "Du bist auf dem neuesten Stand",
-  "settings.updates.toast.latest.description": "Du verwendest die aktuelle Version von OpenScience.",
+  "settings.updates.toast.latest.description": "Du verwendest die aktuelle Version von OneLab.",
 
   "font.option.ibmPlexMono": "IBM Plex Mono",
   "font.option.cascadiaCode": "Cascadia Code",

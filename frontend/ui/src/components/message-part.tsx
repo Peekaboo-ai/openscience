@@ -911,7 +911,7 @@ function SavedArtifactTool(props: ToolProps) {
     const artifact = saved()
     if (!artifact) return
     if (data.openArtifact) {
-      data.openArtifact(artifact.id)
+      data.openArtifact(artifact.id, artifact.versionID)
       return
     }
     data.openFile?.(artifact.path)

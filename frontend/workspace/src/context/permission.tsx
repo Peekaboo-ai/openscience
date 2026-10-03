@@ -155,7 +155,7 @@ export const { provider: PermissionProvider } = createSimpleContext({
         const projectName =
           ((project as { name?: string } | undefined)?.name || e.name.split(/[\\/]/).filter(Boolean).at(-1)) ??
           project?.id ??
-          "OpenScience"
+          "OneLab"
         const description = language.t("notification.permission.description", {
           sessionTitle: session?.title ?? perm.sessionID,
           projectName,

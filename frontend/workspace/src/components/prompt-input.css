@@ -1381,14 +1381,14 @@ form.workspace-composer .workspace-composer__send[data-composer-action="stop"] [
   width: 28px;
   height: 32px;
   border-radius: var(--radius-md);
-  color: var(--text-weak);
+  color: var(--color-text-muted);
   cursor: pointer;
 }
 .workspace-composer__send-options:hover {
-  background: var(--surface-base-hover);
-  color: var(--text-strong);
+  background: var(--color-hover);
+  color: var(--color-text);
 }
 .workspace-composer__send-options:focus-visible {
-  outline: 2px solid var(--border-focus);
+  outline: 2px solid var(--color-border-focus);
   outline-offset: 2px;
 }

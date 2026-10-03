@@ -116,7 +116,7 @@ describe("launch update notice", () => {
     const { host, opened } = await mount(false)
 
     const notice = host.querySelector(".startup-update")
-    expect(notice?.textContent).toContain("OpenScience 2.0.127 is available")
+    expect(notice?.textContent).toContain("OneLab 2.0.127 is available")
     expect(notice?.textContent).not.toContain("One press")
     expect(buttons(host)).toContain("Download installer")
     expect(buttons(host)).not.toContain("Download and restart")
@@ -145,10 +145,10 @@ describe("Customize → General update row", () => {
     cleanups.push(web.render(fixture.createGeneralFixture(subject.value, services), host))
 
     const row = Array.from(host.querySelectorAll(".settings-row")).find((element) =>
-      element.textContent?.includes("OpenScience 2.0.127 is available"),
+      element.textContent?.includes("OneLab 2.0.127 is available"),
     )
     expect(row?.textContent).toContain(
-      "OpenScience 2.0.127 is available. Download the signed update and restart when you are ready.",
+      "OneLab 2.0.127 is available. Download the signed update and restart when you are ready.",
     )
     // The restart is a second press here, so the row never promises one press.
     expect(row?.textContent).not.toContain("One press")

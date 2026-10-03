@@ -44,16 +44,21 @@ function init() {
   const active = () => stack().at(-1)
   const timer = { current: undefined as ReturnType<typeof setTimeout> | undefined }
   const lock = { value: false }
+  let mounted = true
 
   onCleanup(() => {
-    if (timer.current === undefined) return
-    clearTimeout(timer.current)
+    mounted = false
+    if (timer.current !== undefined) clearTimeout(timer.current)
     timer.current = undefined
+    // show创建的是独立root，卸载Provider不会自动释放；每层弹窗的订阅与请求都必须结束。
+    for (const item of stack()) item.dispose()
+    setStack([])
+    lock.value = false
   })
 
   const close = () => {
     const current = active()
-    if (!current || lock.value) return
+    if (!mounted || !current || lock.value) return
     lock.value = true
     current.onClose?.()
     current.setClosing(true)
@@ -89,6 +94,7 @@ function init() {
   })
 
   const show = (element: DialogElement, owner: Owner, onClose?: () => void, options?: { stack?: boolean }) => {
+    if (!mounted) return
     // A dialog still animating shut cannot be stacked on; finish closing it.
     const stacked = options?.stack === true && active() !== undefined && !lock.value
     if (!stacked) {

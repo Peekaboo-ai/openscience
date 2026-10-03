@@ -888,12 +888,23 @@ function createGlobalSync() {
       // projectMeta is synced from persisted storage in ensureChild.
       // vcs is seeded from persisted storage in ensureChild.
 
+      const projectRequest = retry(() => sdk.project.current()).then((x) => setStore("project", x.data!.id))
       const blockingRequests = {
-        project: () => sdk.project.current().then((x) => setStore("project", x.data!.id)),
+        project: () => projectRequest,
         provider: () => updateProvider(directory, projectID, (value) => setStore("provider", reconcile(value))),
         agent: () => sdk.app.agents().then((x) => setStore("agent", x.data ?? [])),
         config: () => sdk.config.get().then((x) => setStore("config", x.data!)),
       }
+
+      // 会话列表不依赖模型目录；先发起，避免远端的大目录响应串行阻塞会话入口。
+      // 项目验证失败由下方统一处理；预热仍遵守静默失败约定。
+      const sessions =
+        mode === "open"
+          ? projectRequest.then(
+              () => loadSessions(directory, projectID),
+              () => undefined,
+            )
+          : undefined
 
       try {
         await Promise.all(Object.values(blockingRequests).map((p) => retry(p)))
@@ -922,7 +933,7 @@ function createGlobalSync() {
         // The list holds only busy sessions; a plain set would keep a session
         // that finished while the stream was down marked as working forever.
         sdk.session.status().then((x) => setStore("session_status", reconcile(x.data ?? {}))),
-        loadSessions(directory, projectID),
+        sessions ?? loadSessions(directory, projectID),
         sdk.vcs.get().then((x) => {
           const next = x.data ?? store.vcs
           setStore("vcs", next)

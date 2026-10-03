@@ -55,7 +55,7 @@ const cacheKey = (file: RemoteFile) => `${file.volume}\u0000${file.path}\u0000${
 
 const keep = (key: string, entry: Cached) => {
   let held = entry.bytes
-  for (const value of fetched.values()) held += value.bytes
+  for (const [existing, value] of fetched) if (existing !== key) held += value.bytes
   // Oldest out first; a preview is worth re-fetching, a wedged tab is not.
   for (const [oldest, value] of fetched) {
     if (held <= CACHE_BUDGET) break
@@ -110,11 +110,15 @@ export function RemoteFileView(props: RemoteFileViewProps): JSX.Element {
         if (!live) return
         if (shape === "text") {
           const body = await blob.text()
-          const html = visual(file.name, body)
-            ? undefined
-            : await (props.highlight ?? shared)(body, thumbLanguage(file.name)).catch(() => undefined)
+          // 内容已到达就可阅读；语法高亮的懒加载不能继续遮住远端文件。
+          if (!live) return
+          keep(key, { bytes: blob.size, text: { body } })
+          setText({ body })
+          if (visual(file.name, body)) return
+          const html = await (props.highlight ?? shared)(body, thumbLanguage(file.name)).catch(() => undefined)
+          if (!live || !html) return
           keep(key, { bytes: blob.size, text: { body, html } })
-          if (live) setText({ body, html })
+          setText({ body, html })
           return
         }
         // The app's CSP is img-src 'self' data: https: and frame-src 'self' blob:

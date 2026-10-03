@@ -29,6 +29,56 @@ async function result(proc: {
   }
 }
 
+test("listing an existing store remains read-only while another connection holds the writer lock", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "openscience-artifact-read-"))
+  const runner = path.join(root, "read.ts")
+  const store = new URL("../../src/artifact/store.ts", import.meta.url).href
+  await Bun.write(
+    runner,
+    `
+import { ArtifactStore } from ${JSON.stringify(store)}
+if (process.argv[2] === "seed") await ArtifactStore.save({
+  projectID: "read-project", sessionID: "read-session", sourcePath: "result.txt", filename: "result.txt",
+  kind: "data", content: new Blob(["stable result"]), captureQuality: "exact",
+})
+else {
+  const first = await ArtifactStore.list("read-project")
+  const next = await ArtifactStore.list("read-project")
+  console.log(JSON.stringify({ count: next.length, id: first[0]?.id === next[0]?.id }))
+}
+`,
+  )
+  try {
+    const seed = await result(
+      Bun.spawn([process.execPath, runner, "seed"], { env: environment(root), stdout: "pipe", stderr: "pipe" }),
+    )
+    expect(seed.exit).toBe(0)
+    const db = new Database(path.join(root, "artifact-store", "artifacts.db"))
+    db.exec("BEGIN IMMEDIATE")
+    try {
+      const reader = Bun.spawn([process.execPath, runner, "read"], {
+        env: environment(root),
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+      const timeout = setTimeout(() => reader.kill(), 4000)
+      try {
+        const read = await result(reader)
+        expect(read.error).toBe("")
+        expect(read.exit).toBe(0)
+        expect(JSON.parse(read.output)).toEqual({ count: 1, id: true })
+      } finally {
+        clearTimeout(timeout)
+      }
+    } finally {
+      db.exec("ROLLBACK")
+      db.close()
+    }
+  } finally {
+    await fs.rm(root, { recursive: true, force: true })
+  }
+})
+
 test("independent processes atomically publish one blob and serialize versions", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "openscience-artifact-race-"))
   const runner = path.join(root, "save.ts")
@@ -85,6 +135,109 @@ console.log(JSON.stringify({ artifactID: saved.id, versionID: saved.currentVersi
     expect(records[0]?.size).toBe(Buffer.byteLength(content))
     const blob = path.join(root, "artifact-store", records[0]!.path)
     expect(await Bun.file(blob).text()).toBe(content)
+  } finally {
+    await fs.rm(root, { recursive: true, force: true })
+  }
+})
+
+test("a reused reader sees external commits and lists without waiting for the maintenance lease", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "openscience-artifact-reader-"))
+  const runner = path.join(root, "reader.ts")
+  const store = new URL("../../src/artifact/store.ts", import.meta.url).href
+  const leases = new URL("../../src/util/file-lease.ts", import.meta.url).href
+  await Bun.write(
+    runner,
+    `
+import { ArtifactStore } from ${JSON.stringify(store)}
+import { FileLease } from ${JSON.stringify(leases)}
+const input = {
+  projectID: "reader-project", sessionID: "reader-session", sourcePath: "result.txt", filename: "result.txt",
+  kind: "data", content: new Blob([process.argv[2] ?? "first"]), captureQuality: "exact",
+}
+if (process.argv[2] === "second") {
+  await ArtifactStore.save(input)
+} else {
+  const saved = await ArtifactStore.save(input)
+  const lease = await FileLease.acquire(${JSON.stringify(path.join(root, "artifact-store", ".write"))})
+  const timer = setTimeout(() => { console.error("list waited for maintenance"); process.exit(1) }, 3000)
+  try {
+    const first = await ArtifactStore.list(input.projectID)
+    if (first.length !== 1) throw new Error("first list missing")
+  } finally {
+    clearTimeout(timer)
+    await lease[Symbol.asyncDispose]()
+  }
+  const writer = Bun.spawn([process.execPath, import.meta.path, "second"], { stdout: "pipe", stderr: "pipe" })
+  if (await writer.exited !== 0) throw new Error(await new Response(writer.stderr).text())
+  const next = await ArtifactStore.list(input.projectID)
+  const content = await ArtifactStore.read(input.projectID, saved.id)
+  const versions = await ArtifactStore.listSessionVersions(input.projectID, input.sessionID)
+  console.log(JSON.stringify({ version: next[0]?.current.version, text: await content?.content.text(), versions: versions.length }))
+  await ArtifactStore.trash(input.projectID, saved.id, 1)
+  if ((await ArtifactStore.list(input.projectID, "trash")).length) throw new Error("expired trash is visible")
+  await ArtifactStore.reset()
+  if ((await ArtifactStore.list(input.projectID)).length) throw new Error("reader kept deleted store")
+  await ArtifactStore.reset()
+}
+`,
+  )
+  try {
+    const read = await result(
+      Bun.spawn([process.execPath, runner], { env: environment(root), stdout: "pipe", stderr: "pipe" }),
+    )
+    expect(read.exit, read.error).toBe(0)
+    expect(JSON.parse(read.output)).toEqual({ version: 2, text: "second", versions: 2 })
+  } finally {
+    await fs.rm(root, { recursive: true, force: true })
+  }
+})
+
+test("readers migrate an old store and follow a switched data directory", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "openscience-artifact-migrate-"))
+  const runner = path.join(root, "migrate.ts")
+  const store = new URL("../../src/artifact/store.ts", import.meta.url).href
+  await Bun.write(
+    runner,
+    `
+import { Database } from "bun:sqlite"
+import fs from "node:fs/promises"
+import { ArtifactStore } from ${JSON.stringify(store)}
+const file = ${JSON.stringify(path.join(root, "artifact-store", "artifacts.db"))}
+const directory = ${JSON.stringify(path.join(root, "artifact-store"))}
+const original = ${JSON.stringify(path.join(root, "original"))}
+const relocated = ${JSON.stringify(path.join(root, "relocated"))}
+await fs.mkdir(original)
+await fs.mkdir(relocated)
+await fs.symlink(original, directory, "junction")
+const saved = await ArtifactStore.save({
+  projectID: "migrate-project", sessionID: "migrate-session", sourcePath: "result.txt", filename: "result.txt",
+  kind: "data", content: new Blob(["result"]), captureQuality: "exact",
+})
+const legacy = new Database(file)
+legacy.exec("ALTER TABLE artifacts DROP COLUMN trashed_at; UPDATE store_meta SET value = '1' WHERE key = 'schema_version'")
+legacy.close()
+const migrated = await ArtifactStore.get("migrate-project", saved.id)
+if (!migrated || migrated.title !== "result.txt") throw new Error("legacy store did not migrate")
+const source = new Database(file)
+const replacement = ${JSON.stringify(path.join(root, "relocated", "artifacts.db"))}
+source.query("VACUUM INTO ?1").run(replacement)
+source.close()
+const next = new Database(replacement)
+next.query("UPDATE artifacts SET title = 'replaced' WHERE id = ?1").run(saved.id)
+next.close()
+await fs.unlink(directory)
+await fs.symlink(relocated, directory, "junction")
+const replaced = await ArtifactStore.get("migrate-project", saved.id)
+console.log(JSON.stringify({ title: replaced?.title }))
+await fs.unlink(directory)
+`,
+  )
+  try {
+    const read = await result(
+      Bun.spawn([process.execPath, runner], { env: environment(root), stdout: "pipe", stderr: "pipe" }),
+    )
+    expect(read.exit, read.error).toBe(0)
+    expect(JSON.parse(read.output)).toEqual({ title: "replaced" })
   } finally {
     await fs.rm(root, { recursive: true, force: true })
   }

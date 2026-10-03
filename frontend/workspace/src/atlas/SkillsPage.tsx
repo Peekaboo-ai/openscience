@@ -191,7 +191,7 @@ export default function SkillsPage(props: { embedded?: boolean; services?: Skill
             !saved?.skills?.disabled ||
             JSON.stringify([...saved.skills.disabled].sort()) !== JSON.stringify([...disabled].sort())
           ) {
-            throw new Error("This server did not confirm the selection. Update the OpenScience server and try again.")
+            throw new Error("This server did not confirm the selection. Update the OneLab server and try again.")
           }
           sync.set("config", "skills", { ...sync.data.config.skills, disabled } as SelectionConfig["skills"])
           return disabled

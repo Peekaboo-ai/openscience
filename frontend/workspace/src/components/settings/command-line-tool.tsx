@@ -53,7 +53,7 @@ export function commandLineCopy(status: CommandLineStatus | undefined, error?: u
   }
   if (!status.ours) return { description: `${installed(status)}. ${status.reason ?? ""}`.trim() }
   if (!status.current) {
-    const target = status.target ? tilde(status.target, status.home) : "another copy of OpenScience"
+    const target = status.target ? tilde(status.target, status.home) : "another copy of OneLab"
     return { description: `Installed, but it points at ${target}.`, action: status.installable ? "Repair" : undefined }
   }
   return { description: installed(status), action: status.onPath || !status.installable ? undefined : "Repair" }

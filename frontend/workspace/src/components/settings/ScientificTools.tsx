@@ -108,7 +108,7 @@ export default function ScientificTools() {
                 <EmptyState
                   icon="flask"
                   title="No runnable tools for this device"
-                  hint="OpenScience only lists tools with a real packaged runtime or a supported connection path."
+                  hint="OneLab only lists tools with a real packaged runtime or a supported connection path."
                 />
               }
             >

@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createMemo, onCleanup, onMount, type ParentProps } from "solid-js"
+import { For, Show, createEffect, createMemo, onCleanup, onMount, untrack, type ParentProps } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useLocation } from "@solidjs/router"
 import { createMediaQuery } from "@solid-primitives/media"
@@ -7,6 +7,7 @@ import { DropdownMenu } from "@synsci/ui/dropdown-menu"
 import { useDialog } from "@synsci/ui/context/dialog"
 import { DialogSettings } from "@/components/dialog-settings"
 import { settingsApi } from "@/components/settings/api"
+import { remoteWorkspaceBlocked } from "./availability"
 import { showToast } from "@synsci/ui/toast"
 import {
   IconCloud,
@@ -20,13 +21,15 @@ import {
   IconChevronRight,
   IconMoreH,
   IconX,
-  IconAtom,
 } from "@/atlas/shared/Icon"
 import { SessionSidebarActions } from "@/pages/session-sidebar-action"
 import { uiStore } from "@/atlas/store/ui"
+import { BrandMark } from "@/atlas/BrandMark"
 import { projectPrefs } from "@/atlas/store/projectPrefs"
 import { confirmDialog } from "@/atlas/dialogs"
 import { ProjectDialog } from "./ProjectDialog"
+import { RemoteProject } from "./RemoteProject"
+import { ConversationStatus } from "./ConversationStatus"
 import { useWorkspaces, type RemoteWorkspace } from "./context"
 import type { Project, Session } from "@synsci/sdk/v2/client"
 import "./workspaces.css"
@@ -136,6 +139,7 @@ function Conversations(props: { projectID: string; remoteID?: string; query: str
         {(session) => (
           <div
             class="workspace-conversation"
+            data-session-id={session.id}
             data-active={
               location.pathname.endsWith(`/${session.id}`) &&
               (workspaces.state.selected || "") === (props.remoteID || "")
@@ -169,7 +173,10 @@ function Conversations(props: { projectID: string; remoteID?: string; query: str
                 onClick={() => workspaces.open(props.projectID, session.id, props.remoteID)}
                 title={session.title}
               >
-                <IconMessageSquare size={14} />
+                <ConversationStatus
+                  status={workspaces.activity.get(base(), session.id)?.status}
+                  completed={workspaces.activity.get(base(), session.id)?.completed}
+                />
                 <span>
                   {session.time.pinned ? "· " : ""}
                   {session.title || "New task"}
@@ -211,7 +218,7 @@ function Conversations(props: { projectID: string; remoteID?: string; query: str
       <Show when={listing().ready && !listing().error && !visible().length}>
         <p class="workspace-hint">{props.query ? "No matching conversations" : "No conversations yet"}</p>
       </Show>
-      <Show when={listing().sessions.some((session) => !!session.time.archived)}>
+      <Show when={state.archived || listing().sessions.some((session) => !!session.time.archived)}>
         <button class="workspace-text-button" onClick={() => setState("archived", !state.archived)}>
           {state.archived ? "Show active" : "Archived conversations"}
         </button>
@@ -235,6 +242,21 @@ export function WorkspaceShell(props: ParentProps) {
   const dialog = useDialog()
   const location = useLocation()
   const narrow = createMediaQuery("(max-width: 760px)")
+  createEffect(() => {
+    const base = workspaces.state.selected ? workspaces.remoteBase(workspaces.state.selected) : workspaces.localUrl
+    const sessionID = location.pathname.match(/\/session\/(ses_[^/]+)$/)?.[1]
+    const viewed = () => workspaces.activity.view(base, !document.hidden && document.hasFocus() ? sessionID : undefined)
+    untrack(viewed)
+    window.addEventListener("focus", viewed)
+    window.addEventListener("blur", viewed)
+    document.addEventListener("visibilitychange", viewed)
+    onCleanup(() => {
+      window.removeEventListener("focus", viewed)
+      window.removeEventListener("blur", viewed)
+      document.removeEventListener("visibilitychange", viewed)
+      workspaces.activity.view(base)
+    })
+  })
   let sidebar: HTMLElement | undefined
   let previousFocus: HTMLElement | undefined
   const [state, setState] = createStore({
@@ -249,12 +271,18 @@ export function WorkspaceShell(props: ParentProps) {
   const create = (mode: "local" | "remote") => dialog.show(() => <ProjectDialog mode={mode} />)
   const activeProject = () => location.pathname.split("/")[1]
   const blocked = () =>
-    !!workspaces.state.selected &&
-    (!workspaces.state.ready || !!workspaces.state.error || workspaces.active()?.state !== "connected")
+    remoteWorkspaceBlocked({
+      selected: workspaces.state.selected,
+      remote: workspaces.active(),
+    })
   const openRemote = (remote: RemoteWorkspace) => {
     if (remote.state === "connected" && remote.projectID) {
       setState("expanded", remote.id, true)
       workspaces.open(remote.projectID, undefined, remote.id)
+      return
+    }
+    if (remote.projectID) {
+      if (remote.state !== "connecting") void workspaces.connect(remote.id).catch(message)
       return
     }
     dialog.show(() => <ProjectDialog remote={remote} />)
@@ -318,8 +346,8 @@ export function WorkspaceShell(props: ParentProps) {
         }}
       >
         <div class="workspace-brand">
-          <IconAtom size={20} />
-          <strong>OpenScience</strong>
+          <BrandMark size={20} />
+          <strong>OneLab</strong>
           <button
             class="workspace-icon-button workspace-close-nav"
             aria-label="Close navigation"
@@ -443,60 +471,17 @@ export function WorkspaceShell(props: ParentProps) {
               </For>
               <For each={workspaces.state.remotes}>
                 {(remote) => (
-                  <div class="workspace-project">
-                    <div class="workspace-project-row" data-active={workspaces.state.selected === remote.id}>
-                      <button
-                        class="workspace-icon-button"
-                        aria-label={`Toggle ${remote.name}`}
-                        aria-expanded={!!state.expanded[remote.id]}
-                        onClick={() => setState("expanded", remote.id, !state.expanded[remote.id])}
-                      >
-                        {state.expanded[remote.id] ? <IconChevronDown size={12} /> : <IconChevronRight size={12} />}
-                      </button>
-                      <button
-                        class="workspace-row-main"
-                        onClick={() => openRemote(remote)}
-                        title={`${remote.name} · ${remote.target.kind.toUpperCase()} · ${remote.state}`}
-                      >
-                        <IconCloud />
-                        <span>
-                          {remote.name}
-                          <small>
-                            {remote.target.kind.toUpperCase()} · {remote.state}
-                          </small>
-                        </span>
-                      </button>
-                      <DropdownMenu>
-                        <DropdownMenu.Trigger
-                          class="workspace-icon-button"
-                          aria-label={`Remote actions for ${remote.name}`}
-                        >
-                          <IconMoreH size={14} />
-                        </DropdownMenu.Trigger>
-                        <DropdownMenu.Portal>
-                          <DropdownMenu.Content>
-                            <DropdownMenu.Item onSelect={() => openRemote(remote)}>
-                              {remote.state === "connected" ? "Open" : "Connect / Retry"}
-                            </DropdownMenu.Item>
-                            <Show when={remote.state === "connected"}>
-                              <Show when={remote.projectID}>
-                                <DropdownMenu.Item
-                                  onSelect={() => workspaces.open(remote.projectID!, "new", remote.id)}
-                                >
-                                  New conversation
-                                </DropdownMenu.Item>
-                              </Show>
-                              <DropdownMenu.Item onSelect={() => void workspaces.disconnect(remote.id).catch(message)}>
-                                Disconnect
-                              </DropdownMenu.Item>
-                            </Show>
-                            <DropdownMenu.Item onSelect={() => void workspaces.remove(remote.id).catch(message)}>
-                              Remove bookmark
-                            </DropdownMenu.Item>
-                          </DropdownMenu.Content>
-                        </DropdownMenu.Portal>
-                      </DropdownMenu>
-                    </div>
+                  <RemoteProject
+                    remote={remote}
+                    active={workspaces.state.selected === remote.id}
+                    expanded={!!state.expanded[remote.id]}
+                    onToggle={() => setState("expanded", remote.id, !state.expanded[remote.id])}
+                    onOpen={() => openRemote(remote)}
+                    onConnect={() => void workspaces.connect(remote.id).catch(message)}
+                    onDisconnect={() => void workspaces.disconnect(remote.id).catch(message)}
+                    onRemove={() => void workspaces.remove(remote.id).catch(message)}
+                    onNewConversation={() => workspaces.open(remote.projectID!, "new", remote.id)}
+                  >
                     <Show
                       when={
                         remote.state === "connected" && remote.projectID && (state.expanded[remote.id] || !!state.query)
@@ -504,10 +489,7 @@ export function WorkspaceShell(props: ParentProps) {
                     >
                       <Conversations projectID={remote.projectID!} remoteID={remote.id} query={state.query} />
                     </Show>
-                    <Show when={remote.state !== "connected" && state.expanded[remote.id]}>
-                      <p class="workspace-hint">{remote.error || remote.progress}</p>
-                    </Show>
-                  </div>
+                  </RemoteProject>
                 )}
               </For>
               <Show when={workspaces.state.projects.some((project) => !!project.time.archived)}>
@@ -580,6 +562,9 @@ export function WorkspaceShell(props: ParentProps) {
                 {workspaces.active()?.error || workspaces.active()?.progress || "Waiting for connection…"}
               </p>
               <p>Remote conversations are available only while connected.</p>
+              <Show when={workspaces.active()?.state === "connecting"}>
+                <p>You can switch projects or continue with local tasks while this connects.</p>
+              </Show>
               <Button
                 disabled={workspaces.active()?.state === "connecting"}
                 onClick={() => {
@@ -587,8 +572,16 @@ export function WorkspaceShell(props: ParentProps) {
                   if (remote) openRemote(remote)
                 }}
               >
-                Reconnect
+                {workspaces.active()?.state === "connecting" ? "Connecting…" : "Reconnect"}
               </Button>
+              <Show when={workspaces.active()?.state === "connecting"}>
+                <Button
+                  variant="ghost"
+                  onClick={() => void workspaces.disconnect(workspaces.state.selected).catch(message)}
+                >
+                  Cancel connection
+                </Button>
+              </Show>
               <Button variant="ghost" onClick={() => workspaces.open("")}>
                 Return to local tasks
               </Button>

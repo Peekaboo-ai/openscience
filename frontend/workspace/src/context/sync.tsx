@@ -5,8 +5,15 @@ import { retry } from "@synsci/util/retry"
 import { createSimpleContext } from "@synsci/ui/context"
 import { useGlobalSync } from "./global-sync"
 import { useSDK } from "./sdk"
-import { SESSION_MESSAGE_CHUNK, mergeHydratedMessages, sessionHydrationPlan } from "./session-hydration"
+import {
+  SESSION_MESSAGE_CHUNK,
+  fetchMessageWindow,
+  mergeHydratedMessages,
+  sessionHydrationPlan,
+} from "./session-hydration"
 import type { Message, Part } from "@synsci/sdk/v2/client"
+import { requestDeadline } from "@/utils/request-deadline"
+import { readTimeout } from "@/utils/read-timeout"
 
 const keyFor = (directory: string, id: string) => `${directory}\n${id}`
 
@@ -57,16 +64,26 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       // changes meanwhile are newer than the response bytes and must win;
       // otherwise entering a streaming session rolled its text backwards.
       const startedAt = globalSync.transcript.revision(input.directory, input.sessionID)
-      await retry(() => input.client.session.messages({ sessionID: input.sessionID, limit: input.limit }))
-        .then((messages) => {
-          const items = (messages.data ?? []).filter((x) => !!x?.info?.id)
+      await requestDeadline(
+        (signal) =>
+          fetchMessageWindow({
+            limit: input.limit,
+            cached: input.preserveMessages ?? [],
+            fetch: (limit) =>
+              retry(() => input.client.session.messages({ sessionID: input.sessionID, limit }, { signal })).then(
+                (response) => (response.data ?? []).filter((x) => !!x?.info?.id),
+              ),
+          }),
+        readTimeout(sdk.url, "/session"),
+      )
+        .then(({ items, limit }) => {
           const incoming = items
             .map((x) => x.info)
             .filter((m) => !!m?.id)
             .sort((a, b) => a.id.localeCompare(b.id))
           const changes = globalSync.transcript.changesSince(input.directory, input.sessionID, startedAt)
           const live = input.store.message[input.sessionID] ?? []
-          const next = mergeHydratedMessages(input.preserveMessages?.length ? input.preserveMessages : live, incoming, {
+          const next = mergeHydratedMessages(live, incoming, {
             preserveCached: !!input.preserveMessages?.length,
             preferCached: changes.messages.changed,
             removed: changes.messages.removed,
@@ -93,8 +110,8 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
               )
             }
 
-            setMeta("limit", key, input.limit)
-            setMeta("complete", key, next.length < input.limit)
+            setMeta("limit", key, limit)
+            setMeta("complete", key, incoming.length < limit)
           })
         })
         .finally(() => {
@@ -176,7 +193,10 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
 
           const sessionReq = hasSession
             ? Promise.resolve()
-            : retry(() => client.session.get({ sessionID })).then((session) => {
+            : requestDeadline(
+                (signal) => retry(() => client.session.get({ sessionID }, { signal })),
+                readTimeout(sdk.url, "/session"),
+              ).then((session) => {
                 const data = session.data
                 if (!data) return
                 setStore(

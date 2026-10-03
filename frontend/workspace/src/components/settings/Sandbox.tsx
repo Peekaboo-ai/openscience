@@ -14,7 +14,7 @@ import { showToast } from "@synsci/ui/toast"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { usePlatform } from "@/context/platform"
 import { settingsApi } from "./api"
-import { PanelBody, PanelHeader, PanelScroll, Section, steady } from "./_shared"
+import { PanelBody, PanelHeader, PanelScroll, Section, progressive } from "./_shared"
 import "./preference-panels.css"
 import "./sandbox.css"
 
@@ -71,7 +71,7 @@ const Sandbox: Component = () => {
   const call = <T,>(path: string, init?: RequestInit) =>
     settingsApi<T>(sdk.url, fetchFn, `/settings/sandbox${path}`, init)
 
-  const [data, { mutate, refetch }] = steady(createResource(() => call<Payload>("")))
+  const [data, { mutate, refetch }] = progressive(createResource(() => call<Payload>("")))
   const [busyKeys, setBusyKeys] = createSignal<ReadonlySet<WriteKey>>(new Set())
   const [saving, setSaving] = createSignal(false)
   const [test, setTest] = createSignal<SelfTest>()
@@ -194,10 +194,15 @@ const Sandbox: Component = () => {
     <PanelScroll>
       <div
         class="settings-preferences-panel settings-preferences-panel--sandbox"
-        aria-busy={saving() ? "true" : undefined}
+        aria-busy={saving() || data.loading ? "true" : undefined}
       >
         <PanelHeader title="Sandbox" description="Isolate local terminals, kernels, and shell commands." />
         <PanelBody>
+          <Show when={data() !== undefined && data.loading}>
+            <div role="status" class="text-12-regular text-text-weak">
+              Refreshing sandbox settings…
+            </div>
+          </Show>
           <Show when={data.error}>
             <div class="settings-alert" data-tone="critical" role="alert">
               <span>Sandbox settings could not be loaded. {String(data.error)}</span>
@@ -213,7 +218,7 @@ const Sandbox: Component = () => {
             </div>
           </Show>
           <Show
-            when={!data.loading && !data.error}
+            when={data() !== undefined}
             fallback={
               <Show when={data.loading}>
                 <div class="settings-panel-loading__rows" role="status" aria-label="Loading sandbox settings">

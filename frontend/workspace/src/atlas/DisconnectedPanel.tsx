@@ -86,8 +86,8 @@ export function DisconnectedPanel(): JSX.Element {
               : remote()
                 ? `Can't reach remote workspace “${remote()!.name}”`
                 : server.isLocal()
-                  ? "Can't reach your local OpenScience server"
-                  : "Can't reach your OpenScience server"}
+                  ? "Can't reach your local OneLab server"
+                  : "Can't reach your OneLab server"}
           </div>
           <div
             style={{

@@ -19,7 +19,7 @@ export type Snapshot = {
 export async function json<T>(response: Response): Promise<T> {
   if (!response.ok) throw new Error(`Request failed (${response.status})`)
   if (!response.headers.get("content-type")?.includes("application/json"))
-    throw new Error("The server did not return JSON. Update or reconnect to the OpenScience server.")
+    throw new Error("The server did not return JSON. Update or reconnect to the OneLab server.")
   return response.json() as Promise<T>
 }
 

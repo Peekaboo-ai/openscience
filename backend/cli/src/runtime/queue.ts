@@ -191,14 +191,22 @@ export namespace RuntimeQueue {
   }
 
   export async function settled(sessionID: string, run: RuntimeRuns.Run) {
-    const pending = await Storage.read(key(sessionID))
-      .then((value) => State.parse(value))
-      .catch((error) => {
-        if (!Storage.NotFoundError.isInstance(error)) throw error
-      })
-    if (!pending?.items.length) return
-    if (run.state !== "completed") await pause(sessionID, run.state)
-    else await drain(sessionID)
+    const ready = await (async () => {
+      await using lease = await FileLease.acquire(lock(sessionID))
+      const state = await Storage.read(key(sessionID))
+        .then((value) => State.parse(value))
+        .catch((error) => {
+          if (!Storage.NotFoundError.isInstance(error)) throw error
+        })
+      // 终态写入与异步收尾之间可能已启动下一轮；只能暂停等待本轮的队列。
+      if (!state?.items.length || state.barrier !== run.runID) return false
+      if (run.state === "completed") return true
+      state.paused = true
+      state.reason = run.state
+      await write(state)
+      return false
+    })()
+    if (ready) await drain(sessionID)
   }
 
   async function drain(sessionID: string) {

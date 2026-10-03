@@ -1631,7 +1631,7 @@ const SettingsAccountFooter: Component<{ version?: string; onOpen: () => void }>
       </span>
       <span class="settings-nav__identity">
         <span class="settings-nav__identity-name">{email() ?? "Not signed in"}</span>
-        <span class="settings-nav__identity-meta">OpenScience{props.version ? ` v${props.version}` : ""}</span>
+        <span class="settings-nav__identity-meta">OneLab{props.version ? ` v${props.version}` : ""}</span>
       </span>
     </button>
   )

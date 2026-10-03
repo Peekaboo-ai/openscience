@@ -1,4 +1,5 @@
-import { For, Show, createEffect, createMemo, createResource, createSignal, onCleanup } from "solid-js"
+import { For, Show, createEffect, createMemo, createResource, createSignal, on, onCleanup } from "solid-js"
+import { createStore, reconcile } from "solid-js/store"
 import { Button } from "@synsci/ui/button"
 import { Icon } from "@synsci/ui/icon"
 import { Select } from "@synsci/ui/select"
@@ -23,7 +24,7 @@ import { CodexConnection } from "./CodexConnection"
 import { ProviderKeys } from "./ProviderKeys"
 import { CustomModels } from "./CustomModels"
 import { modelGroup, modelGroupLabel, modelGroupRank } from "../model-groups"
-import { FilterMenu, PanelBody, PanelHeader, PanelScroll, RowCopy, SearchInput, Section, steady } from "./_shared"
+import { FilterMenu, PanelBody, PanelHeader, PanelScroll, RowCopy, SearchInput, Section, progressive } from "./_shared"
 import { settingsApi } from "./api"
 import {
   type CapabilityPreferences,
@@ -105,10 +106,11 @@ export default function Models() {
   const [scope, setScope] = createSignal<Scope>("all")
   const [catalogOpen, setCatalogOpen] = createSignal(false)
   const [error, setError] = createSignal<string>()
-  const [preferences, preferenceActions] = steady(
+  const [write, setWrite] = createStore({ worker: false })
+  const [preferences, preferenceActions] = progressive(
     createResource(() => settingsApi<CapabilityPreferences>(sdk.url, fetchFn, "/settings/preferences")),
   )
-  const [billing, billingActions] = steady(
+  const [billing, billingActions] = progressive(
     createResource(() => settingsApi<BillingPreference>(sdk.url, fetchFn, "/settings/billing")),
   )
   const unsubscribeBilling = sync.onProvidersRefreshed(() => void billingActions.refetch())
@@ -198,17 +200,20 @@ export default function Models() {
       .sort((a, b) => modelGroupRank(a.id) - modelGroupRank(b.id) || a.label.localeCompare(b.label))
   })
   const [renderLimit, setRenderLimit] = createSignal(24)
-  const visibleGroups = createMemo(() => takeModelGroups(groups(), renderLimit()))
+  const [catalog, setCatalog] = createStore({ groups: [] as OptionGroup<Option>[] })
+  // 以模型身份复用行，勾选与固定不会重建滚动区域或丢失键盘焦点。
+  createEffect(() =>
+    setCatalog(
+      "groups",
+      reconcile(
+        takeModelGroups(groups(), renderLimit()).map((group) => ({ ...group, value: group.id })),
+        { key: "value" },
+      ),
+    ),
+  )
 
-  // Keep the catalog intentionally bounded. Search and filters still cover the
-  // full set, while explicit expansion avoids silently mounting hundreds of
-  // rows into a 25,000px settings page.
-  createEffect(() => {
-    query()
-    scope()
-    const total = filtered().length
-    setRenderLimit(Math.min(24, total))
-  })
+  // 仅更换搜索条件时折叠分页；改变可见性仍保留用户已展开的模型。
+  createEffect(on([query, scope], () => setRenderLimit(24)))
   const [notice, setNotice] = createSignal("Pinned models appear first. Hidden models stay out of the picker.")
   const pinnedCount = createMemo(() => options().filter((model) => model.pinned).length)
   const visibleCount = createMemo(() => options().filter((model) => model.visible).length)
@@ -266,10 +271,11 @@ export default function Models() {
   })
   const setWorkerModel = async (option: WorkerOption) => {
     const previous = preferences()
-    if (!previous) return
+    if (!previous || write.worker) return
     // Kobalte may echo a controlled selection when unrelated Settings state
     // refreshes. Only a logical model change is a persistence operation.
     if (sameDelegationModel(previous.delegation_worker_model, option.model)) return
+    setWrite("worker", true)
     const next = { ...previous, delegation_worker_model: option.model ?? null }
     preferenceActions.mutate(next)
     setError(undefined)
@@ -283,6 +289,8 @@ export default function Models() {
     } catch (cause) {
       preferenceActions.mutate(previous)
       setError(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      setWrite("worker", false)
     }
   }
 
@@ -316,6 +324,27 @@ export default function Models() {
       <PanelScroll>
         <PanelHeader title="Models" description="Your connections, and which models appear while you work." />
         <PanelBody>
+          <Show when={preferences.error || billing.error}>
+            <div role="alert" class="settings-alert text-12-regular" data-tone="critical">
+              Some model settings could not be loaded. {String(preferences.error || billing.error)}
+              <Button
+                size="small"
+                variant="secondary"
+                disabled={preferences.loading || billing.loading}
+                onClick={() => {
+                  void preferenceActions.refetch()
+                  void billingActions.refetch()
+                }}
+              >
+                Retry
+              </Button>
+            </div>
+          </Show>
+          <Show when={preferences.loading || billing.loading}>
+            <div role="status" class="text-12-regular text-text-weak">
+              Refreshing model preferences…
+            </div>
+          </Show>
           <Show when={error()}>
             <div role="alert" class="settings-alert text-12-regular" data-tone="critical">
               {error()}
@@ -344,7 +373,14 @@ export default function Models() {
                     current={workerSelection()}
                     value={(option) => option.value}
                     label={(option) => option.label}
-                    disabled={!preferences()}
+                    disabled={
+                      write.worker ||
+                      !preferences() ||
+                      preferences.loading ||
+                      !!preferences.error ||
+                      billing.loading ||
+                      !!billing.error
+                    }
                     onSelect={(option) => option && void setWorkerModel(option)}
                     variant="secondary"
                     size="small"
@@ -404,7 +440,7 @@ export default function Models() {
                   />
                 </div>
                 <div class="settings-card settings-model-catalog">
-                  <For each={visibleGroups()}>
+                  <For each={catalog.groups}>
                     {(group) => (
                       <section aria-labelledby={`composer-models-${group.id.replace(/[^a-z0-9-]/gi, "-")}`}>
                         <div class="settings-list-header">

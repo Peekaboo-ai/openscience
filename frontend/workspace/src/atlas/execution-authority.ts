@@ -119,7 +119,7 @@ export function executionAuthorityMessage(decision: ExecutionDecision): string |
   if (decision.message) return decision.message
   const action = labels[decision.capability]
   if (decision.reason === "project_untrusted") return `Trust this project to ${action} in this session.`
-  return `A verified OS sandbox is required to ${action}. OpenScience could not enforce one on this computer.`
+  return `A verified OS sandbox is required to ${action}. OneLab could not enforce one on this computer.`
 }
 
 export function executionAuthorityError(error: unknown): string {

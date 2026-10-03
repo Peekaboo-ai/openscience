@@ -67,12 +67,12 @@
 }
 
 .files-menu {
-  /* Container-relative, not viewport-relative: the inspector can be 320px wide
-     inside a desktop viewport that is ten times larger. */
+  /* 位置与尺寸由侧栏实际边界计算，窄列中也保留完整可滚动的菜单。 */
+  box-sizing: border-box;
   position: absolute;
   top: 42px;
   left: 0;
-  width: min(300px, calc(100cqi - 44px), calc(100vw - 24px));
+  width: 300px;
   max-height: min(400px, calc(100vh - 96px));
   overflow-y: auto;
   overflow-x: hidden;
@@ -82,14 +82,6 @@
   background: var(--color-surface-solid);
   background-clip: padding-box;
   box-shadow: var(--atlas-shadow-md);
-}
-/* The trigger sits at the right end of the toolbar, so a menu hung from its
-   left edge runs past the pane and takes every path and badge with it. When it
-   would, it hangs from the trigger's right edge instead; SourceMenu measures
-   the pane, not the window, because the pane is a column of a wider one. */
-.files-menu[data-align="end"] {
-  left: auto;
-  right: 0;
 }
 .files-menu__group {
   padding: 10px 10px 5px;
@@ -112,8 +104,9 @@
   background: var(--color-bg-subtle);
 }
 .files-menu__item {
+  position: relative;
   display: grid;
-  grid-template-columns: 20px 1fr auto;
+  grid-template-columns: 20px minmax(0, 1fr);
   align-items: center;
   gap: 10px;
   width: 100%;
@@ -157,6 +150,15 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.files-menu__item[aria-checked="true"] > span:nth-child(2) {
+  padding-right: 14px;
+}
+.files-menu__check {
+  position: absolute;
+  top: 10px;
+  right: 8px;
+  color: var(--color-text-muted);
+}
 .files-menu__sub {
   display: block;
   margin-top: 1px;
@@ -181,11 +183,16 @@
 }
 .files-menu__tail {
   display: inline-flex;
+  grid-column: 2;
+  flex-wrap: wrap;
   align-items: center;
   gap: 7px;
   color: var(--color-text-faint);
   font-family: var(--font-code);
   font-size: var(--font-size-x-small);
+}
+.files-menu__tail:empty {
+  display: none;
 }
 .files-menu__badge {
   min-height: 22px;
@@ -560,6 +567,7 @@
 }
 
 .files-browser__toolbar .files-source {
+  flex: none;
   max-width: min(34cqi, 160px);
 }
 
@@ -746,7 +754,7 @@
   flex: 1 1 160px;
   align-items: center;
   min-height: 30px;
-  min-width: 0;
+  min-width: 120px;
   padding: 0 3px 0 10px;
   border: 0;
   border-radius: var(--atlas-radius-xs);
@@ -1670,10 +1678,8 @@
   }
 }
 
-/* Source details remain available in the picker at narrow widths. Removing
-   the helper row here preserves the primary source/search controls and avoids
-   spending scarce vertical space on text that would be truncated anyway. */
-@container files-pane (max-width: 400px) {
+/* 窄侧栏把搜索移至第二行，为位置入口和完整的 More 按钮保留空间。 */
+@container files-pane (max-width: 600px) {
   .files-browser__toolbar {
     align-items: center;
     flex-wrap: wrap;
@@ -1682,17 +1688,11 @@
   /* The "More" trigger is ~88px wide; leave it room on the same row so the
      scrolling tab strip does not wrap the trigger underneath. */
   .files-workspace-switcher {
-    max-width: calc(100% - 96px);
+    flex: 1 1 0;
   }
 
   .files-browser__toolbar .files-source {
     flex: none;
-  }
-
-  /* Inactive locations keep their icon and tooltip; only the active one
-     spends the width on a label, so nothing is clipped mid-word. */
-  .files-workspace-switcher__tab:not(.is-active) > span:last-child {
-    display: none;
   }
 
   .files-search {
@@ -1705,6 +1705,12 @@
   }
 
   .files-source-context {
+    display: none;
+  }
+}
+
+@container files-pane (max-width: 400px) {
+  .files-workspace-switcher__tab:not(.is-active) > span:last-child {
     display: none;
   }
 }

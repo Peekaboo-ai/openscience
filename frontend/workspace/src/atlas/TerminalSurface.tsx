@@ -85,7 +85,7 @@ export function TerminalSurface(props: { active?: boolean } = {}): JSX.Element {
       .catch((cause: unknown) => {
         setState({
           connecting: false,
-          error: cause instanceof Error ? cause.message : "OpenScience could not start the terminal.",
+          error: cause instanceof Error ? cause.message : "OneLab could not start the terminal.",
         })
       })
       .finally(() => setState("starting", false))
@@ -107,7 +107,7 @@ export function TerminalSurface(props: { active?: boolean } = {}): JSX.Element {
       .catch((cause: unknown) => {
         setState({
           connecting: false,
-          error: cause instanceof Error ? cause.message : "OpenScience could not reconnect the terminal.",
+          error: cause instanceof Error ? cause.message : "OneLab could not reconnect the terminal.",
         })
       })
       .finally(() => setState("starting", false))
@@ -152,7 +152,7 @@ export function TerminalSurface(props: { active?: boolean } = {}): JSX.Element {
               <IconTerminal size={16} strokeWidth={1.5} />
             </span>
             <strong>Local terminal unavailable</strong>
-            <p>Connect to the local OpenScience server to run commands inside this project.</p>
+            <p>Connect to the local OneLab server to run commands inside this project.</p>
           </div>
         }
       >

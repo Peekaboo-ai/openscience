@@ -5,6 +5,43 @@ const base = "http://x"
 const path = "/settings/local"
 
 describe("settingsApi", () => {
+  test("times out a transport that ignores abort and permits an independent retry", async () => {
+    let signal: AbortSignal | null | undefined
+    const stalled = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      signal = init?.signal
+      return new Promise<Response>(() => {})
+    }) as typeof fetch
+    await expect(settingsApi(base, stalled, path, undefined, 15)).rejects.toMatchObject({ name: "TimeoutError" })
+    expect(signal?.aborted).toBe(true)
+    const healthy = (async () => Response.json({ recovered: true })) as unknown as typeof fetch
+    expect(await settingsApi<{ recovered: boolean }>(base, healthy, path)).toEqual({ recovered: true })
+  })
+
+  test("the deadline includes a stalled response body", async () => {
+    const stalled = (async () =>
+      new Response(new ReadableStream(), {
+        headers: { "content-type": "application/json" },
+      })) as unknown as typeof fetch
+    await expect(settingsApi(base, stalled, path, undefined, 15)).rejects.toMatchObject({ name: "TimeoutError" })
+  })
+
+  test("honors caller cancellation and preserves Headers instances", async () => {
+    const controller = new AbortController()
+    controller.abort()
+    let called = false
+    const fetchFn = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      called = true
+      expect(new Headers(init?.headers).get("x-test")).toBe("scope")
+      return Response.json({ ok: true })
+    }) as typeof fetch
+    await expect(settingsApi(base, fetchFn, path, { signal: controller.signal })).rejects.toMatchObject({
+      name: "AbortError",
+    })
+    expect(called).toBe(false)
+    await settingsApi(base, fetchFn, path, { headers: new Headers({ "x-test": "scope" }) })
+    expect(called).toBe(true)
+  })
+
   test("throws a descriptive error when a 200 response is not JSON", async () => {
     const fetchFn = (async () =>
       new Response("<!doctype html><html></html>", {

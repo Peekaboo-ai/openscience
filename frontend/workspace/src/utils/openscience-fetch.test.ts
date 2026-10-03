@@ -93,6 +93,6 @@ describe("project request boundary", () => {
       directory: () => "/work/alpha",
       fetch: () => fetch,
     })
-    expect(() => scoped("https://example.com/file/raw")).toThrow("active OpenScience server")
+    expect(() => scoped("https://example.com/file/raw")).toThrow("active OneLab server")
   })
 })

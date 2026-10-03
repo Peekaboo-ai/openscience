@@ -1,10 +1,9 @@
-import { For, Match, Show, Switch, createResource, type JSX } from "solid-js"
+import { For, Match, Show, Switch, type JSX } from "solid-js"
 import { useSDK } from "@/context/sdk"
 import { FONT_CODE, FONT_SANS } from "@/styles/tokens"
 import {
   formatBytes,
   embedding as parseEmbedding,
-  normalizeInspection,
   numbers,
   object,
   objects,
@@ -13,6 +12,7 @@ import {
   type BinaryScienceFormat,
   type Embedding,
 } from "./binary"
+import { createBinaryInspection } from "./inspection"
 
 function sentence(value: string) {
   const text = value.trim()
@@ -27,14 +27,11 @@ export function BinaryScienceView(props: {
   format: BinaryScienceFormat
 }): JSX.Element {
   const sdk = useSDK()
-  const [inspection, { refetch }] = createResource(
-    () => [props.directory, props.path, props.sessionID] as const,
-    async ([, path, sessionID]) => {
-      const response = await sdk.request("/file/inspect", undefined, { path, sessionID })
-      if (!response.ok) throw new Error(`inspection failed (${response.status})`)
-      return normalizeInspection(await response.json())
-    },
-  )
+  const [inspection, { refetch }] = createBinaryInspection(sdk.request, () => ({
+    scope: JSON.stringify([sdk.url, sdk.scope, props.directory]),
+    path: props.path,
+    sessionID: props.sessionID,
+  }))
 
   return (
     <div
@@ -296,7 +293,7 @@ function Hdf5(props: { file: BinaryInspection }): JSX.Element {
       <Show when={!props.file.tool.available}>
         <Fallback
           title={`${props.file.format.toUpperCase()} container detected`}
-          body="OpenScience verified the HDF5 signature and preserved the file locally. Install the optional reader above to reveal observations, variables, embeddings, layers, and every dataset."
+          body="OneLab verified the HDF5 signature and preserved the file locally. Install the optional reader above to reveal observations, variables, embeddings, layers, and every dataset."
         />
       </Show>
     </>
@@ -527,7 +524,7 @@ function Alignment(props: { file: BinaryInspection }): JSX.Element {
       <Show when={!props.file.tool.available}>
         <Fallback
           title={`${props.file.format.toUpperCase()} container detected`}
-          body={`OpenScience verified the container${props.file.index ? " and found its index" : ""}. Install samtools above to reveal the header, reference dictionary, sort order, and indexed read counts.`}
+          body={`OneLab verified the container${props.file.index ? " and found its index" : ""}. Install samtools above to reveal the header, reference dictionary, sort order, and indexed read counts.`}
         />
       </Show>
     </>

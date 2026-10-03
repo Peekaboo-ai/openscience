@@ -1,4 +1,5 @@
 import { DialogProvider, useDialog } from "./dialog"
+import { onCleanup } from "solid-js"
 
 export type DialogHandle = ReturnType<typeof useDialog>
 
@@ -15,4 +16,7 @@ export function createDialogFixture(onReady: (dialog: DialogHandle) => void) {
   )
 }
 
-export const panel = (name: string) => () => <div data-dialog-panel={name}>{name}</div>
+export const panel = (name: string, disposed?: () => void) => () => {
+  if (disposed) onCleanup(disposed)
+  return <div data-dialog-panel={name}>{name}</div>
+}

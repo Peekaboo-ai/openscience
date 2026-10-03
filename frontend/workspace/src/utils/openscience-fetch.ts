@@ -37,8 +37,7 @@ export function createProjectRequest(input: {
   const target = (path: string, query?: Query) => {
     const base = `${input.baseUrl().replace(/\/+$/, "")}/`
     const url = new URL(path.replace(/^\/+/, ""), base)
-    if (url.origin !== new URL(base).origin)
-      throw new Error("Project requests must target the active OpenScience server.")
+    if (url.origin !== new URL(base).origin) throw new Error("Project requests must target the active OneLab server.")
     for (const selector of selectors) url.searchParams.delete(selector)
     for (const [key, value] of Object.entries(query ?? {})) {
       if (value === undefined || selectors.has(key)) continue

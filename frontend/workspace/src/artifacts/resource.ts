@@ -1,5 +1,6 @@
 import { createResource, onCleanup, onMount } from "solid-js"
 import { normalizeStoredArtifacts, type StoredArtifact } from "@/artifacts/store"
+import { requestDeadline } from "@/utils/request-deadline"
 
 /**
  * The narrowest request shape the artifact store needs. Both `sdk.request`
@@ -15,10 +16,20 @@ export interface ArtifactsSnapshot {
   errors: Partial<Record<"active" | "trash", string>>
 }
 
-async function listArtifacts(request: ArtifactsRequest, state: "active" | "trash") {
-  const response = await request(`/file/artifact-store?state=${state}`)
-  if (!response.ok) throw new Error(`Artifact store unavailable (${response.status})`)
-  return normalizeStoredArtifacts(await response.json())
+function listArtifacts(
+  request: ArtifactsRequest,
+  state: "active" | "trash",
+  options: { signal?: AbortSignal; timeout?: number },
+) {
+  return requestDeadline(
+    async (signal) => {
+      const response = await request(`/file/artifact-store?state=${state}`, { signal })
+      if (!response.ok) throw new Error(`Artifact store unavailable (${response.status})`)
+      return normalizeStoredArtifacts(await response.json())
+    },
+    options.timeout ?? 60_000,
+    options.signal,
+  )
 }
 
 /**
@@ -26,8 +37,11 @@ async function listArtifacts(request: ArtifactsRequest, state: "active" | "trash
  * empty list rather than rejecting: the trash view must still render when
  * only the active listing is broken, and the reverse.
  */
-export function loadStoredArtifacts(request: ArtifactsRequest): Promise<ArtifactsSnapshot> {
-  return Promise.allSettled((["active", "trash"] as const).map((state) => listArtifacts(request, state))).then(
+export function loadStoredArtifacts(
+  request: ArtifactsRequest,
+  options: { signal?: AbortSignal; timeout?: number } = {},
+): Promise<ArtifactsSnapshot> {
+  return Promise.allSettled((["active", "trash"] as const).map((state) => listArtifacts(request, state, options))).then(
     ([active, trash]) => ({
       active: active.status === "fulfilled" ? active.value : [],
       trash: trash.status === "fulfilled" ? trash.value : [],
@@ -61,7 +75,13 @@ export async function restoreStoredArtifact(request: ArtifactsRequest, id: strin
  * for callers with no directory of their own.
  */
 export function createArtifactsResource(request: ArtifactsRequest, scope: () => unknown = () => true) {
-  const [artifacts, { refetch }] = createResource(scope, () => loadStoredArtifacts(request))
+  let controller: AbortController | undefined
+  const [artifacts, { refetch }] = createResource(scope, () => {
+    controller?.abort()
+    controller = new AbortController()
+    return loadStoredArtifacts(request, { signal: controller.signal })
+  })
+  onCleanup(() => controller?.abort())
   onMount(() => {
     const refresh = () => void refetch()
     window.addEventListener("openscience:artifacts-changed", refresh)

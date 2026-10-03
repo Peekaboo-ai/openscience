@@ -1325,7 +1325,20 @@ export function SessionTurn(
                         </Show>
                       </div>
                     </Show>
-                    <Show when={!working() && generated().length > 0}>
+                    <Show when={!working() && !!data.renderArtifacts}>
+                      <Dynamic
+                        component={data.renderArtifacts}
+                        sessionID={props.sessionID}
+                        messageIDs={assistantMessages().map((message) => message.id)}
+                        finalMessageID={
+                          !lastAssistantMessage()?.error &&
+                          (lastAssistantMessage()?.finish === "stop" || lastAssistantMessage()?.finish === "unknown")
+                            ? lastAssistantMessage()?.id
+                            : undefined
+                        }
+                      />
+                    </Show>
+                    <Show when={!working() && !data.renderArtifacts && generated().length > 0}>
                       <section
                         data-slot="session-turn-generated"
                         aria-label={`${generated().length} generated artifacts`}
@@ -1343,7 +1356,7 @@ export function SessionTurn(
                                 title={`Open ${artifact.title} in Files`}
                                 onClick={() => {
                                   if (data.openArtifact) {
-                                    data.openArtifact(artifact.id)
+                                    data.openArtifact(artifact.id, artifact.versionID)
                                     return
                                   }
                                   data.openFile?.(artifact.path)

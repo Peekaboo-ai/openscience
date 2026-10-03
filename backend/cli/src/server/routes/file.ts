@@ -16,6 +16,7 @@ import { ArtifactAnnotation } from "../../file/annotations"
 import { PublicationReview } from "../../file/review"
 import { Identifier } from "../../id/id"
 import { ArtifactStore } from "../../artifact/store"
+import { ArtifactPublication } from "../../artifact/publication"
 import { FileTrash } from "../../file/trash"
 import { SessionFilesystem } from "../../session/filesystem"
 import { errors } from "../error"
@@ -616,6 +617,31 @@ export const FileRoutes = lazy(() =>
       async (c) => c.json(await File.artifacts({ sessionID: c.req.valid("query").sessionID })),
     )
     .post(
+      "/file/artifacts/publish",
+      describeRoute({
+        summary: "Publish completed conversation outputs",
+        description:
+          "Save readable files explicitly linked in a completed answer as session-associated immutable Results. Repeated requests reuse saved versions and respect Trash.",
+        operationId: "file.artifacts.publish",
+        responses: {
+          200: {
+            description: "Published Results and individual file failures",
+            content: { "application/json": { schema: resolver(ArtifactPublication.Report) } },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "json",
+        z.object({
+          sessionID: Identifier.schema("session"),
+          messageID: Identifier.schema("message"),
+          messageIDs: Identifier.schema("message").array().max(500).optional(),
+        }),
+      ),
+      async (c) => c.json(await ArtifactPublication.publish(c.req.valid("json"))),
+    )
+    .post(
       "/file/artifact",
       describeRoute({
         summary: "Save a file as a versioned artifact",
@@ -698,7 +724,7 @@ export const FileRoutes = lazy(() =>
         },
       }),
       validator("query", z.object({ state: z.enum(["active", "trash"]).default("active") })),
-      async (c) => c.json(await ArtifactStore.list(Instance.project.id, c.req.valid("query").state)),
+      async (c) => c.json(await ArtifactStore.listResults(Instance.project.id, c.req.valid("query").state)),
     )
     .get(
       "/file/artifact-store/:id",

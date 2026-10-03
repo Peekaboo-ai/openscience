@@ -44,10 +44,10 @@ const STEP_TITLE: Record<"mac" | "win" | "linux", string> = {
 }
 
 const STEP_BODY: Record<"mac" | "win" | "linux", string> = {
-  mac: "macOS denied OpenScience access to a protected folder. Grant access to the terminal or app that started this server, then relaunch it.",
-  win: "Windows denied OpenScience access to this project folder. Relaunch it from a terminal with access to the folder.",
+  mac: "macOS denied OneLab access to a protected folder. Grant access to the terminal or app that started this server, then relaunch it.",
+  win: "Windows denied OneLab access to this project folder. Relaunch it from a terminal with access to the folder.",
   linux:
-    "Linux denied OpenScience access to this project folder. Relaunch it outside a confined shell or grant the shell access.",
+    "Linux denied OneLab access to this project folder. Relaunch it outside a confined shell or grant the shell access.",
 }
 
 /**
@@ -125,7 +125,7 @@ function FdaSheet(props: {
               <span>Open Privacy &amp; Security → Full Disk Access.</span>
             </li>
             <li>
-              <span>Enable the terminal or desktop app you used to launch OpenScience.</span>
+              <span>Enable the terminal or desktop app you used to launch OneLab.</span>
             </li>
             <li>
               <span>
@@ -133,7 +133,7 @@ function FdaSheet(props: {
               </span>
             </li>
             <li>
-              <span>Quit and relaunch OpenScience, then recheck access.</span>
+              <span>Quit and relaunch OneLab, then recheck access.</span>
             </li>
           </ol>
         </Show>

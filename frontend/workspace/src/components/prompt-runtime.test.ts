@@ -178,6 +178,22 @@ test("a dropped capabilities connection does not assume an older server", async 
   expect(server.requests.map((request) => request.path)).toEqual(["/runtime/capabilities"])
 })
 
+test("stalled capability negotiation times out without sending a prompt", async () => {
+  const release = Promise.withResolvers<void>()
+  await using server = await host(async () => {
+    await release.promise
+    return { status: 200, body: capabilities }
+  })
+  try {
+    await expect(submitComposerPrompt(server.client, input, undefined, undefined, 30)).rejects.toMatchObject({
+      name: "TimeoutError",
+    })
+    expect(server.requests.some((request) => request.method === "POST")).toBe(false)
+  } finally {
+    release.resolve()
+  }
+})
+
 test("specialized agents retain the legacy route without negotiating the Research protocol", async () => {
   await using server = await host(() => ({ status: 200 }))
   await submitComposerPrompt(server.client, { ...input, agent: "plan" })

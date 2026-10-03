@@ -13,7 +13,7 @@ const counts = { examples: 0, links: 0 }
 const report = (file: string, message: string) => errors.push(file + ": " + message)
 
 for (const file of files) {
-  const source = await Bun.file(path.join(directory, file)).text()
+  const source = (await Bun.file(path.join(directory, file)).text()).replace(/\r\n/g, "\n")
   const frontmatter = source.match(/^---\n([\s\S]*?)\n---\n?/)
   if (!frontmatter || !/^title: ".+"$/m.test(frontmatter[1]) || !/^description: ".+"$/m.test(frontmatter[1])) {
     report(file, "Expected a quoted title and description in frontmatter")

@@ -1,4 +1,5 @@
-import { For, Show, createEffect, createSignal, onCleanup, type JSX } from "solid-js"
+import { For, Show, createEffect, onCleanup, type JSX } from "solid-js"
+import { createStore } from "solid-js/store"
 import { groupSources, type PaneSource } from "@/atlas/files/sources"
 import {
   IconArchive,
@@ -62,8 +63,16 @@ export function SourceMenu(props: {
    */
   onOpen?: () => void
 }): JSX.Element {
-  const [open, setOpen] = createSignal(false)
-  const [align, setAlign] = createSignal<"start" | "end">("start")
+  const [state, setState] = createStore({
+    open: false,
+    align: "start" as "start" | "end",
+    left: 0,
+    top: 36,
+    width: 300,
+    maxHeight: 400,
+  })
+  const open = () => state.open
+  const setOpen = (value: boolean) => setState("open", value)
   const refs: { trigger?: HTMLButtonElement; menu?: HTMLDivElement } = {}
   // Measured rather than declared: the pane is resizable and the menu's own
   // width is capped against the container, so only the live geometry knows
@@ -75,13 +84,26 @@ export function SourceMenu(props: {
     if (!trigger || !menu) return
     const box = pane()?.getBoundingClientRect()
     const viewport = globalThis.innerWidth || box?.right || trigger.right
-    setAlign(
-      menuAlignment({
-        trigger,
-        width: menu.width,
-        bounds: { left: Math.max(box?.left ?? 0, 0), right: Math.min(box?.right ?? viewport, viewport) },
-      }),
+    const bounds = { left: Math.max(box?.left ?? 0, 0) + 8, right: Math.min(box?.right ?? viewport, viewport) - 8 }
+    const width = Math.max(0, Math.min(300, bounds.right - bounds.left))
+    const align = menuAlignment({ trigger, width, bounds })
+    // 两种对齐都可能越界；最终位置必须夹在侧栏内部，而不是只切换弹层的锚点。
+    const left = Math.max(
+      bounds.left,
+      Math.min(align === "start" ? trigger.left : trigger.right - width, bounds.right - width),
     )
+    const origin = refs.menu?.offsetParent?.getBoundingClientRect() ?? trigger
+    const viewportHeight = globalThis.innerHeight || 800
+    const bottom = Math.min(box?.bottom || viewportHeight, viewportHeight) - 8
+    const top = Math.max(box?.top ?? 0, 0) + 8
+    const below = Math.max(0, bottom - trigger.bottom - 6)
+    const above = Math.max(0, trigger.top - top - 6)
+    const upward = below < 160 && above > below
+    const maxHeight = Math.min(400, upward ? above : below)
+    const y = upward
+      ? trigger.top - 6 - Math.min(refs.menu?.scrollHeight || menu.height, maxHeight)
+      : trigger.bottom + 6
+    setState({ align, left: left - origin.left, top: y - origin.top, width, maxHeight })
   }
   // The pane is a draggable column and the menu can outlive several of its
   // widths: an alignment measured once at open hangs the menu outside the pane
@@ -93,7 +115,11 @@ export function SourceMenu(props: {
     if (!target) return
     const observer = new ResizeObserver(() => measure())
     observer.observe(target)
-    onCleanup(() => observer.disconnect())
+    window.addEventListener("resize", measure)
+    onCleanup(() => {
+      observer.disconnect()
+      window.removeEventListener("resize", measure)
+    })
   })
   const items = () => Array.from(refs.menu?.querySelectorAll<HTMLElement>('[role^="menuitem"]') ?? [])
   const focusItem = (item: HTMLElement | undefined) => {
@@ -166,7 +192,7 @@ export function SourceMenu(props: {
         }
         title={
           props.triggerLabel
-            ? "Connected folders, remote storage, and Trash"
+            ? "All file locations, Results, connected folders, and Trash"
             : (props.active.detail ?? props.active.sub)
         }
         onClick={toggle}
@@ -193,7 +219,13 @@ export function SourceMenu(props: {
             }}
             class="files-menu"
             data-source-menu
-            data-align={align()}
+            data-align={state.align}
+            style={{
+              left: `${state.left}px`,
+              top: `${state.top}px`,
+              width: `${state.width}px`,
+              "max-height": `${state.maxHeight}px`,
+            }}
             role="menu"
             onKeyDown={(event) => {
               if (event.key === "Escape" || event.key === "Tab") {
@@ -257,13 +289,21 @@ export function SourceMenu(props: {
                           data-source-item={source.id}
                           data-source-kind={source.kind}
                           aria-checked={source === props.active}
+                          title={source.detail ?? source.sub}
                           onClick={() => pick(source)}
                         >
                           <span class="files-menu__glyph" aria-hidden="true">
                             {glyph(source.kind)({ size: 15, strokeWidth: 1.5 })}
                           </span>
                           <span>
-                            <span class="files-menu__label">{source.name}</span>
+                            <span class="files-menu__label">
+                              {source.name}
+                              <Show when={source === props.active}>
+                                <span class="files-menu__check" aria-hidden="true">
+                                  ✓
+                                </span>
+                              </Show>
+                            </span>
                             <Show when={source.detail}>
                               <span class="files-menu__context">{source.detail}</span>
                             </Show>
@@ -285,9 +325,6 @@ export function SourceMenu(props: {
                             </Show>
                             <Show when={source.live}>
                               <span class="files-menu__dot" aria-label="Reachable" />
-                            </Show>
-                            <Show when={source === props.active}>
-                              <span aria-hidden="true">✓</span>
                             </Show>
                           </span>
                         </button>

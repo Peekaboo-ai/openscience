@@ -8,6 +8,7 @@
   font-family: inherit;
 }
 .workspace-sidebar {
+  --workspace-completion-color: var(--blue-light-9);
   width: 252px;
   flex: 0 0 252px;
   min-height: 0;
@@ -19,6 +20,9 @@
   gap: 8px;
   font-size: 13px;
 }
+[data-color-scheme="dark"] .workspace-sidebar {
+  --workspace-completion-color: var(--blue-dark-10);
+}
 .workspace-brand {
   height: 42px;
   display: flex;
@@ -27,7 +31,7 @@
   padding: 0 10px;
 }
 .workspace-brand strong {
-  font-weight: 600;
+  font-weight: var(--font-weight-emphasis);
   flex: 1;
 }
 .workspace-primary {
@@ -127,6 +131,39 @@
   font-size: 11px;
   margin-top: 2px;
 }
+.workspace-reconnect {
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+.workspace-reconnect:disabled {
+  cursor: progress;
+  color: var(--color-text-muted);
+}
+.workspace-reconnect[aria-busy="true"] svg {
+  animation: workspace-reconnect-spin 1.2s linear infinite;
+}
+.workspace-connection-error,
+.workspace-remote-project[data-state="error"] .workspace-row-main small {
+  color: var(--color-text-warning);
+}
+.workspace-connection-detail span {
+  display: block;
+  margin-top: 4px;
+}
+@keyframes workspace-reconnect-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .workspace-reconnect {
+    transition: none;
+  }
+  .workspace-reconnect[aria-busy="true"] svg {
+    animation: none;
+  }
+}
 .workspace-conversations {
   padding-left: 15px;
 }
@@ -138,6 +175,36 @@ section[aria-label="Tasks"] .workspace-conversations {
 }
 .workspace-conversation .workspace-row-main {
   padding: 7px 8px;
+}
+.workspace-row-main > .workspace-conversation-status {
+  display: inline-flex;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+}
+.workspace-conversation-running {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  color: var(--color-text-muted);
+  animation: workspace-reconnect-spin 1.2s linear infinite;
+}
+.workspace-conversation-completed {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--workspace-completion-color);
+}
+@media (prefers-reduced-motion: reduce) {
+  .workspace-conversation-running {
+    animation: none;
+  }
 }
 .workspace-conversation form {
   min-width: 0;
@@ -202,7 +269,7 @@ section[aria-label="Tasks"] .workspace-conversations {
 }
 .workspace-connection-gate h2 {
   font-size: 20px;
-  font-weight: 600;
+  font-weight: var(--font-weight-emphasis);
 }
 .workspace-mobile-toggle,
 .workspace-close-nav,

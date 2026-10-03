@@ -35,7 +35,7 @@ const NotFound = () => (
   <main class="app-not-found" aria-labelledby="not-found-title">
     <span class="app-not-found__eyebrow">404</span>
     <h1 id="not-found-title">Page not found</h1>
-    <p>This address does not match a project, session, or OpenScience workspace.</p>
+    <p>This address does not match a project, session, or OneLab workspace.</p>
     <A class="app-not-found__action" href="/">
       Back to Projects
     </A>
@@ -45,6 +45,21 @@ const NotFound = () => (
 function UiI18nBridge(props: ParentProps) {
   const language = useLanguage()
   return <I18nProvider value={{ locale: language.locale, t: language.t }}>{props.children}</I18nProvider>
+}
+
+function BrandFavicon() {
+  onMount(() => {
+    const root = document.documentElement
+    const update = () => {
+      const mode = root.dataset.colorScheme === "dark" ? "dark" : "light"
+      document.getElementById("onelab-favicon")?.setAttribute("href", `/onelab-favicon-${mode}.png`)
+    }
+    update()
+    const observer = new MutationObserver(update)
+    observer.observe(root, { attributes: true, attributeFilter: ["data-color-scheme"] })
+    onCleanup(() => observer.disconnect())
+  })
+  return null
 }
 
 declare global {
@@ -58,6 +73,7 @@ export function AppBaseProviders(props: ParentProps) {
   return (
     <MetaProvider>
       <ThemeProvider defaultTheme="openscience">
+        <BrandFavicon />
         <LanguageProvider>
           <UiI18nBridge>
             <ErrorBoundary fallback={(error) => <ErrorPage error={error} />}>

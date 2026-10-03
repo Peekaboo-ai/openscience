@@ -26,6 +26,10 @@ export function projectSegment(project: ProjectRouteRecord, directory = project.
   return workspace(project, directory)
 }
 
+export function projectScopeKey(serverURL: string, segment: string) {
+  return segment && serverURL.includes("/remote-workspaces/") ? `${serverURL}::${segment}` : segment
+}
+
 export function projectPathname(segment: string, sessionID?: string) {
   const session = sessionID ? `/${encodeURIComponent(sessionID)}` : ""
   return `/${encodeURIComponent(segment)}/session${session}`

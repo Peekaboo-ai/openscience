@@ -11,7 +11,7 @@
           },
           {
             "group": "Your workspace",
-            "pages": ["workspace", "projects", "sessions", "files", "results"]
+            "pages": ["workspace", "projects", "remote-workspaces", "sessions", "files", "results"]
           },
           {
             "group": "Models and account",

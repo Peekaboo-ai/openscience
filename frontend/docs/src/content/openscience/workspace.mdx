@@ -18,7 +18,11 @@ The first command opens the current folder; the second opens the folder you spec
 
 ## Projects and conversations
 
+Changing models in an existing conversation shows an inline “Model changed from … to …” notice. The choice applies to the next message; any task already running continues with its current model. Changing your choice again before sending updates that notice, and choosing the previous model removes it. Once you send a message with the new model, the notice stays at that point in the conversation, including after refresh and in remote projects. Hover or focus its help icon to see the provider and when the change takes effect.
+
 A project groups related work and files. A conversation, also called a session, holds the requests and results for one task. Start a new conversation for a separate question, or reopen an existing one to continue its work.
+
+The conversation list shows a spinning indicator while a task runs, retries, or compacts its context. A blue dot means a background task has finished and has not been viewed yet; opening that conversation clears the dot. Tasks in connected remote projects continue to update these indicators while you work in another project. Unread completion dots are kept across browser reloads.
 
 Give files descriptive names and tell OpenScience where to save outputs. A new conversation does not automatically know every detail of another conversation; refer to the relevant saved report or handoff when continuing across sessions.
 
@@ -73,9 +77,15 @@ The conversation shows the agent's prose in bright text and everything it did to
 
 You can send follow-up prompts while a response is running: they join the current turn and the agent answers them in order. Use the **Stop** button or Escape when you need to change direction immediately. Inspect any files already written before asking it to retry or redo the work.
 
+If sending fails, the draft returns to its original conversation, including a newly created worktree conversation. Switching projects or typing a newer draft does not move or overwrite that content. Stop also cancels prompts still waiting for worktree preparation or server capability checks. A failed or cancelled task does not produce a successful-completion notification.
+
 Use [Research controls](/openscience/agents) to choose planning, research effort, delegation, and when the agent asks for your input.
 
 ## Review files and scientific results
+
+In Files, **More** lists every file location, including **Results**, **Project files**, and **This session**, so you can switch locations without widening the sidebar. In narrow panes, search moves below the location tabs and long menus scroll within the pane.
+
+Folder listings, Results, Trash, and scientific file inspection show a retryable error if a read stalls. A failed Results or Trash read does not hide the other list when it loaded successfully. Switching projects or previews keeps late responses and completed file actions attached to their original item.
 
 Open an output link in the conversation or choose **Files**. Supported scientific formats can display as plots, molecules, structures, or genomic views.
 
@@ -108,6 +118,12 @@ Adding or updating model connections keeps existing terminal tabs and their shel
 
 Project conversation lists appear immediately when reopened after their first load, then refresh in the background. Local and remote projects keep separate caches. A failed refresh preserves the last loaded list and shows a retry action.
 
+Long conversations open with their recent messages first. Use **Load earlier** to retrieve older history; cached messages remain visible during refresh. Long assistant turns automatically include their originating question, and child conversations load in the background after the active conversation. A transcript request that stalls offers retry after 30 seconds locally or 60 seconds over a remote connection. A workspace catalog refresh failure preserves the connected conversation instead of replacing it with a reconnect screen.
+
+Settings sections load independently where possible. Models and Sandbox retain loaded content during a refresh, and Sandbox controls stay disabled until its settings are confirmed. Settings reads that stall show a retry action after 15 seconds locally or 60 seconds remotely, including when the response body stops arriving; longer write operations have a separate two-minute budget. A failed settings panel can be retried without closing the dialog or navigating away from your conversation. In Files, folder contents remain available while Results loads separately, and text previews appear before syntax highlighting finishes.
+
+Disconnected remote projects have a circular-arrow **Connect** button in the sidebar. Clicking it starts a background connection: the arrow rotates and the project shows its status while you continue another project or a local conversation. Completion produces a notification and does not change your current page. On failure, use the warning icon for details and the arrow to retry. Choose **Cancel connection** from the project's menu to stop an attempt. Reopening a saved project does not require selecting its directory again. New remote projects still use the setup wizard to configure their host and working directory; closing a dialog for an existing bookmark leaves its background connection running.
+
 The CLI prints a local workspace URL. If you close the browser tab while the command is still running, reopen that URL. Stopping the CLI stops that running workspace; saved conversations remain available next time.
 
 To choose a port:
@@ -135,6 +151,16 @@ See [Sessions](/openscience/sessions) for continuing, exporting, and importing c
 - [Saved Results](/openscience/results): retain verified outputs, download, rename, and recover from Trash.
 - [Context and handoffs](/openscience/context): compact long work and prepare a continuation.
 - [Keyboard shortcuts](/openscience/keyboard-shortcuts) and [Preferences](/openscience/preferences): navigate and configure the interface.
+
+## Usage Stats
+
+Open **Settings → Usage Stats** to inspect token usage on the connected OneLab server. Choose today, 7, 30 or 90 days, all time, or a custom range. Dates follow your browser's time zone, including daylight-saving changes. Project, provider and model filters apply to the summary, charts and breakdowns. The activity grid opens a single day's usage; model and project details can narrow the view, and session details open the producing conversation. CSV exports the selected breakdown and period.
+
+Input tokens include uncached input, cache reads and cache writes; total tokens equal input plus output. Reasoning is part of output and is never added a second time. Cache hit rate is cache reads divided by all input tokens. Usage Stats tracks tokens only, including custom and third-party providers, with no price or cost calculations.
+
+The local numeric ledger also records background model calls such as title generation and compaction. It contains no prompts, answers or credentials and does not depend on trace-sharing consent. New records survive session deletion; historical data can only be recovered from retained conversations. Inherited messages in forked conversations are excluded. Failed or interrupted calls without a provider usage response cannot be reconstructed. Selecting a remote server shows that server's records; its backend must support Usage Stats.
+
+An invalid custom date range stops the previous query and explains which dates need correction. Changing servers clears the previous server's report, including while the date range is invalid.
 
 ## Custom model API protocols
 

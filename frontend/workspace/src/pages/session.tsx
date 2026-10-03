@@ -1,4 +1,5 @@
 import { delegatedAssignment } from "./session-delegation"
+import { createSessionPrefetch } from "@/context/session-prefetch"
 import {
   createEffect,
   createMemo,
@@ -17,6 +18,16 @@ import { SessionTurn } from "@synsci/ui/session-turn"
 import { isContinuationCarrier } from "@synsci/ui/session-turn-carrier"
 import { createAutoScroll } from "@synsci/ui/hooks"
 import { useSync } from "@/context/sync"
+import { useLocal } from "@/context/local"
+import { createStore, reconcile } from "solid-js/store"
+import { Persist, persisted } from "@/utils/persist"
+import { ModelSwitchNotice } from "./session-model-switch-notice"
+import {
+  pendingModelSwitch,
+  rememberModelSwitch,
+  sessionModelSwitches,
+  type ModelSwitchDrafts,
+} from "./session-model-switch"
 import { useSDK } from "@/context/sdk"
 import { useLayout } from "@/context/layout"
 import { usePrompt } from "@/context/prompt"
@@ -90,6 +101,11 @@ export default function Page(): JSX.Element {
   const navigate = useNavigate()
   const sync = useSync()
   const sdk = useSDK()
+  const local = useLocal()
+  const [modelDrafts, setModelDrafts] = persisted(
+    Persist.workspace(sdk.scope, "model-switch-drafts"),
+    createStore<{ sessions: ModelSwitchDrafts }>({ sessions: {} }),
+  )
   const layout = useLayout()
   const prompt = usePrompt()
   const terminal = useTerminal()
@@ -106,6 +122,7 @@ export default function Page(): JSX.Element {
   const sessionTabs = createSessionTabs()
   const hydration = new Map<string, Promise<void>>()
   const prewarmed = new Set<string>()
+  let warmingTab = false
   // A transcript that failed to load must say so instead of posing as a new,
   // empty conversation.
   const [loadFailure, setLoadFailure] = createSignal<{ id: string; message: string }>()
@@ -272,6 +289,20 @@ export default function Page(): JSX.Element {
     navigate(`/${params.dir}/session/${target}${location.search}${location.hash}`, { replace: true })
   })
 
+  const openConversation = async (id: string) => {
+    setLoadFailure(undefined)
+    setOpening(id)
+    try {
+      await hydrateSession(id)
+    } catch (error) {
+      // 已离开的会话不能覆盖当前错误状态，也不能触发当前路由跳转。
+      if (params.id !== id || discardUnavailableSession(id, error)) return
+      setLoadFailure({ id, message: error instanceof Error ? error.message : String(error) })
+    } finally {
+      setOpening((current) => (current === id ? undefined : current))
+    }
+  }
+
   // When the active session id changes, hydrate that session's messages
   // (and parts) into the store. Without this the chat panel shows blank
   // when you click an existing session — sync.session.sync() pulls the
@@ -281,34 +312,24 @@ export default function Page(): JSX.Element {
       () => params.id,
       (id) => {
         if (!id || id === "new") return
-        setLoadFailure(undefined)
-        setOpening(id)
-        ;(async () => {
-          try {
-            await hydrateSession(id)
-          } catch (error) {
-            if (discardUnavailableSession(id, error)) return
-            setLoadFailure({ id, message: error instanceof Error ? error.message : String(error) })
-          } finally {
-            setOpening((current) => (current === id ? undefined : current))
-          }
-        })()
+        void openConversation(id)
       },
     ),
   )
 
-  // Hydrate child (sub-agent) sessions of the active session regardless of
-  // which right-pane tab is open, so the inline turn status and back-to-parent
-  // navigation populate immediately and survive a reload.
-  const hydratedChildren = new Set<string>()
+  // 当前会话先落屏，子会话再逐个预取，避免争用远端连接。失败的子会话仍可在打开时重试。
+  const childPrefetch = createSessionPrefetch({
+    load: (id) => sync.session.sync(id),
+    failed: (id, error) => console.warn("Failed to prefetch child session", { id, error }),
+  })
+  onCleanup(() => childPrefetch.dispose())
   createEffect(() => {
     const id = params.id
-    if (!id || id === "new") return
-    for (const child of sync.data.session) {
-      if (child.parentID !== id || hydratedChildren.has(child.id)) continue
-      hydratedChildren.add(child.id)
-      void sync.session.sync(child.id).catch(() => {})
-    }
+    childPrefetch.schedule(
+      !id || id === "new" || opening() === id
+        ? []
+        : sync.data.session.filter((child) => child.parentID === id).map((child) => child.id),
+    )
   })
 
   const project = createMemo(() => sync.project)
@@ -496,6 +517,36 @@ export default function Page(): JSX.Element {
   // A message is a compaction boundary when it carries a `compaction` part.
   const compactionPart = (id: string) => (sync.data.part[id] ?? []).find((part) => part.type === "compaction")
   const hasCompactionPart = (id: string) => Boolean(compactionPart(id))
+  const modelSwitches = createMemo(() =>
+    sessionModelSwitches(
+      turnMessages().flatMap((message) =>
+        message.role === "user" && !hasCompactionPart(message.id) ? [{ id: message.id, model: message.model }] : [],
+      ),
+    ),
+  )
+  createEffect(
+    on(
+      () => local.model.selection()?.revision,
+      () => {
+        const id = params.id
+        const selection = local.model.selection()
+        if (!id || id === "new" || !selection) return
+        setModelDrafts(
+          "sessions",
+          reconcile(rememberModelSwitch(modelDrafts.sessions, id, modelSwitches().last, selection.model)),
+        )
+      },
+      { defer: true },
+    ),
+  )
+  const pendingModel = createMemo(() => {
+    const model = local.model.current()
+    return pendingModelSwitch(
+      modelSwitches().last,
+      modelDrafts.sessions[params.id ?? ""],
+      model ? { providerID: model.provider.id, modelID: model.id } : undefined,
+    )
+  })
   const compactionSummary = (id: string) => {
     const assistant = messages().find((message) => message.role === "assistant" && message.parentID === id)
     if (!assistant) return undefined
@@ -676,7 +727,7 @@ export default function Page(): JSX.Element {
       {
         id: "documentation.open",
         title: "Open documentation",
-        description: "Read the OpenScience documentation",
+        description: "Read the OneLab documentation",
         category: "Help",
         onSelect: () => platform.openLink(URLS.docs),
       },
@@ -985,11 +1036,17 @@ export default function Page(): JSX.Element {
             onReorder={(id, to) => sessionTabs.move(id, to)}
             onRename={renameSession}
             onWarm={(id) => {
-              if (id === "new" || id === params.id || prewarmed.has(id)) return
+              if (id === "new" || id === params.id || prewarmed.has(id) || warmingTab || opening()) return
               prewarmed.add(id)
-              void hydrateSession(id).catch((error) => {
-                if (!discardUnavailableSession(id, error)) prewarmed.delete(id)
-              })
+              warmingTab = true
+              void hydrateSession(id)
+                .catch((error) => {
+                  prewarmed.delete(id)
+                  console.warn("Failed to prefetch session tab", { id, error })
+                })
+                .finally(() => {
+                  warmingTab = false
+                })
             }}
             onBack={() => workspaces.open("")}
             onToggleSessions={() => workspaces.mobile(true)}
@@ -1020,6 +1077,21 @@ export default function Page(): JSX.Element {
                 position: "relative",
               }}
             >
+              <Show when={params.id && messages().length > 0 && loadFailure()?.id === params.id}>
+                <div
+                  role="alert"
+                  class="mx-4 mt-3 flex items-center justify-between gap-3 rounded-md border border-border-base px-3 py-2 text-12-regular text-text-weak"
+                >
+                  <span>Showing saved conversation content. Refresh failed: {loadFailure()?.message}</span>
+                  <button
+                    type="button"
+                    class="session-empty__starter"
+                    onClick={() => params.id && void openConversation(params.id)}
+                  >
+                    Try again
+                  </button>
+                </div>
+              </Show>
               <Switch>
                 <Match when={params.id === undefined}>
                   <div class="session-empty" role="status" aria-live="polite">
@@ -1038,11 +1110,7 @@ export default function Page(): JSX.Element {
                           onClick={() => {
                             const id = params.id
                             if (!id) return
-                            setLoadFailure(undefined)
-                            void hydrateSession(id).catch((error) => {
-                              if (discardUnavailableSession(id, error)) return
-                              setLoadFailure({ id, message: error instanceof Error ? error.message : String(error) })
-                            })
+                            void openConversation(id)
                           }}
                         >
                           Try again
@@ -1199,6 +1267,9 @@ export default function Page(): JSX.Element {
                         <For each={turnMessages()}>
                           {(message, index) => (
                             <div data-message-id={message.id} class="min-w-0 w-full max-w-full">
+                              <Show when={modelSwitches().before[message.id]}>
+                                {(change) => <ModelSwitchNotice change={change()} providers={sync.data.provider.all} />}
+                              </Show>
                               <Show
                                 when={!hasCompactionPart(message.id)}
                                 fallback={
@@ -1278,12 +1349,23 @@ export default function Page(): JSX.Element {
                               {/* The v1.1.116 between-turns rule — skipped for a
                                   compaction row, which already draws its own "context
                                   compacted" divider (avoids a doubled rule). */}
-                              <Show when={index() < turnMessages().length - 1 && !hasCompactionPart(message.id)}>
+                              <Show
+                                when={
+                                  index() < turnMessages().length - 1 &&
+                                  !hasCompactionPart(message.id) &&
+                                  !modelSwitches().before[turnMessages()[index() + 1]?.id]
+                                }
+                              >
                                 <div class="session-turn-divider" />
                               </Show>
                             </div>
                           )}
                         </For>
+                        <Show when={pendingModel()}>
+                          {(change) => (
+                            <ModelSwitchNotice change={change()} providers={sync.data.provider.all} pending />
+                          )}
+                        </Show>
                       </div>
                     </div>
 

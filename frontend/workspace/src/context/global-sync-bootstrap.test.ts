@@ -208,6 +208,32 @@ const projects = [
 ]
 
 describe("project bootstrap", () => {
+  test("session lists load while unrelated project configuration is still pending", async () => {
+    let release: (() => void) | undefined
+    const fake = createFakeServer(projects)
+    const fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(input, init)
+      const response = await fake.fetch(request)
+      if (
+        new URL(request.url).pathname === "/config" &&
+        request.headers.get("x-openscience-directory") === "/research/a"
+      ) {
+        return new Promise<Response>((resolve) => {
+          release = () => resolve(response)
+        })
+      }
+      return response
+    }) as typeof globalThis.fetch
+    const sync = mount(fetch)
+    await until(() => !!sync())
+    const [store] = sync()!.child("/research/a", { projectID: "prj_a" })
+    await until(() => !!release)
+    await until(() => fake.hits.some((hit) => hit.path === "/session" && hit.directory === "/research/a"))
+    expect(store.status).toBe("loading")
+    release!()
+    await until(() => store.status === "complete")
+  })
+
   test("credential-triggered runtime disposal refreshes data without hiding a loaded session", async () => {
     let release: (() => void) | undefined
     let hold = false

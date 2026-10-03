@@ -127,8 +127,8 @@ describe("source menu", () => {
 
     expect(host.querySelector("[data-source-menu]")).not.toBeNull()
     expect([...host.querySelectorAll("[data-source-group]")].map((n) => n.textContent)).toEqual([
-      "Working files",
       "Results",
+      "Working files",
     ])
   })
 
@@ -289,7 +289,8 @@ describe("source menu", () => {
     host.querySelector<HTMLButtonElement>("[data-source-button]")?.click()
     await Promise.resolve()
 
-    const focused = document.activeElement as HTMLElement
+    const focused = host.querySelector<HTMLElement>('[data-source-item="project"]')!
+    focused.focus()
     expect(focused.getAttribute("data-source-item")).toBe("project")
 
     // A filesystem snapshot refresh rebuilds PaneSource objects. Browsers
@@ -380,6 +381,37 @@ describe("source menu", () => {
     await Promise.resolve()
 
     expect(host.querySelector("[data-source-menu]")?.getAttribute("data-align")).toBe("end")
+  })
+
+  test("keeps the entire menu inside a narrow pane when neither trigger alignment fits", async () => {
+    const watched = observeResizes()
+    const host = mount(() => subject.SourceMenu({ sources: SOURCES, active: SOURCES[1]!, onPick: () => {} }))
+    host.className = "files-pane"
+    const resize = layout(
+      [
+        { match: ".files-pane", left: 900, right: 1260 },
+        { match: ".files-source__button", left: 1080, right: 1160 },
+        { match: ".files-menu", left: 860, right: 1160 },
+      ],
+      1440,
+    )
+    host.querySelector<HTMLButtonElement>("[data-source-button]")?.click()
+    await Promise.resolve()
+    const menu = host.querySelector<HTMLElement>("[data-source-menu]")!
+    const x = 1080 + Number.parseFloat(menu.style.left)
+    expect(x).toBeGreaterThanOrEqual(908)
+    expect(x + Number.parseFloat(menu.style.width)).toBeLessThanOrEqual(1252)
+
+    resize([
+      { match: ".files-pane", left: 1000, right: 1260 },
+      { match: ".files-source__button", left: 1080, right: 1160 },
+      { match: ".files-menu", left: x, right: x + 300 },
+    ])
+    watched.forEach((entry) => entry.resize())
+    const resizedX = 1080 + Number.parseFloat(menu.style.left)
+    expect(resizedX).toBeGreaterThanOrEqual(1008)
+    expect(resizedX + Number.parseFloat(menu.style.width)).toBeLessThanOrEqual(1252)
+    expect(Number.parseFloat(menu.style.width)).toBe(244)
   })
 
   test("watches nothing once the menu is closed", async () => {

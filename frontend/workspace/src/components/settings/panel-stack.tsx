@@ -1,6 +1,7 @@
 import { Dynamic } from "solid-js/web"
-import { For, Suspense, createEffect, onCleanup, type Accessor, type Component } from "solid-js"
+import { ErrorBoundary, For, Suspense, createEffect, onCleanup, type Accessor, type Component } from "solid-js"
 import { AtomLoader } from "@synsci/ui/atom-loader"
+import { Button } from "@synsci/ui/button"
 
 export interface SettingsPanelStackItem<Id extends string = string> {
   id: Id
@@ -50,15 +51,30 @@ export function SettingsPanelStack<Id extends string>(props: {
           inert={props.active() !== panel.id}
           tabIndex={-1}
         >
-          <Suspense
-            fallback={
-              <div class="settings-panel-loading" role="status" aria-label="Loading settings">
-                <AtomLoader size={144} caption="Loading settings" />
+          <ErrorBoundary
+            fallback={(error, reset) => (
+              <div class="settings-page-body">
+                <div role="alert" class="settings-alert" data-tone="critical">
+                  <span>
+                    These settings could not be loaded. {error instanceof Error ? error.message : String(error)}
+                  </span>
+                  <Button size="small" variant="secondary" onClick={reset}>
+                    Retry
+                  </Button>
+                </div>
               </div>
-            }
+            )}
           >
-            <Dynamic component={panel.component} />
-          </Suspense>
+            <Suspense
+              fallback={
+                <div class="settings-panel-loading" role="status" aria-label="Loading settings">
+                  <AtomLoader size={144} caption="Loading settings" />
+                </div>
+              }
+            >
+              <Dynamic component={panel.component} />
+            </Suspense>
+          </ErrorBoundary>
         </section>
       )}
     </For>

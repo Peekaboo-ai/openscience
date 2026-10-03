@@ -86,9 +86,7 @@ describe("frontend execution authority", () => {
           capability: "remote_job",
         }),
       ),
-    ).toBe(
-      "A verified OS sandbox is required to dispatch a remote job. OpenScience could not enforce one on this computer.",
-    )
+    ).toBe("A verified OS sandbox is required to dispatch a remote job. OneLab could not enforce one on this computer.")
     expect(executionAuthorityError(new Error("503 Service Unavailable"))).toBe(
       "Execution access could not be verified. 503 Service Unavailable",
     )

@@ -27,22 +27,18 @@ import { TextContentView } from "@/atlas/files/TextContentView"
 import { resolveViewer } from "@/atlas/files/viewer-registry"
 import { fileErrorMessage, isFileRequestCancellation } from "@/atlas/file-viewer"
 import { createStoredArtifactPreview } from "@/artifacts/preview"
+import { createStoredArtifactActions } from "@/artifacts/actions"
 import { assetUrl, localAssetPath } from "@/utils/markdown-assets"
 import { rawFileQuery } from "@/utils/project-file"
 import {
   downloadBlob,
-  requestStoredArtifact,
   STORED_ARTIFACT_PREVIEW_LIMIT,
   STORED_PDF_PREVIEW_LIMIT,
   storedArtifactPreviewKind,
   type StoredArtifactPreview,
 } from "@/artifacts/bytes"
-import {
-  normalizeStoredArtifact,
-  normalizeStoredArtifactDetail,
-  type StoredArtifact,
-  type StoredArtifactVersion,
-} from "@/artifacts/store"
+import { normalizeStoredArtifactDetail, type StoredArtifact, type StoredArtifactVersion } from "@/artifacts/store"
+import "@/atlas/files/artifact-preview.css"
 
 type Action = "menu" | "rename" | "delete"
 
@@ -72,8 +68,6 @@ export function StoredArtifactView(props: { artifact: StoredArtifact }): JSX.Ele
   const previewScope = () => `${sdk.url}\n${sdk.scope}`
   const [action, setAction] = createSignal<Action>()
   const [name, setName] = createSignal(props.artifact.title)
-  const [busy, setBusy] = createSignal(false)
-  const [downloading, setDownloading] = createSignal(false)
   let actionTrigger: HTMLButtonElement | undefined
   let actionPanelElement: HTMLElement | undefined
   const [detail, detailActions] = createResource(
@@ -93,6 +87,7 @@ export function StoredArtifactView(props: { artifact: StoredArtifact }): JSX.Ele
     return current.record
   }
   createEffect(() => {
+    previewScope()
     props.artifact.id
     setAction()
     setName(props.artifact.title)
@@ -116,7 +111,7 @@ export function StoredArtifactView(props: { artifact: StoredArtifact }): JSX.Ele
   const selected = createMemo(() => {
     const current = record()
     if (!current || current.id !== props.artifact.id) return
-    return current.current
+    return current.versions.find((version) => version.id === props.artifact.currentVersionID)
   })
   const [preview, previewActions] = createStoredArtifactPreview(sdk.request, () => ({
     scope: previewScope(),
@@ -134,54 +129,35 @@ export function StoredArtifactView(props: { artifact: StoredArtifact }): JSX.Ele
       return
     return current.data
   }
-  const download = async (version: StoredArtifactVersion) => {
-    if (downloading()) return
-    setDownloading(true)
-    return requestStoredArtifact(sdk.request, props.artifact.id, version.id, true)
-      .then((response) => response.blob())
-      .then((blob) => downloadBlob(version.filename, blob))
-      .catch((error) => toast.error("download failed", error instanceof Error ? error.message : String(error)))
-      .finally(() => setDownloading(false))
-  }
+  const actions = createStoredArtifactActions({
+    artifact: () => props.artifact,
+    scope: previewScope,
+    request: sdk.request,
+    renamed: (updated) => {
+      uiStore.updateSaved(updated)
+      setName(updated.title)
+      closeActions(true)
+      void detailActions.refetch()
+      window.dispatchEvent(new CustomEvent("openscience:artifacts-changed"))
+      toast.success("Result renamed", updated.title)
+    },
+    removed: (id) => {
+      window.dispatchEvent(new CustomEvent("openscience:artifacts-changed"))
+      uiStore.closeWorkTab(`saved:${id}`)
+      toast.success("Result moved to Trash", "Recoverable from Files for 30 days.")
+    },
+    downloaded: downloadBlob,
+    failed: (operation, error) =>
+      toast.error(`${operation} failed`, error instanceof Error ? error.message : String(error)),
+  })
+  const busy = () => actions.state.busy
+  const downloading = () => actions.state.downloading
+  const download = actions.download
   const rename = (event: SubmitEvent) => {
     event.preventDefault()
-    const title = name().trim()
-    if (!title || busy()) return
-    setBusy(true)
-    sdk
-      .request(`/file/artifact-store/${encodeURIComponent(props.artifact.id)}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title }),
-      })
-      .then(async (response) => {
-        if (!response.ok) throw new Error((await response.text()) || `Rename failed (${response.status})`)
-        const updated = normalizeStoredArtifact(await response.json())
-        if (!updated) throw new Error("The renamed Result record is malformed.")
-        uiStore.updateSaved(updated)
-        setName(updated.title)
-        closeActions(true)
-        void detailActions.refetch()
-        window.dispatchEvent(new CustomEvent("openscience:artifacts-changed"))
-        toast.success("Result renamed", updated.title)
-      })
-      .catch((error) => toast.error("rename failed", error instanceof Error ? error.message : String(error)))
-      .finally(() => setBusy(false))
+    void actions.rename(name())
   }
-  const remove = () => {
-    if (busy()) return
-    setBusy(true)
-    sdk
-      .request(`/file/artifact-store/${encodeURIComponent(props.artifact.id)}`, { method: "DELETE" })
-      .then(async (response) => {
-        if (!response.ok) throw new Error((await response.text()) || `Delete failed (${response.status})`)
-        window.dispatchEvent(new CustomEvent("openscience:artifacts-changed"))
-        uiStore.closeWorkTab(`saved:${props.artifact.id}`)
-        toast.success("Result moved to Trash", "Recoverable from Files for 30 days.")
-      })
-      .catch((error) => toast.error("delete failed", error instanceof Error ? error.message : String(error)))
-      .finally(() => setBusy(false))
-  }
+  const remove = actions.remove
   const closeActions = (restoreFocus = false) => {
     setAction()
     if (restoreFocus) queueMicrotask(() => actionTrigger?.focus())
@@ -206,8 +182,10 @@ export function StoredArtifactView(props: { artifact: StoredArtifact }): JSX.Ele
           <span style={fileIcon()}>
             <IconFile size={18} strokeWidth={1.5} />
           </span>
-          <span style={{ flex: 1, "min-width": 0 }}>
-            <strong style={title()}>{record()?.title ?? props.artifact.title}</strong>
+          <span style={{ flex: "1 1 120px", "min-width": 0 }}>
+            <strong style={title()} title={record()?.title ?? props.artifact.title}>
+              {record()?.title ?? props.artifact.title}
+            </strong>
             <span style={meta()}>
               {label(selected(), record()?.kind ?? props.artifact.kind)} ·{" "}
               {size(selected()?.size ?? props.artifact.current.size)}
@@ -528,6 +506,7 @@ function Preview(props: {
 const header = (): JSX.CSSProperties => ({
   position: "relative",
   display: "flex",
+  "flex-wrap": "wrap",
   "align-items": "center",
   gap: "10px",
   padding: "14px 16px",
@@ -546,6 +525,7 @@ const actionScrim = (): JSX.CSSProperties => ({
   cursor: "default",
 })
 const fileIcon = (): JSX.CSSProperties => ({
+  flex: "none",
   width: "32px",
   height: "32px",
   display: "grid",
@@ -565,6 +545,9 @@ const title = (): JSX.CSSProperties => ({
 })
 const meta = (): JSX.CSSProperties => ({
   display: "block",
+  overflow: "hidden",
+  "text-overflow": "ellipsis",
+  "white-space": "nowrap",
   "margin-top": "2px",
   color: "var(--color-text-muted)",
   "font-size": "11px",

@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import { spawn } from "node:child_process"
 import { once } from "node:events"
 import { fileURLToPath } from "node:url"
@@ -40,3 +40,46 @@ test("cancelled requests and failed terminal subscribers do not tear down the sh
     await exited
   }
 }, 15_000)
+
+test.each(["cancelled", "disconnected"])(
+  "%s requests settle while SSH is blocked writing",
+  async (reason) => {
+    const child = spawn(
+      process.execPath,
+      [fileURLToPath(new URL("./fixtures/peer.ts", import.meta.url)), "--no-read"],
+      {
+        stdio: "pipe",
+        windowsHide: true,
+      },
+    )
+    const exited = once(child, "close")
+    const client = new RemoteClient(child, () => undefined)
+    try {
+      await client.ready
+      using writing = spyOn(child.stdin, "write")
+      const controller = new AbortController()
+      const pending = client
+        .request("/blocked", { method: "POST", body: "x".repeat(8 * 1024 * 1024), signal: controller.signal })
+        .catch((error: unknown) => error)
+      const deadline = Date.now() + 2000
+      while (!writing.mock.calls.length && Date.now() < deadline) await Bun.sleep(5)
+      expect(writing.mock.calls.length).toBe(1)
+      if (reason === "cancelled") controller.abort()
+      else client.close()
+      const timeout = Promise.withResolvers<never>()
+      const timer = setTimeout(() => timeout.reject(new Error("Cancelled request is still waiting for SSH")), 1000)
+      try {
+        const result = await Promise.race([pending, timeout.promise])
+        expect(result).toBeInstanceOf(Error)
+        expect((result as Error).message).toContain(reason)
+      } finally {
+        clearTimeout(timer)
+      }
+    } finally {
+      client.close()
+      child.kill()
+      await exited
+    }
+  },
+  15_000,
+)

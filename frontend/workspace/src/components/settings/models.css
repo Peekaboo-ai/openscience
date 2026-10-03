@@ -483,8 +483,6 @@
 .settings-dialog .settings-models-panel .settings-model-row {
   min-height: 50px;
   padding-block: 6px;
-  content-visibility: auto;
-  contain-intrinsic-size: auto 50px;
 }
 
 .settings-dialog .settings-models-panel .settings-icon-action {

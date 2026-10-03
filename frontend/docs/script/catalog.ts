@@ -104,7 +104,7 @@ const library = [
             "| [" +
             entry.name.replaceAll("[", "\\[").replaceAll("]", "\\]") +
             "](https://github.com/synthetic-sciences/openscience/blob/main/backend/cli/skills/" +
-            entry.file.split("/").map(encodeURIComponent).join("/") +
+            entry.file.split(/[\\/]/).map(encodeURIComponent).join("/") +
             ") | " +
             cell(summary(entry.name, entry.description)) +
             " |",
@@ -256,7 +256,8 @@ for (const [name, source] of [
 ]) {
   const file = Bun.file(path.join(content, name))
   if (check) {
-    if (!(await file.exists()) || (await file.text()) !== source)
+    // Git 在 Windows 检出为 CRLF；内容校验不能将同一文档的换行差异当成过期。
+    if (!(await file.exists()) || (await file.text()).replace(/\r\n/g, "\n") !== source)
       throw new Error(name + " is stale. Run bun run --cwd frontend/docs catalog.")
   } else await Bun.write(file, source)
 }

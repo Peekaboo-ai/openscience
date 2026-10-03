@@ -30,7 +30,9 @@ import { showToast } from "@synsci/ui/toast"
 import { useLanguage } from "@/context/language"
 import { uiStore } from "@/atlas/store/ui"
 import { artifactContext } from "@/artifacts/context"
-import { normalizeStoredArtifact, savedResultLabel } from "@/artifacts/store"
+import { normalizeStoredArtifact, normalizeStoredArtifactDetail, savedResultLabel } from "@/artifacts/store"
+import { SessionArtifacts } from "@/artifacts/SessionArtifacts"
+import { createArtifactPublication } from "@/artifacts/publication"
 import { ProjectWorkspaceFrame } from "@/atlas/ProjectWorkspaceFrame"
 import { useGlobalSync } from "@/context/global-sync"
 import { useLayout } from "@/context/layout"
@@ -43,6 +45,7 @@ import {
   looksLikeProjectSegment,
   projectAliasID,
   projectPathname,
+  projectScopeKey,
   resolveProjectAlias,
   resolveProjectRoute,
 } from "@/utils/project-route"
@@ -113,7 +116,7 @@ export default function Layout(props: ParentProps) {
   const projectID = createMemo(() => active()?.projectID)
   const scope = createMemo(() => {
     const project = active()?.segment ?? projectID() ?? directory()
-    return project && server.url.includes("/remote-workspaces/") ? `${server.url}::${project}` : project
+    return projectScopeKey(server.url, project)
   })
 
   createComputed(() => {
@@ -176,6 +179,7 @@ export default function Layout(props: ParentProps) {
                 const sdk = useSDK()
                 const dialog = useDialog()
                 const receipts = sessionReceipts(sdk.request)
+                const publication = createArtifactPublication(sdk.request)
 
                 const respond = (input: {
                   sessionID: string
@@ -212,16 +216,24 @@ export default function Layout(props: ParentProps) {
                   uiStore.openFile(dir, path, { scope: "auto" })
                 }
 
-                const openArtifact = (id: string) => {
+                const openArtifact = (id: string, versionID?: string) => {
+                  const scope = `${sdk.url}\n${sdk.scope}`
                   void sdk
                     .request(`/file/artifact-store/${encodeURIComponent(id)}`)
                     .then(async (response) => {
                       if (!response.ok) throw new Error(`artifact could not be opened (${response.status})`)
-                      const artifact = normalizeStoredArtifact(await response.json())
+                      const value = await response.json()
+                      const artifact = normalizeStoredArtifact(value)
                       if (!artifact) throw new Error("artifact metadata is invalid")
-                      uiStore.openSaved(artifact)
+                      const version = versionID
+                        ? normalizeStoredArtifactDetail(value)?.versions.find((item) => item.id === versionID)
+                        : artifact.current
+                      if (!version) throw new Error("artifact version is unavailable")
+                      if (`${sdk.url}\n${sdk.scope}` !== scope) return
+                      uiStore.openSaved({ ...artifact, currentVersionID: version.id, current: version })
                     })
                     .catch((error: unknown) => {
+                      if (`${sdk.url}\n${sdk.scope}` !== scope) return
                       showToast({
                         variant: "error",
                         title: "artifact could not be opened",
@@ -332,6 +344,16 @@ export default function Layout(props: ParentProps) {
                     onLoadComputeJob={receipts.job}
                     onResolveFileReceipts={receipts.files}
                     onSaveArtifact={saveArtifact}
+                    renderArtifacts={(turn) => (
+                      <SessionArtifacts
+                        {...turn}
+                        scope={JSON.stringify([sdk.url, sdk.scope])}
+                        load={publication}
+                        request={sdk.request}
+                        onOpen={(artifact) => uiStore.openSaved(artifact)}
+                        onOpenFile={openFile}
+                      />
+                    )}
                     onOpenCredentials={() => dialog.show(() => <DialogSettings initial="credentials" />)}
                     onResendTurn={resendTurn}
                   >

@@ -417,8 +417,8 @@ export function FolderPicker(props: PickerProps): JSX.Element {
                           </strong>
                           <p>
                             To list this folder, the <code>openscience</code> binary needs Full Disk Access. For now,
-                            paste the absolute path of the folder you want into the path field above. OpenScience can
-                            still open a path you provide explicitly.
+                            paste the absolute path of the folder you want into the path field above. OneLab can still
+                            open a path you provide explicitly.
                           </p>
                         </Show>
                       </Show>

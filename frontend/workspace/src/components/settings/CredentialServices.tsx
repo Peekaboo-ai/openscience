@@ -414,7 +414,7 @@ export const CredentialServices: Component<{
               placeholder="Paste secret"
               onInput={setSecret}
             />
-            <p class="break-words">OpenScience will make this available as SERVICE_NAME_ENVIRONMENT_FIELD.</p>
+            <p class="break-words">OneLab will make this available as SERVICE_NAME_ENVIRONMENT_FIELD.</p>
             <div class="credential-form-actions max-w-full flex-wrap">
               <Button
                 type="submit"

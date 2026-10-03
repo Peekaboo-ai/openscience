@@ -74,6 +74,8 @@ import type {
   FileAnnotationsUpdateResponses,
   FileArtifactSaveErrors,
   FileArtifactSaveResponses,
+  FileArtifactsPublishErrors,
+  FileArtifactsPublishResponses,
   FileArtifactsResponses,
   FileArtifactStoreGetErrors,
   FileArtifactStoreGetResponses,
@@ -459,6 +461,8 @@ import type {
   SettingsUpdatesStateResponses,
   SettingsUsageLoggingGetResponses,
   SettingsUsageLoggingUpdateResponses,
+  SettingsUsageStatsGetErrors,
+  SettingsUsageStatsGetResponses,
   SettingsWalletGetResponses,
   SubtaskPartInput,
   TextPartInput,
@@ -2056,6 +2060,52 @@ export class UsageLogging extends HeyApiClient {
   }
 }
 
+export class UsageStats extends HeyApiClient {
+  /**
+   * Get token usage, trends and project, session and model breakdowns for this server
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters?: {
+      range?: "today" | "7d" | "30d" | "90d" | "all" | "custom"
+      timeZone?: string
+      from?: string
+      to?: string
+      project?: string
+      provider?: string
+      model?: string
+      refresh?: "0" | "1"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "range" },
+            { in: "query", key: "timeZone" },
+            { in: "query", key: "from" },
+            { in: "query", key: "to" },
+            { in: "query", key: "project" },
+            { in: "query", key: "provider" },
+            { in: "query", key: "model" },
+            { in: "query", key: "refresh" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SettingsUsageStatsGetResponses,
+      SettingsUsageStatsGetErrors,
+      ThrowOnError
+    >({
+      url: "/settings/usage-stats",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class Updates extends HeyApiClient {
   /**
    * Check for an OpenScience update
@@ -2498,6 +2548,11 @@ export class Settings extends HeyApiClient {
   private _usageLogging?: UsageLogging
   get usageLogging(): UsageLogging {
     return (this._usageLogging ??= new UsageLogging({ client: this.client }))
+  }
+
+  private _usageStats?: UsageStats
+  get usageStats(): UsageStats {
+    return (this._usageStats ??= new UsageStats({ client: this.client }))
   }
 
   private _updates?: Updates
@@ -6802,6 +6857,51 @@ export class Trash extends HeyApiClient {
   }
 }
 
+export class Artifacts extends HeyApiClient {
+  /**
+   * Publish completed conversation outputs
+   *
+   * Save readable files explicitly linked in a completed answer as session-associated immutable Results. Repeated requests reuse saved versions and respect Trash.
+   */
+  public publish<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      sessionID: string
+      messageID: string
+      messageIDs?: Array<string>
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "sessionID" },
+            { in: "body", key: "messageID" },
+            { in: "body", key: "messageIDs" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      FileArtifactsPublishResponses,
+      FileArtifactsPublishErrors,
+      ThrowOnError
+    >({
+      url: "/file/artifacts/publish",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class Artifact extends HeyApiClient {
   /**
    * Save a file as a versioned artifact
@@ -7922,6 +8022,11 @@ export class File_ extends HeyApiClient {
   private _trash?: Trash
   get trash(): Trash {
     return (this._trash ??= new Trash({ client: this.client }))
+  }
+
+  private _artifacts?: Artifacts
+  get artifacts2(): Artifacts {
+    return (this._artifacts ??= new Artifacts({ client: this.client }))
   }
 
   private _artifact?: Artifact

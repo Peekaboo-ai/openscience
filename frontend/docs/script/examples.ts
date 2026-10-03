@@ -5,7 +5,7 @@ const root = path.resolve(import.meta.dir, "../../..")
 const directory = path.join(root, "frontend/docs/src/content/openscience")
 const examples = new Map<string, { source: string; page: string }>()
 for (const file of new Bun.Glob("*.mdx").scanSync({ cwd: directory })) {
-  const source = await Bun.file(path.join(directory, file)).text()
+  const source = (await Bun.file(path.join(directory, file)).text()).replace(/\r\n/g, "\n")
   for (const match of source.matchAll(/```typescript\n([\s\S]*?)\n```/g)) {
     const location = match[1].includes('"@synsci/plugin"') ? "tooling/plugin/src" : "tooling/sdk/js/src"
     const filename = path.join(root, location, "__docs_example_" + examples.size + ".ts")
@@ -27,7 +27,8 @@ const options: ts.CompilerOptions = {
 const host = ts.createCompilerHost(options)
 const read = host.getSourceFile.bind(host)
 host.getSourceFile = (filename, language, error, fresh) => {
-  const example = examples.get(filename)
+  // TypeScript 将 Windows 根文件转换为正斜杠，虚拟文件查找需还原为与 Map 相同的路径格式。
+  const example = examples.get(path.normalize(filename))
   return example
     ? ts.createSourceFile(filename, example.source, language, true)
     : read(filename, language, error, fresh)
@@ -36,7 +37,7 @@ const program = ts.createProgram([...examples.keys()], options, host)
 const errors = ts.getPreEmitDiagnostics(program)
 if (errors.length) {
   const message = ts.formatDiagnosticsWithColorAndContext(errors, {
-    getCanonicalFileName: (file) => examples.get(file)?.page ?? file,
+    getCanonicalFileName: (file) => examples.get(path.normalize(file))?.page ?? file,
     getCurrentDirectory: () => root,
     getNewLine: () => "\n",
   })

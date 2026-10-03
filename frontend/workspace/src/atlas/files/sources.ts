@@ -28,7 +28,8 @@ export interface PaneSource {
   live?: boolean
 }
 
-const ORDER: SourceGroup[] = ["Working files", "Results", "Remote", "Recovery"]
+// 产物入口置于长文件夹列表之前，窄侧栏打开 More 后无需先滚过所有工作目录。
+const ORDER: SourceGroup[] = ["Results", "Working files", "Remote", "Recovery"]
 
 export function buildSources(input: {
   projectRoot: string

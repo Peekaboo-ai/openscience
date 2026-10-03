@@ -115,6 +115,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     const model = (() => {
       const [ephemeral, setEphemeral] = createStore<{
         model: Record<string, ModelKey | undefined>
+        selection?: { model: ModelKey; revision: number }
       }>({
         model: {},
       })
@@ -244,6 +245,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         pinned,
         list: models.list,
         cycle,
+        selection: () => ephemeral.selection,
         set(model: ModelKey | undefined, options?: { recent?: boolean; remember?: boolean }) {
           batch(() => {
             const currentAgent = agent.current()
@@ -253,7 +255,11 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             if (selected) models.setVisibility(selected, true)
             // Only the user's own picks are remembered across projects; an
             // agent's configured model applies to that agent alone.
-            if (selected && (options?.recent || options?.remember)) models.selected.set(selected)
+            if (selected && (options?.recent || options?.remember)) {
+              models.selected.set(selected)
+              // 仅显式选择触发会话提示，避免模型目录加载或默认值变化伪造切换事件。
+              setEphemeral("selection", { model: selected, revision: (ephemeral.selection?.revision ?? 0) + 1 })
+            }
             if (options?.recent && selected) models.recent.push(selected)
           })
         },

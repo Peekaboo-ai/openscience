@@ -457,17 +457,26 @@ export function createContextState(options: { storage?: ContextStorage } = {}) {
   const openSaved = (artifact: StoredArtifact) => {
     const state = current()
     const tab = savedTab(artifact)
-    const tabs = ensure(own(state.workTabs ?? [], "files"), tab)
+    const existing = own(state.workTabs ?? [], "files")
+    // 同一制品的已有标签也必须切换到本次点击的版本，不能沿用其他会话打开的内容。
+    const tabs = existing.some((item) => item.id === tab.id)
+      ? existing.map((item) => (item.id === tab.id ? tab : item))
+      : ensure(existing, tab)
     update(select(state, tabs, tab.id))
   }
   const updateSaved = (artifact: StoredArtifact) => {
     const state = current()
     const id = savedTab(artifact).id
     if (!(state.workTabs ?? []).some((item) => item.id === id)) return
+    const existing = (state.workTabs ?? []).find((item) => item.id === id)
+    const selected =
+      existing?.kind === "saved"
+        ? { ...artifact, currentVersionID: existing.artifact.currentVersionID, current: existing.artifact.current }
+        : artifact
     update({
       ...state,
-      workTabs: (state.workTabs ?? []).map((item) => (item.id === id ? savedTab(artifact) : item)),
-      saved: state.activeWorkTab === id ? artifact : state.saved,
+      workTabs: (state.workTabs ?? []).map((item) => (item.id === id ? savedTab(selected) : item)),
+      saved: state.activeWorkTab === id ? selected : state.saved,
     })
   }
   const activateFile = (path: string) => {

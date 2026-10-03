@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import {
   SESSION_MESSAGE_CHUNK,
+  SESSION_INITIAL_MESSAGES,
+  fetchMessageWindow,
   createReconnectGenerationGuard,
   mergeHydratedMessages,
   nextReconnectHydrationLimit,
@@ -9,6 +11,52 @@ import {
 } from "./session-hydration"
 
 describe("session transcript hydration", () => {
+  test("a first route entry requests a small window even with refresh enabled", () => {
+    expect(sessionHydrationPlan({ hasSession: true, hasMessages: false, messageCount: 0, refresh: true }).limit).toBe(
+      80,
+    )
+  })
+
+  test("a partial refresh expands until it reaches cached history", async () => {
+    const calls: number[] = []
+    const all = Array.from({ length: 20 }, (_, i) => ({ info: { id: String(i).padStart(3, "0"), role: "user" } }))
+    const result = await fetchMessageWindow({
+      limit: 4,
+      cached: [{ id: "001" }],
+      fetch: async (limit) => {
+        calls.push(limit)
+        return all.slice(-limit)
+      },
+    })
+    expect(calls.length).toBe(2)
+    expect(result.items).toEqual(all)
+  })
+
+  test("an unusually long assistant turn includes its user question", async () => {
+    const all = Array.from({ length: 9 }, (_, i) => ({ info: { id: String(i), role: i === 0 ? "user" : "assistant" } }))
+    const result = await fetchMessageWindow({ limit: 4, cached: [], fetch: async (limit) => all.slice(-limit) })
+    expect(result.items).toEqual(all)
+    expect(result.limit).toBe(16)
+  })
+
+  test("a cold load does not fetch older history when the latest window is usable", async () => {
+    let calls = 0
+    const items = Array.from({ length: 80 }, (_, i) => ({ info: { id: String(i), role: "user" } }))
+    expect(
+      (
+        await fetchMessageWindow({
+          limit: 80,
+          cached: [],
+          fetch: async () => {
+            calls++
+            return items
+          },
+        })
+      ).items,
+    ).toBe(items)
+    expect(calls).toBe(1)
+  })
+
   test("revisiting a hydrated session refetches without truncating its cached history", () => {
     const cachedMessages = 800
     const plan = sessionHydrationPlan({
@@ -21,7 +69,7 @@ describe("session transcript hydration", () => {
 
     expect(plan.skip).toBe(false)
     expect(plan.loadMessages).toBe(true)
-    expect(plan.limit).toBe(cachedMessages + SESSION_MESSAGE_CHUNK)
+    expect(plan.limit).toBe(cachedMessages + SESSION_INITIAL_MESSAGES)
   })
 
   test("the refreshed snapshot updates known messages without dropping cached turns outside its window", () => {

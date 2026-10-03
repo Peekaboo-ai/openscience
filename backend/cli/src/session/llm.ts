@@ -30,6 +30,8 @@ import { resolveAccessRoute } from "./access-route"
 import { providerErrorMetadata } from "./provider-error"
 import { Toolset } from "./toolset"
 import { UsageLogging } from "./usage-logging"
+import { UsageStats } from "./usage-stats"
+import { Session } from "."
 
 export namespace LLM {
   const log = Log.create({ service: "llm" })
@@ -297,6 +299,8 @@ export namespace LLM {
       : undefined
     if (binding) UsageLogging.bind(binding)
     const partial = { text: "", reasoning: "", truncated: false }
+    const usageID = crypto.randomUUID()
+    let usageStep = 0
     const capture = (kind: "model.request" | "assistant.message" | "error", payload: Record<string, unknown>) =>
       binding
         ? UsageLogging.event(binding, kind, payload).catch(() => l.warn("could not persist trace record"))
@@ -313,6 +317,24 @@ export namespace LLM {
         await capture("assistant.message", { ...partial, interrupted: true })
       },
       async onStepFinish(step) {
+        await UsageStats.record({
+          id: `usage_${usageID}_${usageStep++}`,
+          projectID: Instance.project.id,
+          projectName: Instance.project.name || pathLabel(Instance.project.worktree),
+          sessionID: input.sessionID,
+          messageID: input.trace?.messageID ?? input.user.id,
+          providerID: routed.providerID,
+          modelID: routed.id,
+          route: traceRoute,
+          kind: input.trace ? "session" : "background",
+          usage: step.usage,
+          tokens: Session.getUsage({
+            model: input.model,
+            tier: input.user.tier,
+            usage: step.usage,
+            metadata: step.providerMetadata,
+          }).tokens,
+        }).catch(() => l.warn("could not persist local usage statistics"))
         if (!binding) return
         await UsageLogging.record({
           ...binding,
@@ -476,4 +498,8 @@ export namespace LLM {
   ): boolean {
     return model.providerID === "openai-codex" && auth?.type === "oauth"
   }
+}
+
+function pathLabel(value: string) {
+  return value.split(/[\\/]/).filter(Boolean).at(-1) ?? value
 }

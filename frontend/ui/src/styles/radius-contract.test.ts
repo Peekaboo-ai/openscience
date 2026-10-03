@@ -23,7 +23,7 @@ describe("shared UI radius contract", () => {
     const scrollbarExceptions: string[] = []
 
     for (const file of cssFiles(sourceRoot)) {
-      const name = relative(sourceRoot, file)
+      const name = relative(sourceRoot, file).replaceAll("\\", "/")
       let source = stripComments(readFileSync(file, "utf8"))
 
       if (name === "styles/tailwind/utilities.css") {

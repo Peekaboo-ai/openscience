@@ -1,4 +1,10 @@
-import { channel } from "../../../src/remote/protocol"
+import { channel, PREFIX } from "../../../src/remote/protocol"
+
+if (process.argv.includes("--no-read")) {
+  process.stdout.write(PREFIX + JSON.stringify({ id: "hello", type: "hello", version: 1, home: "/test" }) + "\n")
+  setInterval(() => undefined, 1000)
+  await new Promise(() => undefined)
+}
 
 const wire = channel(
   process.stdin,

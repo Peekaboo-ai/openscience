@@ -257,3 +257,31 @@ test("restart preserves queued inputs but requires explicit resume", async () =>
     },
   })
 })
+
+test("late settlement of an old run does not pause the successor queue", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const session = await Session.create({})
+      const input = { sessionID: session.id, effort: "normal" as const }
+      const first = await RuntimeRuns.admit({ ...input, message: "first" })
+      const cancelled = await RuntimeRuns.cancel(session.id, first.run.runID)
+      const second = await RuntimeRuns.admit({ ...input, message: "second" })
+      await RuntimeQueue.enqueue({ ...input, requestID: "third", message: "third" })
+      try {
+        await RuntimeQueue.settled(session.id, cancelled)
+        expect(await RuntimeQueue.get(session.id)).toMatchObject({
+          paused: false,
+          items: [{ input: { message: "third" } }],
+        })
+        expect((await RuntimeRuns.get(session.id, second.run.runID)).state).toBe("accepted")
+        const stopped = await RuntimeRuns.cancel(session.id, second.run.runID)
+        await RuntimeQueue.settled(session.id, stopped)
+        expect(await RuntimeQueue.get(session.id)).toMatchObject({ paused: true, reason: "cancelled" })
+      } finally {
+        await RuntimeRuns.cancel(session.id, second.run.runID)
+      }
+    },
+  })
+})

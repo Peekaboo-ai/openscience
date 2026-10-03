@@ -1,12 +1,16 @@
 import { createSimpleContext } from "@synsci/ui/context"
 import { createStore, reconcile } from "solid-js/store"
-import { batch, onCleanup, onMount } from "solid-js"
-import type { Project, Session } from "@synsci/sdk/v2/client"
+import { batch, createEffect, onCleanup, onMount, untrack } from "solid-js"
+import type { Project, Session, SessionStatus } from "@synsci/sdk/v2/client"
 import { useServer } from "@/context/server"
 import { usePlatform } from "@/context/platform"
 import { settingsApi } from "@/components/settings/api"
 import type { SessionContext } from "@/pages/session-sidebar-action"
 import { createConversationCache } from "./conversations"
+import { createRemoteConnections } from "./remote-connections"
+import { showToast } from "@synsci/ui/toast"
+import { serverEvents } from "@/context/server-events"
+import { createSessionActivity, type ActivityScope } from "./session-activity"
 
 export type RemoteTarget =
   | { kind: "ssh"; host_id: string }
@@ -59,6 +63,77 @@ export const { provider: WorkspaceProvider, use: useWorkspaces } = createSimpleC
     const api = <T,>(route: string, init?: RequestInit) =>
       settingsApi<T>(props.localUrl, platform.fetch ?? fetch, route, { ...init, signal: init?.signal ?? abort.signal })
     const remoteBase = (id: string) => `${props.localUrl}/remote-workspaces/${encodeURIComponent(id)}/api`
+    const activity = createSessionActivity(typeof localStorage === "undefined" ? undefined : localStorage)
+    const observed = new Map<string, { unsubscribe: () => void; abort: AbortController }>()
+    const scopes = (): ActivityScope[] => [
+      ...state.projects
+        .filter((project) => !project.time.archived)
+        .map((project) => ({ base: props.localUrl, projectID: project.id, directory: project.worktree })),
+      ...state.remotes.flatMap((remote) =>
+        remote.state === "connected" && remote.projectID && remote.directory
+          ? [{ base: remoteBase(remote.id), projectID: remote.projectID, directory: remote.directory }]
+          : [],
+      ),
+    ]
+    const initialized = new Set<string>()
+    const snapshots = new Map<string, number>()
+    const snapshot = async (scope: ActivityScope, signal: AbortSignal) => {
+      const id = JSON.stringify([scope.base, scope.projectID])
+      const attempt = (snapshots.get(id) ?? 0) + 1
+      snapshots.set(id, attempt)
+      const revision = activity.revision()
+      try {
+        const statuses = await settingsApi<Record<string, SessionStatus>>(
+          scope.base,
+          platform.fetch ?? fetch,
+          "/session/status",
+          { headers: { "x-openscience-project": scope.projectID }, signal },
+        )
+        // 重连可能与初次读取重叠；先发出的旧请求不能覆盖重连后的快照。
+        if (!signal.aborted && snapshots.get(id) === attempt) activity.snapshot(scope, statuses, revision)
+      } catch (error) {
+        // 网络故障不能当作任务结束；保留上次状态，重连后再用有效快照校准。
+        if (!signal.aborted && snapshots.get(id) === attempt) {
+          initialized.delete(id)
+          console.warn("Could not refresh conversation activity", error)
+        }
+      }
+    }
+    createEffect(() => {
+      const current = scopes()
+      const bases = new Set([props.localUrl, ...current.map((scope) => scope.base)])
+      untrack(() => {
+        for (const [base, observer] of observed) {
+          if (bases.has(base)) continue
+          observer.unsubscribe()
+          observer.abort.abort()
+          observed.delete(base)
+          for (const id of initialized) if (JSON.parse(id)[0] === base) initialized.delete(id)
+        }
+        for (const base of bases) {
+          if (observed.has(base)) continue
+          const controller = new AbortController()
+          const unsubscribe = serverEvents.subscribe(base, platform.fetch ?? fetch, (event) => {
+            activity.event(base, event)
+            if (event.payload.type !== "server.connected") return
+            for (const scope of scopes()) if (scope.base === base) void snapshot(scope, controller.signal)
+          })
+          observed.set(base, { unsubscribe, abort: controller })
+        }
+        for (const scope of current) {
+          const id = JSON.stringify([scope.base, scope.projectID])
+          if (initialized.has(id)) continue
+          initialized.add(id)
+          void snapshot(scope, observed.get(scope.base)!.abort.signal)
+        }
+      })
+    })
+    onCleanup(() => {
+      for (const observer of observed.values()) {
+        observer.unsubscribe()
+        observer.abort.abort()
+      }
+    })
     // 缓存随工作台存活，折叠列表或切换后端不会丢失已加载的对话。
     const conversations = createConversationCache((query, signal) =>
       settingsApi<Session[]>(
@@ -70,6 +145,25 @@ export const { provider: WorkspaceProvider, use: useWorkspaces } = createSimpleC
     )
     onCleanup(() => conversations.dispose())
     const active = () => state.remotes.find((item) => item.id === state.selected)
+    const connections = createRemoteConnections({
+      read: () => state.remotes,
+      write: (remotes) => setState("remotes", reconcile(remotes)),
+      request: (id, action) =>
+        api<RemoteWorkspace | void>(`/remote-workspaces/${encodeURIComponent(id)}/${action}`, {
+          method: "POST",
+          signal: AbortSignal.any([abort.signal, AbortSignal.timeout(15_000)]),
+        }).then((result) => (action === "connect" ? result : undefined)),
+      settled: (remote) =>
+        showToast({
+          variant: remote.state === "connected" ? "success" : "error",
+          title: remote.state === "connected" ? `${remote.name} connected` : `${remote.name} connection failed`,
+          description:
+            remote.state === "connected"
+              ? "Ready to open from Projects."
+              : "View connection details in Projects, then retry.",
+        }),
+    })
+    onCleanup(() => connections.dispose())
     function refresh(fresh = true): Promise<void> {
       // 写操作后的刷新必须晚于已在途的读取，避免旧快照覆盖刚完成的连接。
       if (pending) return fresh ? pending.then(() => refresh(false)) : pending
@@ -79,12 +173,13 @@ export const { provider: WorkspaceProvider, use: useWorkspaces } = createSimpleC
       return pending
     }
     async function reload() {
+      const revision = connections.revision()
       try {
         const value = await api<Catalog>("/workspace/catalog")
         if (abort.signal.aborted) return
         batch(() => {
           setState("projects", reconcile(value.projects))
-          setState("remotes", reconcile(value.remotes))
+          connections.sync(value.remotes, revision)
           setState({ tasksProjectID: value.tasksProjectID, error: "", ready: true })
         })
       } catch (error) {
@@ -116,15 +211,17 @@ export const { provider: WorkspaceProvider, use: useWorkspaces } = createSimpleC
       open(session.projectID, session.id)
     }
     async function connect(id: string) {
-      await api(`/remote-workspaces/${id}/connect`, { method: "POST" })
+      await connections.connect(id)
       await refresh()
     }
     async function disconnect(id: string) {
-      await api(`/remote-workspaces/${id}/disconnect`, { method: "POST" })
+      await connections.disconnect(id)
       await refresh()
     }
     async function remove(id: string) {
+      await connections.disconnect(id)
       await api(`/remote-workspaces/${id}`, { method: "DELETE" })
+      connections.forget(id)
       if (state.selected === id) open("")
       await refresh()
     }
@@ -163,6 +260,7 @@ export const { provider: WorkspaceProvider, use: useWorkspaces } = createSimpleC
       remove,
       remoteBase,
       conversations,
+      activity,
       localUrl: props.localUrl,
       fetch: platform.fetch ?? fetch,
       mobile: (value: boolean) => setState("mobileOpen", value),

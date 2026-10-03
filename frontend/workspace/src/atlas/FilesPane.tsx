@@ -60,6 +60,7 @@ import "@/atlas/files/FilesPane.css"
 import { NativeDirectoryPickerUnavailable } from "@/utils/native-picker"
 import { confirmDialog, promptDialog } from "@/atlas/dialogs"
 import { createFileRequestOwner, isFileRequestCancellation } from "@/atlas/file-viewer"
+import { requestFileMetadata } from "@/atlas/files/metadata"
 
 export type Transport = (path: string, init?: RequestInit, query?: Record<string, string>) => Promise<Response>
 
@@ -139,11 +140,11 @@ function fileListingFailure(value: unknown, source = "This folder") {
     if (value.status === 409)
       return "The project changed while files were loading. Open the folder again from the current project."
     if ([429, 502, 503, 504].includes(value.status))
-      return "The local OpenScience server is busy. Your files are unchanged; retry in a moment."
+      return "The local OneLab server is busy. Your files are unchanged; retry in a moment."
   }
   const detail = concise(value)
   if (/failed to fetch|networkerror|load failed|connection refused/i.test(detail))
-    return "Can't reach the local OpenScience server. Your files are unchanged; retry when the connection recovers."
+    return "Can't reach the local OneLab server. Your files are unchanged; retry when the connection recovers."
   return `${source} could not be read. ${detail}`
 }
 
@@ -201,8 +202,11 @@ export function fileListQuery(kind: PaneSource["kind"], target: string, session?
 // reimplemented here against the same endpoints and the same
 // parseFilesystemSnapshot guard rather than imported. Folding the trio into
 // file-sources.ts is the obvious follow-up.
-async function readAccess(transport: Transport, identity: FilesystemIdentity): Promise<FilesystemSnapshot> {
-  const value = await transport(`/session/${encodeURIComponent(identity.sessionID)}/filesystem`).then(json)
+async function readAccess(
+  request: (path: string) => Promise<unknown>,
+  identity: FilesystemIdentity,
+): Promise<FilesystemSnapshot> {
+  const value = await request(`/session/${encodeURIComponent(identity.sessionID)}/filesystem`)
   const snapshot = parseFilesystemSnapshot(value, identity)
   if (snapshot) return snapshot
   throw new Error("Filesystem access belongs to another session or project.")
@@ -287,7 +291,7 @@ export function revokeConfirmation(source: PaneSource) {
   return {
     title: `Revoke access to ${source.name}?`,
     message: [
-      `OpenScience will no longer ${source.readonly ? "read" : "read or write"} files in ${source.sub}.`,
+      `OneLab will no longer ${source.readonly ? "read" : "read or write"} files in ${source.sub}.`,
       revokeReach(source.scope),
       "Affected kernels are stopped so the folder cannot stay mounted. Nothing inside it is moved, changed, or deleted.",
     ]
@@ -377,6 +381,8 @@ export function FilesPane(
   const platform = standalone ? undefined : usePlatform()
   const server = standalone ? undefined : useServer()
   const transport: Transport = (path, init, query) => (props.request ?? sdk!.request)(path, init, query)
+  const metadata = (path: string, query?: Record<string, string>, signal?: AbortSignal, parse = json) =>
+    requestFileMetadata(transport, path, { query, signal, parse, baseUrl: sdk?.url })
 
   const projectRoot = () =>
     props.directory ?? (sdk?.directory || sync?.data.path.directory || sync?.project?.worktree || "")
@@ -408,13 +414,25 @@ export function FilesPane(
   const routeScope = createMemo(() =>
     JSON.stringify([sdk?.url ?? "", sdk?.projectID ?? "", projectRoot(), routeSessionID() ?? ""]),
   )
+  let snapshotRequest: AbortController | undefined
   const [snapshot, { refetch: refetchSnapshot }] = createResource(
     () => routeIdentity() && { scope: routeScope(), identity: routeIdentity()! },
-    async (current) => ({
-      scope: current.scope,
-      value: await readAccess(transport, current.identity).catch(() => undefined),
-    }),
+    async (current) => {
+      snapshotRequest?.abort()
+      const request = new AbortController()
+      snapshotRequest = request
+      return {
+        scope: current.scope,
+        value: await readAccess((path) => metadata(path, undefined, request.signal), current.identity).catch(
+          () => undefined,
+        ),
+      }
+    },
   )
+  onCleanup(() => snapshotRequest?.abort())
+  createEffect(() => {
+    if (!routeIdentity()) snapshotRequest?.abort()
+  })
   const accessSnapshot = () => (snapshot.latest?.scope === routeScope() ? snapshot.latest.value : undefined)
   /**
    * The grant snapshot is what says where the pane opens: until it answers,
@@ -472,23 +490,35 @@ export function FilesPane(
   // The artifact store is project-scoped through the request headers, so it
   // needs no session identity — only the project root as a refetch key.
   const ask = (path: string, init?: RequestInit) => transport(path, init)
-  const [artifacts, { refetch: refetchArtifacts }] = createResource(scope, async (scope) => ({
-    scope,
-    ...(await loadStoredArtifacts(ask)),
-  }))
+  const projectScope = createMemo(() => JSON.stringify([sdk?.url ?? "", sdk?.projectID ?? "", projectRoot()]))
+  let artifactRequest: AbortController | undefined
+  const [artifacts, { refetch: refetchArtifacts }] = createResource(projectScope, async (scope) => {
+    artifactRequest?.abort()
+    artifactRequest = new AbortController()
+    return { scope, ...(await loadStoredArtifacts(ask, { signal: artifactRequest.signal })) }
+  })
+  onCleanup(() => artifactRequest?.abort())
+  const published = sdk?.event.on("artifact.published", () => void refetchArtifacts())
+  if (published) onCleanup(published)
   onMount(() => {
     const refresh = () => void refetchArtifacts()
     window.addEventListener("openscience:artifacts-changed", refresh)
     onCleanup(() => window.removeEventListener("openscience:artifacts-changed", refresh))
   })
-  const artifactData = () => (artifacts.latest?.scope === scope() ? artifacts.latest : undefined)
-  const [deleted, { refetch: refetchDeleted }] = createResource(scope, (scope) =>
-    transport("/file/trash")
-      .then(json)
+  // 首次读取 latest 会触发整个文件面板的 Suspense；非当前来源的慢列表只影响自己的视图。
+  const artifactData = () =>
+    artifacts.state === "pending"
+      ? undefined
+      : artifacts.latest?.scope === projectScope()
+        ? artifacts.latest
+        : undefined
+  const [deleted, { refetch: refetchDeleted }] = createResource(projectScope, (scope) =>
+    metadata("/file/trash")
       .then((value) => ({ scope, rows: normalizeTrash(value), error: "" }))
       .catch((value) => ({ scope, rows: [] as TrashedFile[], error: concise(value) })),
   )
-  const deletedData = () => (deleted.latest?.scope === scope() ? deleted.latest : undefined)
+  const deletedData = () =>
+    deleted.state === "pending" ? undefined : deleted.latest?.scope === projectScope() ? deleted.latest : undefined
 
   const filesystemChanged = sdk?.event.on("session.filesystem.changed", (event) => {
     if (event.properties.sessionID !== sessionID()) return
@@ -515,8 +545,7 @@ export function FilesPane(
     setModalReady(false)
     let live = true
     onCleanup(() => (live = false))
-    void transport("/settings/compute")
-      .then(json)
+    void metadata("/settings/compute")
       .then((value) => {
         const providers =
           (value as { providers?: Array<{ id: string; connected: boolean; enabled: boolean }> }).providers ?? []
@@ -557,13 +586,7 @@ export function FilesPane(
   const workingRoot = () => workingFilesystemRoot(accessSnapshot())
   const current = createMemo(() => defaultSource(sources(), { remembered: picked(), workingRoot: workingRoot() }))
   const primary = createMemo(() => primarySources(sources(), workingRoot()))
-  // Project files, connected folders, session scratch and Results have tabs.
-  // More is the overflow: everything a tab does not show, plus the connected
-  // rows themselves, which are the only place a grant's path, its access and
-  // its Revoke control can be read together.
-  const overflowSources = createMemo(() =>
-    sources().filter((source) => !["project", "session", "artifacts"].includes(source.kind)),
-  )
+  // 标签会随侧栏宽度被收起；More 始终提供完整位置列表，不能因某位置拥有标签就将它排除。
   const primaryActive = () => primary().some((source) => source.id === current().id)
   const place = createMemo(() => JSON.stringify([scope(), current().id, current().kind, current().root]))
   const [navigation, setNavigation] = createStore({ place: "", parts: [] as string[] })
@@ -645,6 +668,8 @@ export function FilesPane(
         listingRetry.count = 0
       }
       const ticket = listingRequest.begin(ownerKey)
+      const read = (path: string, query?: Record<string, string>) =>
+        metadata(path, query, ticket.controller.signal, listingJson)
       const previous = info.value?.key === ownerKey ? info.value : { key: ownerKey, rows: [] }
       const owns = () => listingRequest.owns(ticket, ownerKey) && JSON.stringify(key()) === ownerKey
       const success = (rows: FileRow[]) => {
@@ -656,7 +681,7 @@ export function FilesPane(
       }
       const failure = (value: unknown, source = current().name) => {
         if (!owns()) return previous
-        if (isFileRequestCancellation(value)) {
+        if (isFileRequestCancellation(value) && !(value instanceof Error && value.name === "TimeoutError")) {
           if (listingRetry.count === 0) {
             listingRetry.count++
             queueMicrotask(() => {
@@ -696,8 +721,7 @@ export function FilesPane(
         // a path inside whichever Volume was entered.
         const [volume, ...rest] = target.split("/").filter(Boolean)
         if (!volume) {
-          return transport("/settings/compute/modal/volumes", { signal: ticket.controller.signal })
-            .then(listingJson)
+          return read("/settings/compute/modal/volumes")
             .then((value) => {
               if (!Array.isArray(value)) return success([])
               // Volumes are folders here: entering one lists it.
@@ -710,14 +734,9 @@ export function FilesPane(
             })
             .catch((value) => failure(value, "Modal Volumes"))
         }
-        return transport(
-          `/settings/compute/modal/volumes/${encodeURIComponent(volume)}/files`,
-          { signal: ticket.controller.signal },
-          {
-            path: `/${rest.join("/")}`,
-          },
-        )
-          .then(listingJson)
+        return read(`/settings/compute/modal/volumes/${encodeURIComponent(volume)}/files`, {
+          path: `/${rest.join("/")}`,
+        })
           .then((value) => {
             if (!Array.isArray(value)) return success([])
             return success(
@@ -732,8 +751,7 @@ export function FilesPane(
           .catch((value) => failure(value, volume))
       }
       const query = fileListQuery(kind, target, session)
-      return transport("/file", { signal: ticket.controller.signal }, query)
-        .then(listingJson)
+      return read("/file", query)
         .then((value) => {
           // GET /file returns a bare FileNode[] (backend/cli/src/server/routes/file.ts:158-182,
           // FileListResponses in tooling/sdk/js/src/v2/gen/types.gen.ts:7889). The {data}
@@ -1323,7 +1341,7 @@ export function FilesPane(
             </For>
           </div>
           <SourceMenu
-            sources={overflowSources()}
+            sources={sources()}
             active={current()}
             triggerLabel={primaryActive() ? "More" : undefined}
             onOpen={() => {

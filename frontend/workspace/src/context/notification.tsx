@@ -12,6 +12,7 @@ import { EventSessionError } from "@synsci/sdk/v2"
 import { Persist, persisted } from "@/utils/persist"
 import { playSound, preloadSound, soundSrc } from "@/utils/sound"
 import { projectForDirectory, projectHref, resolveProjectRoute } from "@/utils/project-route"
+import { createNotificationLifecycle } from "./notification-lifecycle"
 
 type NotificationBase = {
   directory?: string
@@ -140,9 +141,10 @@ export const { provider: NotificationProvider } = createSimpleContext({
       }
     })
 
+    const lifecycle = createNotificationLifecycle()
     const unsub = globalSDK.event.listen((e) => {
       const event = e.details
-      if (event.type !== "session.idle" && event.type !== "session.error") return
+      if (!lifecycle.accept(e.name, event)) return
 
       const directory = e.name
       const project = projectForDirectory(globalSync.data.project, directory)

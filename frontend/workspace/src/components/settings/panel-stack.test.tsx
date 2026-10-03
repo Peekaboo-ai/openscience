@@ -75,6 +75,41 @@ describe("SettingsPanelStack", () => {
 
   const settle = () => new Promise((done) => setTimeout(done, 0))
 
+  test("a progressive section stays mounted during initial load, failure and retry", async () => {
+    const harness = fixture.createRefreshingPanelFixture({ steady: false, progressive: true })
+    const host = mount(harness.view)
+    expect(host.querySelector(".settings-panel-loading")).toBeNull()
+    const list = host.querySelector('[aria-label="Runtimes"]')!
+    expect(list.textContent).toBe("Loading runtimes")
+    harness.reject(new Error("offline"))
+    await settle()
+    expect(list.textContent).toBe("Failed to load runtimes")
+    harness.refetch()
+    harness.resolve(["ollama"])
+    await settle()
+    expect(list.textContent).toBe("ollama")
+    harness.refetch()
+    expect(list.textContent).toContain("ollama")
+    harness.reject(new Error("offline again"))
+    await settle()
+    expect(host.querySelector('[aria-label="Runtimes"]')).toBe(list)
+    expect(list.textContent).toContain("ollama")
+    expect(list.querySelector('[role="alert"]')).not.toBeNull()
+  })
+
+  test("a failed suspended panel can be retried without closing settings", async () => {
+    const harness = fixture.createRefreshingPanelFixture({ steady: true })
+    const host = mount(harness.view)
+    harness.reject(new Error("connection lost"))
+    await settle()
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain("connection lost")
+    host.querySelector<HTMLButtonElement>("button")!.click()
+    await settle()
+    harness.resolve(["recovered"])
+    await settle()
+    expect(host.querySelector('[aria-label="Runtimes"]')?.textContent).toBe("recovered")
+  })
+
   test("a steady resource keeps the panel on screen while it refetches", async () => {
     const harness = fixture.createRefreshingPanelFixture({ steady: true })
     const host = mount(harness.view)

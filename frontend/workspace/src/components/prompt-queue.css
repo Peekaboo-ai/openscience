@@ -1,12 +1,12 @@
 .prompt-queue {
   margin: 0 0 8px;
   padding: 8px 12px;
-  border: 1px solid var(--border-weak-base);
+  border: 1px solid var(--color-border-weak);
   border-radius: 8px;
-  background: var(--surface-raised-base);
+  background: var(--color-surface-raised);
   font-family: var(--font-family-sans);
   font-size: var(--font-size-small);
-  color: var(--text-base);
+  color: var(--color-text-secondary);
 }
 .prompt-queue__header,
 .prompt-queue__controls {
@@ -18,7 +18,7 @@
   justify-content: space-between;
 }
 .prompt-queue__title {
-  font-weight: 500;
+  font-weight: var(--font-weight-emphasis);
 }
 .prompt-queue__items {
   list-style: none;
@@ -32,10 +32,10 @@
   gap: 8px;
   align-items: flex-start;
   padding: 8px 0;
-  border-top: 1px solid var(--border-weaker-base);
+  border-top: 1px solid var(--color-border-faint);
 }
 .prompt-queue__number {
-  color: var(--text-weak);
+  color: var(--color-text-muted);
   font-variant-numeric: tabular-nums;
   padding-top: 2px;
 }
@@ -51,12 +51,12 @@
   overflow: auto;
 }
 .prompt-queue__hint {
-  color: var(--text-weak);
+  color: var(--color-text-muted);
   font-size: 12px;
   margin: 4px 0;
 }
 .prompt-queue__error {
-  color: var(--text-critical-base);
+  color: var(--color-text-error);
   margin: 4px 0;
 }
 .prompt-queue textarea {
@@ -64,10 +64,10 @@
   min-height: 64px;
   resize: vertical;
   padding: 6px 8px;
-  border: 1px solid var(--border-base);
+  border: 1px solid var(--color-border);
   border-radius: 4px;
-  background: var(--surface-base);
-  color: var(--text-base);
+  background: var(--color-surface-base);
+  color: var(--color-text-secondary);
   font: inherit;
 }
 @media (max-width: 640px) {

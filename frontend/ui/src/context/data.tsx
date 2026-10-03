@@ -11,6 +11,7 @@ import type {
 } from "@synsci/sdk/v2"
 import { createSimpleContext } from "./helper"
 import { PreloadMultiFileDiffResult } from "@pierre/diffs/ssr"
+import type { Component } from "solid-js"
 
 type Data = {
   session: Session[]
@@ -58,7 +59,13 @@ export type NavigateToSessionFn = (sessionID: string) => void
 export type SaveArtifactFn = (path: string) => Promise<void>
 
 /** Open a durable saved artifact version in the contextual Files surface. */
-export type OpenArtifactFn = (id: string) => void
+export type OpenArtifactFn = (id: string, versionID?: string) => void
+
+export type TurnArtifactsProps = {
+  sessionID: string
+  messageIDs: string[]
+  finalMessageID?: string
+}
 
 export type ComputeJobDetails = {
   id: string
@@ -86,6 +93,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
     onOpenFile?: (path: string) => void
     onOpenArtifact?: OpenArtifactFn
     onSaveArtifact?: SaveArtifactFn
+    renderArtifacts?: Component<TurnArtifactsProps>
     onLoadComputeJob?: (id: string) => Promise<ComputeJobDetails | undefined>
     onResolveFileReceipts?: (sessionID: string, paths: readonly string[]) => Promise<string[]>
     /** Open the host's credential settings; question cards that ask for a login offer it. */
@@ -107,6 +115,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
       openFile: props.onOpenFile,
       openArtifact: props.onOpenArtifact,
       saveArtifact: props.onSaveArtifact,
+      renderArtifacts: props.renderArtifacts,
       loadComputeJob: props.onLoadComputeJob,
       resolveFileReceipts: props.onResolveFileReceipts,
       openCredentials: props.onOpenCredentials,

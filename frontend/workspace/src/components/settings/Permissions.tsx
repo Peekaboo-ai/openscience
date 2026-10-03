@@ -146,7 +146,7 @@ const Permissions: Component = () => {
     if (!value || !sessionID || busy()) return
     const confirmed = await confirmDialog(dialog, {
       title: `Revoke access to ${grant.path}?`,
-      message: "OpenScience will stop affected kernels so the folder cannot remain mounted with stale access.",
+      message: "OneLab will stop affected kernels so the folder cannot remain mounted with stale access.",
       confirmLabel: "Revoke folder access",
       danger: true,
     })

@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test"
+import { fileURLToPath } from "node:url"
 
-const root = new URL("../", import.meta.url).pathname
-const files = await Array.fromAsync(new Bun.Glob("**/*.{css,ts,tsx}").scan({ cwd: root }))
+const root = fileURLToPath(new URL("../", import.meta.url))
+const files = (await Array.fromAsync(new Bun.Glob("**/*.{css,ts,tsx}").scan({ cwd: root }))).map((path) =>
+  path.replaceAll("\\", "/"),
+)
 const source = async (path: string) => {
   const text = await Bun.file(new URL(path, new URL("../", import.meta.url))).text()
   // Font-face descriptors describe bundled files, not interface hierarchy.

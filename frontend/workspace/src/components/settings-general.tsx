@@ -122,7 +122,7 @@ export const AppearanceSections: Component<{ services?: CommandLineServices }> =
   const cancelUpdate = () => {
     void updates.cancel().catch((error: unknown) => {
       showToast({
-        title: "OpenScience kept the update",
+        title: "OneLab kept the update",
         description: error instanceof Error ? error.message : String(error),
       })
     })
@@ -428,7 +428,7 @@ export const AppearanceSections: Component<{ services?: CommandLineServices }> =
           </SettingsRow>
         </div>
         <Show when={store.releases.length > 0}>
-          <div class="settings-card settings-update-history" aria-label="Recent OpenScience releases">
+          <div class="settings-card settings-update-history" aria-label="Recent OneLab releases">
             <For each={store.releases.slice(0, 3)}>
               {(release) => (
                 <button

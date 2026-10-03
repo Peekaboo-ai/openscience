@@ -552,4 +552,24 @@ describe("open-file tabs", () => {
     expect(state.workTabs().filter((tab) => tab.id === "saved:art_test")).toHaveLength(1)
     expect(state.saved()?.title).toBe("Renamed result")
   })
+
+  test("switches an existing result tab to the clicked session's version and preserves it on rename", () => {
+    const state = createContextState({ storage: memoryStorage() })
+    state.activateScope("project-a", "session-a")
+    const earlier = saved()
+    const latest = {
+      ...earlier,
+      currentVersionID: "ver_latest",
+      versionCount: 2,
+      current: { ...earlier.current, id: "ver_latest", version: 2, sessionID: "session-b" },
+    }
+    state.openSaved(latest)
+    state.openSaved(earlier)
+    expect(state.saved()?.currentVersionID).toBe(earlier.currentVersionID)
+    expect(state.workTabs().filter((tab) => tab.id === "saved:art_test")).toHaveLength(1)
+    state.updateSaved({ ...latest, title: "Renamed output" })
+    expect(state.saved()?.title).toBe("Renamed output")
+    expect(state.saved()?.current.sessionID).toBe("session-a")
+    expect(state.saved()?.currentVersionID).toBe(earlier.currentVersionID)
+  })
 })

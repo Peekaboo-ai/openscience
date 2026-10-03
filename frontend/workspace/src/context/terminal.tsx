@@ -26,8 +26,8 @@ type TerminalCacheEntry = {
   dispose: VoidFunction
 }
 
-function createProjectTerminalSession(
-  sdk: ReturnType<typeof useSDK>,
+export function createProjectTerminalSession(
+  sdk: Pick<ReturnType<typeof useSDK>, "client" | "event">,
   dir: string,
   currentSession: () => string | undefined,
   legacySession?: string,
@@ -211,9 +211,10 @@ function createProjectTerminalSession(
         })
     },
     async clone(id: string) {
-      const index = store.all.findIndex((x) => x.id === id)
-      const pty = store.all[index]
-      if (!pty) return
+      const source = store.all.find((x) => x.id === id)
+      if (!source) return
+      // store 中的对象会原位合并；快照旧身份，避免替换后误删刚创建的进程。
+      const pty = { ...source }
       const session = currentSession()
       if (!session || session === "new") {
         throw new Error("Create or open a session before reconnecting a terminal.")
@@ -223,6 +224,13 @@ function createProjectTerminalSession(
         title: pty.title,
       })
       if (!clone.data) throw new Error("The server did not return a replacement terminal.")
+
+      // 等待期间标签可能被重排、关闭或已重连；迟到结果不能覆盖其它终端。
+      const index = store.all.findIndex((x) => x.id === id)
+      if (index < 0) {
+        await client.pty.remove({ ptyID: clone.data.id })
+        return
+      }
 
       const active = store.active === pty.id
       const replacement = {
