@@ -66,12 +66,12 @@ describe("kernel panel poll", () => {
     })
   })
 
-  test("only reports no active compute after both inventories succeed", () => {
+  test("only reports no tracked compute after both inventories succeed", () => {
     expect(subject.freshness({ runtime: "", remote: "", runtimeSeen: false, remoteSeen: false }).empty).toBe(
       "Reading compute…",
     )
     expect(subject.freshness({ runtime: "", remote: "", runtimeSeen: true, remoteSeen: true }).empty).toBe(
-      "No active compute",
+      "No tracked runtimes or jobs",
     )
   })
 

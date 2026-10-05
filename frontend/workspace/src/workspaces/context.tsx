@@ -5,12 +5,12 @@ import type { Project, Session, SessionStatus } from "@synsci/sdk/v2/client"
 import { useServer } from "@/context/server"
 import { usePlatform } from "@/context/platform"
 import { settingsApi } from "@/components/settings/api"
-import type { SessionContext } from "@/pages/session-sidebar-action"
 import { createConversationCache } from "./conversations"
 import { createRemoteConnections } from "./remote-connections"
 import { showToast } from "@synsci/ui/toast"
 import { serverEvents } from "@/context/server-events"
 import { createSessionActivity, type ActivityScope } from "./session-activity"
+import { createContextActions } from "./context-actions"
 
 export type RemoteTarget =
   | { kind: "ssh"; host_id: string }
@@ -59,7 +59,9 @@ export const { provider: WorkspaceProvider, use: useWorkspaces } = createSimpleC
     })
     const abort = new AbortController()
     let pending: Promise<void> | undefined
-    let contextAction: ((context: SessionContext) => void) | undefined
+    const contextActions = createContextActions(() =>
+      JSON.stringify([server.url, window.location.pathname.split("/")[1]]),
+    )
     const api = <T,>(route: string, init?: RequestInit) =>
       settingsApi<T>(props.localUrl, platform.fetch ?? fetch, route, { ...init, signal: init?.signal ?? abort.signal })
     const remoteBase = (id: string) => `${props.localUrl}/remote-workspaces/${encodeURIComponent(id)}/api`
@@ -264,15 +266,8 @@ export const { provider: WorkspaceProvider, use: useWorkspaces } = createSimpleC
       localUrl: props.localUrl,
       fetch: platform.fetch ?? fetch,
       mobile: (value: boolean) => setState("mobileOpen", value),
-      registerContext(action: (context: SessionContext) => void) {
-        contextAction = action
-        return () => {
-          if (contextAction === action) contextAction = undefined
-        }
-      },
-      openContext(context: SessionContext) {
-        contextAction?.(context)
-      },
+      registerContext: contextActions.register,
+      openContext: contextActions.open,
     }
   },
 })

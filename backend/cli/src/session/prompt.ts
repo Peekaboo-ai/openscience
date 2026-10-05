@@ -83,6 +83,7 @@ import { Global } from "@/global"
 import { TaskAttempt } from "@/tool/task-attempt"
 import { Token } from "@/util/token"
 import { Auth } from "@/auth"
+import { Memory } from "@/memory"
 import { SafeFileIO } from "@/file/safe-io"
 import { UpdateQuiescence } from "@/process/update-quiescence"
 import { SubtaskAttachments } from "./subtask-attachments"
@@ -1735,6 +1736,7 @@ export namespace SessionPrompt {
       const system = [
         ...(await SystemPrompt.environment(model, sessionID, envLines)),
         ...(await InstructionPrompt.system()),
+        ...(await Memory.system(Instance.project.id, sessionID)),
         // The lead carries the curated core index; the full catalog appears
         // only for an explicit /skill invocation. Workers with a prompt of
         // their own carry their domain index inside that prompt.

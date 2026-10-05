@@ -5,6 +5,39 @@ description: "Save repeatable model, instruction, skill, and tool settings."
 
 Use Customize for everyday settings. Configuration files are useful when you want to review settings as text or share a project setup.
 
+## Memory
+
+Open **Settings → Memory** to save preferences, project background, lab conventions, and cautions. Select a scope, choose **Add memory**, and enter a short title and the information to remember. Saved notes are considered for the next model request, including the next step of a running conversation; they do not change requests already sent to a provider.
+
+| Scope | Applies to |
+| --- | --- |
+| Global | Every project on the currently selected server. |
+| Project | Every conversation in the selected project. |
+| Session | The selected conversation and its delegated child sessions. Sibling conversations are separate. |
+
+The page defaults to the current conversation when one is available. A new conversation without a session ID can use global or project notes; choose an existing session to save a session note. **Include inherited** shows notes from broader scopes alongside the current scope. **All saved memories** lets you find and delete notes even after their original project or session has been removed.
+
+The **Project** selector follows the workspace sidebar: it lists active local projects and configured remote projects, including disconnected ones. Choosing a remote project loads its own memories and sessions without changing the conversation you are viewing. For a disconnected project, choose **Connect** or **Retry connection**; connection runs in the background, and you can select another project while it completes. **Global** and **All saved memories** include a **Memory location** selector for switching between local and remote stores. Archived projects and internal backend directories are excluded from the project picker; existing notes remain accessible through **All saved memories** on their original server.
+
+Categories organize notes across scopes. Create or edit a category to set its description and **Auto-recall**. Turning Auto-recall off retains searchable notes without adding them to model context. The main Memory switch pauses all recall. Each note also has its own switch and optional expiration, entered in your local time. Notes are saved explicitly in Settings; category descriptions do not enable automatic note writing by the model.
+
+You can switch categories, search, or browse another scope/project while editing.
+An unfinished draft stays available through **Resume editing**; browsing does not
+change its **Save in** destination. Local and remote drafts remain separate and
+survive a temporary reconnection. **Discard draft** removes an unfinished draft;
+opening another editor first offers to keep or discard it. Drafts are kept in
+the current settings panel, not saved permanently: choose **Save** before
+reloading or leaving the app. Controls are temporarily disabled during a write
+or an explicit confirmation, and become available again if a save fails.
+
+For notes with the same title in the same category, session notes override project notes, which override global notes. Titles are compared after trimming, Unicode normalization, and case folding. Different titles remain independent, so adding a project preference does not remove every global note in its category. Disabled or expired notes do not override active defaults.
+
+Expand **Context preview** to inspect included, inherited, overridden, and omitted notes, or view the exact text added to context. Recall prioritizes more specific scopes and recently edited notes, with a limit of 20 notes and 12,000 characters including their context wrapper. Whole notes are omitted when a limit is reached; their contents are never silently cut. Up to 500 notes and 24 categories can be stored, with 4,000 characters per note. Current explicit requests take precedence, and memories never grant execution permissions.
+
+Memories persist in `memory.json` in the server's data directory (shown in Settings → Storage). Local and remote servers have separate stores. Connecting a remote project does not copy local memories to it. Updates use atomic writes and revision checks; if another window changed memory, refresh and review the preserved draft before saving again. Deletion requires confirmation and affects saved context only, not past conversations. Clearing a scope preserves inherited notes.
+
+Existing `AGENTS.md`, instruction files, skills, and project settings continue to work alongside Memory. If the memory file cannot be read, Settings reports the error and preserves the file; research requests continue without saved memory while the storage issue is repaired.
+
 ## File locations
 
 | Scope | Location |

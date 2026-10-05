@@ -52,7 +52,7 @@
 }
 .session-artifacts__item:hover,
 .session-artifacts__more:hover {
-  background: var(--color-bg-hover);
+  background: var(--color-accent-subtle);
   border-color: var(--color-border);
 }
 .session-artifacts button:focus-visible,

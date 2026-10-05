@@ -187,6 +187,7 @@ import type {
   McpLocalConfig,
   McpRemoteConfig,
   McpStatusResponses,
+  MemoryScope,
   ModelConnectionsDiscoverErrors,
   ModelConnectionsDiscoverResponses,
   ModelConnectionsLimitsErrors,
@@ -408,6 +409,8 @@ import type {
   SettingsComputeModalVolumeFilesResponses,
   SettingsComputeModalVolumesErrors,
   SettingsComputeModalVolumesResponses,
+  SettingsComputeMonitorErrors,
+  SettingsComputeMonitorResponses,
   SettingsComputeProviderConnectErrors,
   SettingsComputeProviderConnectResponses,
   SettingsComputeProviderDisconnectResponses,
@@ -428,6 +431,26 @@ import type {
   SettingsCredentialsListResponses,
   SettingsCredentialsRemoveResponses,
   SettingsCredentialsSetResponses,
+  SettingsMemoryCatalogErrors,
+  SettingsMemoryCatalogResponses,
+  SettingsMemoryCreateCategoryErrors,
+  SettingsMemoryCreateCategoryResponses,
+  SettingsMemoryCreateNoteErrors,
+  SettingsMemoryCreateNoteResponses,
+  SettingsMemoryDeleteCategoryErrors,
+  SettingsMemoryDeleteCategoryResponses,
+  SettingsMemoryDeleteNotesErrors,
+  SettingsMemoryDeleteNotesResponses,
+  SettingsMemoryGetErrors,
+  SettingsMemoryGetResponses,
+  SettingsMemoryPreviewErrors,
+  SettingsMemoryPreviewResponses,
+  SettingsMemoryUpdateCategoryErrors,
+  SettingsMemoryUpdateCategoryResponses,
+  SettingsMemoryUpdateErrors,
+  SettingsMemoryUpdateNoteErrors,
+  SettingsMemoryUpdateNoteResponses,
+  SettingsMemoryUpdateResponses,
   SettingsNetworkGetResponses,
   SettingsNetworkSetResponses,
   SettingsPreferencesGetResponses,
@@ -1928,6 +1951,42 @@ export class Compute extends HeyApiClient {
     })
   }
 
+  /**
+   * Sample compute host or job allocation resources
+   */
+  public monitor<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      sessionID?: string
+      target?: string
+      node?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "sessionID" },
+            { in: "query", key: "target" },
+            { in: "query", key: "node" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SettingsComputeMonitorResponses,
+      SettingsComputeMonitorErrors,
+      ThrowOnError
+    >({
+      url: "/settings/compute/monitor",
+      ...options,
+      ...params,
+    })
+  }
+
   private _environments?: Environments
   get environments(): Environments {
     return (this._environments ??= new Environments({ client: this.client }))
@@ -2102,6 +2161,356 @@ export class UsageStats extends HeyApiClient {
       url: "/settings/usage-stats",
       ...options,
       ...params,
+    })
+  }
+}
+
+export class Memory extends HeyApiClient {
+  /**
+   * Get saved memory for this server
+   */
+  public get<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<SettingsMemoryGetResponses, SettingsMemoryGetErrors, ThrowOnError>({
+      url: "/settings/memory",
+      ...options,
+    })
+  }
+
+  /**
+   * Enable or pause automatic memory recall
+   */
+  public update<ThrowOnError extends boolean = false>(
+    parameters: {
+      revision: number
+      enabled: boolean
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "revision" },
+            { in: "body", key: "enabled" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<
+      SettingsMemoryUpdateResponses,
+      SettingsMemoryUpdateErrors,
+      ThrowOnError
+    >({
+      url: "/settings/memory",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * List memory projects and sessions
+   */
+  public catalog<ThrowOnError extends boolean = false>(
+    parameters?: {
+      projectID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "projectID" }] }])
+    return (options?.client ?? this.client).get<
+      SettingsMemoryCatalogResponses,
+      SettingsMemoryCatalogErrors,
+      ThrowOnError
+    >({
+      url: "/settings/memory/catalog",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Preview the exact saved context for a project or session
+   */
+  public preview<ThrowOnError extends boolean = false>(
+    parameters?: {
+      projectID?: string
+      sessionID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "projectID" },
+            { in: "query", key: "sessionID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SettingsMemoryPreviewResponses,
+      SettingsMemoryPreviewErrors,
+      ThrowOnError
+    >({
+      url: "/settings/memory/preview",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Create a memory note
+   */
+  public createNote<ThrowOnError extends boolean = false>(
+    parameters: {
+      revision: number
+      note: {
+        title: string
+        content: string
+        categoryID: string
+        scope: MemoryScope
+        enabled?: boolean
+        expiresAt?: number | null
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "revision" },
+            { in: "body", key: "note" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SettingsMemoryCreateNoteResponses,
+      SettingsMemoryCreateNoteErrors,
+      ThrowOnError
+    >({
+      url: "/settings/memory/notes",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Update a memory note
+   */
+  public updateNote<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      revision: number
+      note: {
+        title: string
+        content: string
+        categoryID: string
+        scope: MemoryScope
+        enabled?: boolean
+        expiresAt?: number | null
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "body", key: "revision" },
+            { in: "body", key: "note" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<
+      SettingsMemoryUpdateNoteResponses,
+      SettingsMemoryUpdateNoteErrors,
+      ThrowOnError
+    >({
+      url: "/settings/memory/notes/{id}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Delete selected memory notes
+   */
+  public deleteNotes<ThrowOnError extends boolean = false>(
+    parameters: {
+      revision: number
+      ids: Array<string>
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "revision" },
+            { in: "body", key: "ids" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SettingsMemoryDeleteNotesResponses,
+      SettingsMemoryDeleteNotesErrors,
+      ThrowOnError
+    >({
+      url: "/settings/memory/notes/delete",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Create a memory category
+   */
+  public createCategory<ThrowOnError extends boolean = false>(
+    parameters: {
+      revision: number
+      category: {
+        name: string
+        description?: string
+        autoRecall?: boolean
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "revision" },
+            { in: "body", key: "category" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SettingsMemoryCreateCategoryResponses,
+      SettingsMemoryCreateCategoryErrors,
+      ThrowOnError
+    >({
+      url: "/settings/memory/categories",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Delete an empty memory category
+   */
+  public deleteCategory<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      revision: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "body", key: "revision" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<
+      SettingsMemoryDeleteCategoryResponses,
+      SettingsMemoryDeleteCategoryErrors,
+      ThrowOnError
+    >({
+      url: "/settings/memory/categories/{id}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Update a memory category
+   */
+  public updateCategory<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      revision: number
+      category: {
+        name: string
+        description?: string
+        autoRecall?: boolean
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "body", key: "revision" },
+            { in: "body", key: "category" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<
+      SettingsMemoryUpdateCategoryResponses,
+      SettingsMemoryUpdateCategoryErrors,
+      ThrowOnError
+    >({
+      url: "/settings/memory/categories/{id}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 }
@@ -2553,6 +2962,11 @@ export class Settings extends HeyApiClient {
   private _usageStats?: UsageStats
   get usageStats(): UsageStats {
     return (this._usageStats ??= new UsageStats({ client: this.client }))
+  }
+
+  private _memory?: Memory
+  get memory(): Memory {
+    return (this._memory ??= new Memory({ client: this.client }))
   }
 
   private _updates?: Updates

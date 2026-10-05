@@ -8,6 +8,23 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 
 ## Unreleased
 
+- **Memory navigation and draft recovery.** Keep categories and scope/project selectors usable while editing, retain separate local/remote drafts across browsing and reconnection, and offer explicit resume/discard actions. Correct scope changes that previously failed validation, replace editor identities safely, and ignore stale store responses.
+
+- **Accurate Compute allocation scope.** Filter Slurm accelerator telemetry using the selected node's allocation count, verified job cgroup and physical device access. Exclude other jobs' cards, isolate history by device assignment, and explain unavailable allocation evidence while retaining node CPU/memory. Clarify tracked-runtime counters and whole-node versus allocated-device metrics.
+
+- **Continuous Compute history and DCU nodes.** Keep monitoring and history alive until the Compute tab is closed, including while other modules are selected. Follow the requested sampling cadence without overlapping probes; draw breaks only for actual interruptions. Use an ASCII-safe collector on older cluster Python runtimes, discover standard Hygon installations, and normalize current HCU/MiB outputs alongside stable per-device Linux kernel metrics.
+
+- **Compute monitor reliability.** Preserve the Windows driver installation variables required by NVIDIA NVML, keep System32 in the monitoring environment, and expose bounded driver diagnostics on failure. Keep manually selected targets and allocation nodes stable across polling and inventory reordering.
+
+- **Memory workspace selection.** Use the workbench's active local projects and configured remote projects in Memory, excluding archived and internal history entries. Route notes, sessions, and context previews to the selected project's server without navigating away. Keep disconnected projects selectable with background connection controls, and isolate late responses across project and connection changes.
+
+- **Scrollable file tabs.** Show a thin horizontal scrollbar when inspector tabs overflow, keep each close button visible without shifting tab widths, and reveal the complete selected tab when opening, reordering, or resizing the pane.
+
+- **Scoped research memory.** Add Settings → Memory with searchable categories, global/project/session notes, automatic recall controls, optional expiry, and an exact context preview. Recall saved preferences on subsequent research requests, inherit them into delegated sessions, apply explicit title-based overrides, and bound context size. Keep local and remote memories separate, preserve drafts on save failures, and protect concurrent edits and scoped deletion.
+
+- **Compute resource monitoring.** Track CPU, system memory, and per-device GPU/DCU/TPU utilization with live, keyboard-accessible history charts. Follow active project jobs onto Slurm/PBS allocation nodes or monitor standalone local/SSH hosts; support NVIDIA, Hygon, ROCm, and TPU clients. Bound and coalesce samples, preserve stale history, isolate session/node switches, and distinguish missing telemetry from idle hardware.
+- **Workspace inspector loading.** Preserve a Compute/Files/Terminal click made while a project is still loading, without applying it to another project. Stop resource polling when a retained inspector is closed, and keep fullscreen/mobile content inside the visible viewport when a system scrollbar gutter is reserved.
+
 - **Completed research outputs.** Automatically retain readable files linked in a completed answer as Results, including historical conversations. Show a compact, expandable thumbnail gallery beneath the response using the existing scientific renderers. Keep each session's immutable versions visible when another session overwrites the same path, avoid duplicate saves, respect Trash, and report individual publication failures without hiding available outputs. Keep preview names, actions and viewer controls accessible in narrow inspectors.
 
 - **Custom gateway continuation.** Document verified native Responses connections for GPT gateways with expired or account-bound Messages continuation references, and test complete research tool history plus encrypted reasoning using `store: false`. Add an opt-in Messages history mode with fresh references while retaining completed tool results, native Claude signatures, cancellation and ordinary parameter errors. Preserve this mode when editing the same connection and clear it when changing endpoints or protocols.

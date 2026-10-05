@@ -42,11 +42,17 @@ const child = (name: string, calls: string[]) => () => {
 }
 
 describe("compute surface", () => {
-  test("renders one static telemetry strip and one live inventory", () => {
+  test("renders host identity, resource monitoring, and live inventory together", () => {
     const calls: string[] = []
-    const host = mount(() => subject.ComputeSurface({ strip: child("strip", calls), kernels: child("kernels", calls) }))
+    const host = mount(() =>
+      subject.ComputeSurface({
+        strip: child("strip", calls),
+        kernels: child("kernels", calls),
+        monitor: child("monitor", calls),
+      }),
+    )
 
-    expect(calls).toEqual(["strip", "kernels"])
+    expect(calls).toEqual(["strip", "monitor", "kernels"])
     expect(host.querySelector('[aria-label="Compute"]')).not.toBeNull()
     expect(host.querySelector('[data-compute-child="strip"]')).not.toBeNull()
     expect(host.querySelector('[data-compute-child="kernels"]')).not.toBeNull()

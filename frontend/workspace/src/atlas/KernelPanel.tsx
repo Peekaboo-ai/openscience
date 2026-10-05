@@ -57,7 +57,7 @@ export function freshness(view: { runtime: string; remote: string; runtimeSeen: 
       ? "Compute activity may be out of date"
       : "Compute unavailable"
     : ready
-      ? "No active compute"
+      ? "No tracked runtimes or jobs"
       : "Reading compute…"
   return { problem, stale, empty }
 }
@@ -312,7 +312,7 @@ export function KernelPanel(props: KernelPanelProps = {}): JSX.Element {
                     ? state().stale
                       ? "Showing the last successful inventory."
                       : "The live inventory could not be read."
-                    : "Runtimes and jobs appear here while agents work."}
+                    : "Tracked runtimes and jobs appear here. Scheduler jobs can also be monitored above."}
                 </span>
               </div>
             </div>

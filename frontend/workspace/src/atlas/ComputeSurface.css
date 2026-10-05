@@ -24,6 +24,25 @@
   overflow: hidden;
 }
 
+.compute-surface__body {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+}
+
+.compute-surface__body .kernel-panel,
+.compute-surface__body .kernel-panel__body {
+  height: auto;
+  overflow: visible;
+}
+
+.compute-surface__body .kernel-panel__empty {
+  min-height: 120px;
+  padding-block: 24px;
+}
+
 .kernel-panel {
   height: 100%;
 }

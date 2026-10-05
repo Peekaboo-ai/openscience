@@ -94,6 +94,21 @@ test("parks a previously opened terminal when its parent tab closes", async () =
   expect(inspector?.parentElement?.dataset.open).toBe("false")
 })
 
+test("keeps an open compute tab mounted when the inspector is hidden, and releases it on explicit close", async () => {
+  const host = mountGate()
+  state.uiStore.openContext("kernels")
+  await Promise.resolve()
+  const inspector = host.querySelector('[aria-label="Research inspector"]')
+  expect(inspector).not.toBeNull()
+  state.uiStore.closeContext()
+  await Promise.resolve()
+  expect(host.querySelector('[aria-label="Research inspector"]')).toBe(inspector)
+  expect(inspector?.parentElement?.dataset.open).toBe("false")
+  state.uiStore.closeWorkTab("view:kernels")
+  await Promise.resolve()
+  expect(host.querySelector('[aria-label="Research inspector"]')).toBeNull()
+})
+
 test("keeps the timeline inspector mounted across module changes and closing its tab", async () => {
   const host = mountGate()
   state.uiStore.openContext("timeline")
@@ -268,7 +283,7 @@ test("fullscreen restores the exact split width and keeps the same editor conten
   setLayout("expanded", true)
   await Promise.resolve()
   await Promise.resolve()
-  expect(inspector.style.width).toBe("100vw")
+  expect(inspector.style.width).toBe("auto")
   expect(inspector.style.position).toBe("fixed")
   expect(inspector.dataset.expanded).toBe("true")
   expect(inspector.getAttribute("role")).toBe("dialog")

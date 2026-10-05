@@ -14,7 +14,7 @@ import {
   type JSX,
 } from "solid-js"
 import { uiStore, type ContextTab, type WorkTab } from "@/atlas/store/ui"
-import { ComputeSurface } from "@/atlas/ComputeSurface"
+import { ComputeTab } from "@/atlas/ComputeSurface"
 import { AutoresearchPane } from "@/atlas/AutoresearchPane"
 import { ActionTimelinePane } from "@/atlas/timeline/ActionTimelinePane"
 import { ExternalFileAccess } from "@/atlas/FileExplorer"
@@ -76,7 +76,9 @@ export function RightPaneGate(props: { children: JSX.Element }): JSX.Element {
     if (!uiStore.rightPaneOpen() || !persistent()) return
     setVisited(true)
   })
-  const retained = () => visited() || uiStore.workTabs().some((tab) => tab.kind === "file")
+  const retained = () =>
+    visited() ||
+    uiStore.workTabs().some((tab) => tab.kind === "file" || (tab.kind === "view" && tab.context === "kernels"))
   return (
     <Show when={uiStore.rightPaneOpen() || retained()}>
       <div class="right-pane-gate" data-open={uiStore.rightPaneOpen() ? "true" : "false"}>
@@ -200,10 +202,10 @@ export function RightPaneFrame(props: {
         onKeyDown={onKeyDown}
         style={{
           flex: props.modal || props.stacked ? "none" : `0 0 ${props.width}px`,
-          width: props.expanded
-            ? "100vw"
-            : props.mobile
-              ? "100vw"
+          // 双边定位使用可见视口宽度，避免 100vw 把系统滚动条宽度算入后裁掉左侧内容。
+          width:
+            props.expanded || props.mobile
+              ? "auto"
               : props.stacked
                 ? "100%"
                 : props.modal
@@ -215,6 +217,7 @@ export function RightPaneFrame(props: {
           position: props.modal ? "fixed" : "relative",
           inset: props.expanded ? "0" : undefined,
           top: props.modal && !props.expanded ? "0" : undefined,
+          left: props.mobile && !props.expanded ? "0" : undefined,
           right: props.modal && !props.expanded ? "0" : undefined,
           bottom: props.modal && !props.expanded ? "0" : undefined,
           "z-index": props.expanded ? 90 : props.modal ? 70 : undefined,
@@ -279,6 +282,7 @@ export function RightPane(
     if (terminal()) setTerminalSeen(true)
   })
   const terminalVisible = () => uiStore.rightPaneOpen() && terminal() && context() === "terminal"
+  const compute = () => uiStore.workTabs().some((tab) => tab.kind === "view" && tab.context === "kernels")
   const [timelineSeen, setTimelineSeen] = createSignal(context() === "timeline")
   createEffect(() => {
     if (context() === "timeline") setTimelineSeen(true)
@@ -601,12 +605,10 @@ export function RightPane(
                 <ActionTimelinePane sessionID={props.session} active={timelineVisible()} />
               </div>
             </Show>
+            <ComputeTab open={compute()} visible={uiStore.rightPaneOpen() && context() === "kernels"} />
             <Switch>
               <Match when={context() === "files" && uiStore.saved()}>
                 {(current) => <StoredArtifactView artifact={current()} />}
-              </Match>
-              <Match when={context() === "kernels"}>
-                <ComputeSurface />
               </Match>
               <Match when={context() === "autoresearch"}>
                 <AutoresearchPane />
@@ -647,14 +649,30 @@ function WorkTabStrip(props: {
 }): JSX.Element {
   let strip: HTMLElement | undefined
 
+  const reveal = (id: string | undefined) => {
+    if (!strip || !id) return
+    const pair = Array.from(strip.querySelectorAll<HTMLElement>("[data-work-tab]"))
+      .find((item) => item.dataset.workTab === id)
+      ?.closest<HTMLElement>(".inspector-tab-pair")
+    if (!pair) return
+    const bounds = pair.getBoundingClientRect()
+    const viewport = strip.getBoundingClientRect()
+    // 只滚动标签栏，并将关闭按钮一起露出，避免牵动工作台的其他滚动区域。
+    if (bounds.left < viewport.left) strip.scrollLeft += bounds.left - viewport.left
+    else if (bounds.right > viewport.left + strip.clientWidth)
+      strip.scrollLeft += bounds.right - viewport.left - strip.clientWidth
+  }
+
   createEffect(() => {
-    const active = props.active
-    if (!active) return
-    queueMicrotask(() =>
-      Array.from(strip?.querySelectorAll<HTMLElement>("[data-work-tab]") ?? [])
-        .find((item) => item.dataset.workTab === active)
-        ?.scrollIntoView({ block: "nearest", inline: "nearest" }),
-    )
+    const active = props.tabs.find((tab) => tab.id === props.active)?.id
+    queueMicrotask(() => reveal(active))
+  })
+
+  onMount(() => {
+    if (!strip) return
+    const observer = new ResizeObserver(() => reveal(props.active))
+    observer.observe(strip)
+    onCleanup(() => observer.disconnect())
   })
 
   return (
@@ -695,7 +713,10 @@ function WorkTabStrip(props: {
                 event.preventDefault()
                 props.onReorder(dragged, index())
               }}
-              onClick={() => props.onSelect(tab.id)}
+              onClick={() => {
+                props.onSelect(tab.id)
+                reveal(tab.id)
+              }}
               onKeyDown={(event) => {
                 if (event.altKey && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
                   event.preventDefault()

@@ -5,6 +5,7 @@ import { spawn } from "node:child_process"
 import z from "zod"
 import { OpenScience } from "../openscience"
 import { validateQuery } from "./query-arguments"
+import { acceleratorProbes } from "./telemetry-devices"
 
 const MAX_OUTPUT = 64 * 1024
 const TIMEOUT = 8_000
@@ -36,6 +37,9 @@ const probes = [
     args: ["--showproductname", "--showmeminfo", "vram", "--json"],
     columns: "AMD GPU resources",
   },
+  ...acceleratorProbes
+    .filter((spec) => ["hygon", "tpu"].includes(spec.id))
+    .map((spec) => ({ ...spec, columns: "Accelerator resources" })),
 ] as const
 
 export namespace ComputeEnvironment {
@@ -84,7 +88,7 @@ export namespace ComputeEnvironment {
   async function administratorOwned(file: string) {
     if (process.platform === "win32") {
       const system = path.resolve(process.env.SYSTEMROOT ?? "C:\\Windows", "System32").toLowerCase()
-      return file.toLowerCase().startsWith(system + path.sep)
+      return file.toLowerCase() === system || file.toLowerCase().startsWith(system + path.sep)
     }
     let current = file
     for (;;) {
@@ -96,8 +100,24 @@ export namespace ComputeEnvironment {
     }
   }
 
-  async function probeEnvironment() {
-    const env = OpenScience.kernelEnv(process.env)
+  export function runtimeEnvironment(
+    source: NodeJS.ProcessEnv = process.env,
+    platform: NodeJS.Platform = process.platform,
+  ) {
+    const env = OpenScience.kernelEnv(source, {}, platform)
+    if (platform !== "win32") return env
+    // NVML 依赖 Windows 安装目录变量定位驱动组件；仅补回系统路径，不继承凭据或执行钩子。
+    const allowed = new Set(["PROGRAMFILES", "PROGRAMFILES(X86)", "PROGRAMW6432", "PROGRAMDATA"])
+    for (const [key, value] of Object.entries(source)) {
+      if (value && allowed.has(key.toUpperCase())) env[key.toUpperCase()] = value
+    }
+    return env
+  }
+
+  export async function probeEnvironment() {
+    const env = runtimeEnvironment()
+    if (process.platform !== "win32")
+      env.PATH = `${env.PATH ?? ""}:/usr/bin:/bin:/opt/dtk/bin:/opt/rocm/bin:/opt/hyhal/bin`
     for (const key of ["PYTHONHOME", "PYTHONPATH", "CONDA_PREFIX", "VIRTUAL_ENV"]) delete env[key]
     // 宿主只读探测不能通过项目可写 PATH、动态库或解释器覆盖项加载任意代码。
     for (const key of ["PATH", "LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH"]) {
@@ -122,12 +142,14 @@ export namespace ComputeEnvironment {
     return env
   }
 
-  async function probe(
-    spec: { id: string; command: string; args: readonly string[]; columns: string },
+  export async function probe(
+    spec: { id: string; command: string; args: readonly string[]; columns: string; timeoutMs?: number },
     env: Record<string, string>,
     signal?: AbortSignal,
   ): Promise<Check> {
-    const found = Bun.which(spec.command, { PATH: process.env.PATH, cwd: path.parse(process.cwd()).root })
+    const found =
+      Bun.which(spec.command, { PATH: env.PATH, cwd: path.parse(process.cwd()).root }) ??
+      Bun.which(spec.command, { PATH: process.env.PATH, cwd: path.parse(process.cwd()).root })
     const base = { id: spec.id, command: spec.command, columns: spec.columns, output: "", truncated: false }
     if (!found)
       return {
@@ -177,7 +199,7 @@ export namespace ComputeEnvironment {
       const timer = setTimeout(() => {
         timedOut = true
         stop()
-      }, TIMEOUT)
+      }, spec.timeoutMs ?? TIMEOUT)
       child.once("error", (error) => {
         clearTimeout(timer)
         signal?.removeEventListener("abort", stop)
@@ -187,18 +209,20 @@ export namespace ComputeEnvironment {
         clearTimeout(timer)
         signal?.removeEventListener("abort", stop)
         const output = OpenScience.redactSecrets(Buffer.concat(chunks).toString("utf8")).trim()
+        const status = timedOut ? "timeout" : classify(code, output)
         resolve({
           ...base,
           executable,
-          status: timedOut ? "timeout" : classify(code, output),
+          status,
           output,
           truncated,
           ...(timedOut
             ? {
-                detail:
-                  "Read-only query exceeded 8 seconds. The service remains available; retry when the scheduler responds.",
+                detail: `Read-only query exceeded ${(spec.timeoutMs ?? TIMEOUT) / 1000} seconds. The service remains available; retry when the scheduler responds.`,
               }
-            : {}),
+            : status !== "ready"
+              ? { detail: output.replace(/\s+/g, " ").slice(0, 500) || `Query exited with code ${code ?? "unknown"}.` }
+              : {}),
         })
       })
     })
@@ -288,7 +312,7 @@ export namespace ComputeEnvironment {
       cpu: { logical: os.cpus().length, available: capped.cpu },
       memory: capped.memory,
       schedulers: checks.filter((check) => ["slurm", "slurm_queue", "pbs", "lsf", "sge"].includes(check.id)),
-      accelerators: checks.filter((check) => ["nvidia", "amd"].includes(check.id)),
+      accelerators: checks.filter((check) => ["nvidia", "amd", "hygon", "tpu"].includes(check.id)),
       runtimes: ["conda", "mamba", "micromamba", "python3", "python", "R", "node", "julia"].flatMap((name) => {
         const executable = Bun.which(name)
         return executable ? [{ name, executable }] : []

@@ -2536,6 +2536,80 @@ export type UsageStatsReport = {
   }
 }
 
+export type MemoryCategory = {
+  name: string
+  description: string
+  autoRecall: boolean
+  id: string
+}
+
+export type MemoryScope =
+  | {
+      kind: "global"
+    }
+  | {
+      kind: "project"
+      projectID: string
+    }
+  | {
+      kind: "session"
+      projectID: string
+      sessionID: string
+    }
+
+export type MemoryNote = {
+  title: string
+  content: string
+  categoryID: string
+  scope: MemoryScope
+  enabled: boolean
+  expiresAt: number | null
+  id: string
+  createdAt: number
+  updatedAt: number
+}
+
+export type MemoryStore = {
+  version: 1
+  revision: number
+  enabled: boolean
+  categories: Array<MemoryCategory>
+  notes: Array<MemoryNote>
+}
+
+export type MemoryCatalog = {
+  projects: Array<{
+    id: string
+    name: string
+    archived: boolean
+  }>
+  sessions: Array<{
+    id: string
+    title: string
+    parentID?: string
+    archived: boolean
+  }>
+}
+
+export type MemoryPreview = {
+  enabled: boolean
+  revision: number
+  included: Array<{
+    note: MemoryNote
+    inherited: boolean
+  }>
+  omitted: Array<{
+    note: MemoryNote
+    reason: "memory-off" | "note-off" | "category-off" | "expired" | "overridden" | "budget"
+  }>
+  inherited: number
+  overridden: number
+  characters: number
+  maxCharacters: number
+  maxNotes: number
+  system: string
+}
+
 export type CliShimStatus = {
   home: string
   directory: string
@@ -5382,6 +5456,82 @@ export type SettingsComputeSshUpdateResponses = {
 
 export type SettingsComputeSshUpdateResponse =
   SettingsComputeSshUpdateResponses[keyof SettingsComputeSshUpdateResponses]
+
+export type SettingsComputeMonitorData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    sessionID?: string
+    target?: string
+    node?: string
+  }
+  url: "/settings/compute/monitor"
+}
+
+export type SettingsComputeMonitorErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type SettingsComputeMonitorError = SettingsComputeMonitorErrors[keyof SettingsComputeMonitorErrors]
+
+export type SettingsComputeMonitorResponses = {
+  /**
+   * Live node telemetry
+   */
+  200: {
+    targets: Array<{
+      id: string
+      label: string
+      kind: "host" | "slurm" | "pbs" | "ssh" | "modal"
+      state: "running" | "queued" | "unavailable"
+      sessionID?: string
+      jobID?: string
+    }>
+    selected: string
+    nodes: Array<string>
+    node?: string
+    state: "live" | "queued" | "unavailable" | "finished"
+    sample: {
+      sampledAt: number
+      hostname: string
+      cpu: {
+        utilization: number | null
+        cores: number
+      }
+      memory: {
+        used: number | null
+        total: number | null
+      }
+      devices: Array<{
+        id: string
+        name: string
+        kind: "GPU" | "DCU" | "TPU"
+        source: string
+        utilization: number | null
+        memoryUsed: number | null
+        memoryTotal: number | null
+        memoryPercent: number | null
+        temperature: number | null
+        power: number | null
+      }>
+      acceleratorScope?: {
+        kind: "host" | "allocation" | "unavailable"
+        jobID?: string
+        expectedDevices?: number
+        reason?: string
+      }
+      issues: Array<string>
+    } | null
+    issues: Array<string>
+    intervalMs: number
+  }
+}
+
+export type SettingsComputeMonitorResponse = SettingsComputeMonitorResponses[keyof SettingsComputeMonitorResponses]
 
 export type SettingsComputeJobsListData = {
   body?: never
@@ -10155,6 +10305,375 @@ export type SettingsUsageStatsGetResponses = {
 }
 
 export type SettingsUsageStatsGetResponse = SettingsUsageStatsGetResponses[keyof SettingsUsageStatsGetResponses]
+
+export type SettingsMemoryGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/settings/memory"
+}
+
+export type SettingsMemoryGetErrors = {
+  /**
+   * Invalid memory or scope
+   */
+  400: unknown
+  /**
+   * Scope or memory not found
+   */
+  404: unknown
+  /**
+   * Memory was changed by another client or a title is duplicated
+   */
+  409: unknown
+}
+
+export type SettingsMemoryGetResponses = {
+  /**
+   * Get saved memory for this server
+   */
+  200: MemoryStore
+}
+
+export type SettingsMemoryGetResponse = SettingsMemoryGetResponses[keyof SettingsMemoryGetResponses]
+
+export type SettingsMemoryUpdateData = {
+  body?: {
+    revision: number
+    enabled: boolean
+  }
+  path?: never
+  query?: never
+  url: "/settings/memory"
+}
+
+export type SettingsMemoryUpdateErrors = {
+  /**
+   * Invalid memory or scope
+   */
+  400: unknown
+  /**
+   * Scope or memory not found
+   */
+  404: unknown
+  /**
+   * Memory was changed by another client or a title is duplicated
+   */
+  409: unknown
+}
+
+export type SettingsMemoryUpdateResponses = {
+  /**
+   * Enable or pause automatic memory recall
+   */
+  200: MemoryStore
+}
+
+export type SettingsMemoryUpdateResponse = SettingsMemoryUpdateResponses[keyof SettingsMemoryUpdateResponses]
+
+export type SettingsMemoryCatalogData = {
+  body?: never
+  path?: never
+  query?: {
+    projectID?: string
+  }
+  url: "/settings/memory/catalog"
+}
+
+export type SettingsMemoryCatalogErrors = {
+  /**
+   * Invalid memory or scope
+   */
+  400: unknown
+  /**
+   * Scope or memory not found
+   */
+  404: unknown
+  /**
+   * Memory was changed by another client or a title is duplicated
+   */
+  409: unknown
+}
+
+export type SettingsMemoryCatalogResponses = {
+  /**
+   * List memory projects and sessions
+   */
+  200: MemoryCatalog
+}
+
+export type SettingsMemoryCatalogResponse = SettingsMemoryCatalogResponses[keyof SettingsMemoryCatalogResponses]
+
+export type SettingsMemoryPreviewData = {
+  body?: never
+  path?: never
+  query?: {
+    projectID?: string
+    sessionID?: string
+  }
+  url: "/settings/memory/preview"
+}
+
+export type SettingsMemoryPreviewErrors = {
+  /**
+   * Invalid memory or scope
+   */
+  400: unknown
+  /**
+   * Scope or memory not found
+   */
+  404: unknown
+  /**
+   * Memory was changed by another client or a title is duplicated
+   */
+  409: unknown
+}
+
+export type SettingsMemoryPreviewResponses = {
+  /**
+   * Preview the exact saved context for a project or session
+   */
+  200: MemoryPreview
+}
+
+export type SettingsMemoryPreviewResponse = SettingsMemoryPreviewResponses[keyof SettingsMemoryPreviewResponses]
+
+export type SettingsMemoryCreateNoteData = {
+  body?: {
+    revision: number
+    note: {
+      title: string
+      content: string
+      categoryID: string
+      scope: MemoryScope
+      enabled?: boolean
+      expiresAt?: number | null
+    }
+  }
+  path?: never
+  query?: never
+  url: "/settings/memory/notes"
+}
+
+export type SettingsMemoryCreateNoteErrors = {
+  /**
+   * Invalid memory or scope
+   */
+  400: unknown
+  /**
+   * Scope or memory not found
+   */
+  404: unknown
+  /**
+   * Memory was changed by another client or a title is duplicated
+   */
+  409: unknown
+}
+
+export type SettingsMemoryCreateNoteResponses = {
+  /**
+   * Create a memory note
+   */
+  200: MemoryStore
+}
+
+export type SettingsMemoryCreateNoteResponse =
+  SettingsMemoryCreateNoteResponses[keyof SettingsMemoryCreateNoteResponses]
+
+export type SettingsMemoryUpdateNoteData = {
+  body?: {
+    revision: number
+    note: {
+      title: string
+      content: string
+      categoryID: string
+      scope: MemoryScope
+      enabled?: boolean
+      expiresAt?: number | null
+    }
+  }
+  path: {
+    id: string
+  }
+  query?: never
+  url: "/settings/memory/notes/{id}"
+}
+
+export type SettingsMemoryUpdateNoteErrors = {
+  /**
+   * Invalid memory or scope
+   */
+  400: unknown
+  /**
+   * Scope or memory not found
+   */
+  404: unknown
+  /**
+   * Memory was changed by another client or a title is duplicated
+   */
+  409: unknown
+}
+
+export type SettingsMemoryUpdateNoteResponses = {
+  /**
+   * Update a memory note
+   */
+  200: MemoryStore
+}
+
+export type SettingsMemoryUpdateNoteResponse =
+  SettingsMemoryUpdateNoteResponses[keyof SettingsMemoryUpdateNoteResponses]
+
+export type SettingsMemoryDeleteNotesData = {
+  body?: {
+    revision: number
+    ids: Array<string>
+  }
+  path?: never
+  query?: never
+  url: "/settings/memory/notes/delete"
+}
+
+export type SettingsMemoryDeleteNotesErrors = {
+  /**
+   * Invalid memory or scope
+   */
+  400: unknown
+  /**
+   * Scope or memory not found
+   */
+  404: unknown
+  /**
+   * Memory was changed by another client or a title is duplicated
+   */
+  409: unknown
+}
+
+export type SettingsMemoryDeleteNotesResponses = {
+  /**
+   * Delete selected memory notes
+   */
+  200: MemoryStore
+}
+
+export type SettingsMemoryDeleteNotesResponse =
+  SettingsMemoryDeleteNotesResponses[keyof SettingsMemoryDeleteNotesResponses]
+
+export type SettingsMemoryCreateCategoryData = {
+  body?: {
+    revision: number
+    category: {
+      name: string
+      description?: string
+      autoRecall?: boolean
+    }
+  }
+  path?: never
+  query?: never
+  url: "/settings/memory/categories"
+}
+
+export type SettingsMemoryCreateCategoryErrors = {
+  /**
+   * Invalid memory or scope
+   */
+  400: unknown
+  /**
+   * Scope or memory not found
+   */
+  404: unknown
+  /**
+   * Memory was changed by another client or a title is duplicated
+   */
+  409: unknown
+}
+
+export type SettingsMemoryCreateCategoryResponses = {
+  /**
+   * Create a memory category
+   */
+  200: MemoryStore
+}
+
+export type SettingsMemoryCreateCategoryResponse =
+  SettingsMemoryCreateCategoryResponses[keyof SettingsMemoryCreateCategoryResponses]
+
+export type SettingsMemoryDeleteCategoryData = {
+  body?: {
+    revision: number
+  }
+  path: {
+    id: string
+  }
+  query?: never
+  url: "/settings/memory/categories/{id}"
+}
+
+export type SettingsMemoryDeleteCategoryErrors = {
+  /**
+   * Invalid memory or scope
+   */
+  400: unknown
+  /**
+   * Scope or memory not found
+   */
+  404: unknown
+  /**
+   * Memory was changed by another client or a title is duplicated
+   */
+  409: unknown
+}
+
+export type SettingsMemoryDeleteCategoryResponses = {
+  /**
+   * Delete an empty memory category
+   */
+  200: MemoryStore
+}
+
+export type SettingsMemoryDeleteCategoryResponse =
+  SettingsMemoryDeleteCategoryResponses[keyof SettingsMemoryDeleteCategoryResponses]
+
+export type SettingsMemoryUpdateCategoryData = {
+  body?: {
+    revision: number
+    category: {
+      name: string
+      description?: string
+      autoRecall?: boolean
+    }
+  }
+  path: {
+    id: string
+  }
+  query?: never
+  url: "/settings/memory/categories/{id}"
+}
+
+export type SettingsMemoryUpdateCategoryErrors = {
+  /**
+   * Invalid memory or scope
+   */
+  400: unknown
+  /**
+   * Scope or memory not found
+   */
+  404: unknown
+  /**
+   * Memory was changed by another client or a title is duplicated
+   */
+  409: unknown
+}
+
+export type SettingsMemoryUpdateCategoryResponses = {
+  /**
+   * Update a memory category
+   */
+  200: MemoryStore
+}
+
+export type SettingsMemoryUpdateCategoryResponse =
+  SettingsMemoryUpdateCategoryResponses[keyof SettingsMemoryUpdateCategoryResponses]
 
 export type PostSettingsLocalStartData = {
   body?: {

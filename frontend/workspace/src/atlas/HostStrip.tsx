@@ -95,14 +95,14 @@ export function HostStrip(props: HostStripProps = {}): JSX.Element {
               ? "Reading compute…"
               : health() === "unavailable"
                 ? "Usage unavailable"
-                : `${reading().live} active · ${reading().running} running`}
+                : `${reading().live} tracked · ${reading().running} running`}
           </span>
         </div>
       </div>
 
-      <div class="host-strip__resources" aria-label="Connected host resources">
+      <div class="host-strip__resources" aria-label="Tracked runtime resources on the connected host">
         <div class="host-strip__metric" data-host-tile="memory">
-          <span class="host-strip__label">Memory</span>
+          <span class="host-strip__label">Runtime memory</span>
           <p>
             <strong class="host-strip__headline">{reading().headline}</strong>
             <span class="host-strip__total">{memoryTotal()}</span>
@@ -110,7 +110,7 @@ export function HostStrip(props: HostStripProps = {}): JSX.Element {
           <Meter value={reading().memoryFill} />
         </div>
         <div class="host-strip__metric" data-host-tile="cpu">
-          <span class="host-strip__label">CPU</span>
+          <span class="host-strip__label">Runtime CPU</span>
           <p>
             <strong class="host-strip__cores-value">{reading().cores}</strong>
             <span class="host-strip__total">cores</span>
@@ -160,7 +160,7 @@ export function HostStrip(props: HostStripProps = {}): JSX.Element {
                   <p>No supported scheduler client detected. This host can still run ordinary local workloads.</p>
                 </Show>
                 <Show when={!info().accelerators.some((check) => check.status !== "not_installed")}>
-                  <p>No supported GPU management client detected. GPU availability is unknown.</p>
+                  <p>No supported accelerator monitoring client detected. Device availability is unknown.</p>
                 </Show>
                 <Index each={checks()}>
                   {(check) => (

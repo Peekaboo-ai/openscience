@@ -66,6 +66,84 @@ If a response is interrupted, check whether the job is still running before star
 
 After completion, ask OpenScience to retrieve the output files, verify that they are readable, and report the exact project paths. A remote job marked complete is only useful if its results are available for review.
 
+## Monitor node resources
+
+Open the project's **Compute → Resource monitor** while an analysis is running.
+Automatic selection follows a running or queued job in the current session,
+then a running or queued allocation in the project, and otherwise the connected host. Select a target
+explicitly to keep monitoring it. Multi-node allocations offer a node selector.
+Manual target and node choices remain selected as live inventories refresh or
+change order; choose **Automatic · active job** to resume following active jobs.
+The connected host can be a login node; its resources are labelled separately
+from an allocated compute node.
+
+CPU and system memory charts appear alongside one chart per accelerator. Solid
+lines show device compute utilization; dashed lines show memory utilization.
+Use the 1, 5, or 15 minute history range, hover or focus a chart and use the arrow
+keys to inspect samples, or pause and resume updates. CPU and system memory describe
+the whole node, including other workloads. **Allocated accelerators** lists only
+devices verified for the selected job on the selected node. Device metrics cover
+those devices' total usage, including any sharing; they are not process-exclusive
+measurements. A standalone host shows **Visible accelerators** instead.
+TPU compute utilization is the runtime duty cycle reported
+by `tpu-info`.
+
+| Environment | Telemetry source |
+| --- | --- |
+| Local Windows, Linux, macOS; connected remote workspaces | OS CPU counters and memory |
+| NVIDIA GPUs | `nvidia-smi` |
+| Hygon DCUs | Verified Linux DRM/sysfs devices for Slurm allocations; `hy-smi` JSON or legacy tables on standalone hosts |
+| AMD GPUs | Verified Linux DRM/sysfs devices for Slurm allocations; `rocm-smi` JSON on standalone hosts |
+| Cloud TPUs | `tpu-info` runtime utilization and HBM table |
+| Slurm allocation | Current user's queue, allocated node list, then SSH or an overlapping sampling step within that existing allocation |
+| PBS allocation | JSON job status and `exec_host`, then SSH to an allocated node |
+
+Monitoring uses administrator-owned clients from the backend's environment.
+On Windows, NVIDIA sampling preserves the system installation directories needed
+by NVML. Failed queries include the driver's diagnostic message when available.
+Node sampling requires `/usr/bin/python3`; it uses only Python's standard library.
+SSH host keys must already be trusted. Slurm's fallback requires support for
+`srun --overlap` and permission to create a step in the existing job. Monitoring
+does not submit new jobs. Standalone host CPU/memory sampling does not require
+Python or a scheduler. A running supported TPU workload and an installed
+`tpu-info` client are needed for TPU runtime metrics.
+
+Jobs submitted through the compute broker retain their session association.
+For Slurm/PBS jobs submitted directly from a shell, discovery matches the job's
+working directory against the current project/session's connected directories.
+Jobs in a shared project folder are labelled as project allocations rather than
+assigned to an arbitrary session. Jobs submitted from unrelated directories must
+use the compute broker to retain their association. Managed services that do not
+expose node telemetry report it as unavailable.
+
+Samples refresh approximately every five seconds while the **Compute tab remains
+open**, including while viewing Files or other modules and while the inspector is
+collapsed. Slow probes never overlap. Switching modules preserves up to 15 minutes
+of in-memory history; switching conversations restores their separate target and
+node histories. Pause suspends sampling; closing the Compute tab with its **×**
+ends monitoring and releases its history. Browsers may suspend background pages
+or sleeping computers; those interruptions are shown as gaps when sampling resumes.
+A lost connection preserves the last values and
+marks them stale. Queued, finished, unsupported, and permission-denied states are
+shown explicitly. A dash means the metric is unknown, not zero utilization.
+
+On supported Linux nodes, kernel device metrics identify cards by stable PCI
+addresses, so a scheduler's logical device renumbering cannot merge histories
+from different physical cards. For Slurm AMD/Hygon allocations, the monitor checks
+the scheduler's per-node device count, the sampler's exact job cgroup, and access
+to each physical render device. Unallocated devices are excluded. Missing or
+inconsistent allocation evidence hides accelerator readings with an explanation;
+CPU and system memory remain available when the node is reachable. CPU-only jobs
+show that no accelerators were allocated. PBS and other accelerator configurations
+without a verified device mapping also report the limitation rather than showing
+the whole node's cards as job resources. Standalone NVIDIA, AMD, Hygon and TPU
+monitoring remains available. The monitor also supports
+Hygon's standard `/opt/hyhal` installation and clients reporting `HCU` utilization
+or VRAM in MiB. Node collectors work with older Python runtimes in the C locale.
+
+Both the local backend and the backend on a connected remote workspace must be
+updated to expose the monitoring endpoint.
+
 ## Detailed compute guides
 
 [Python and R](/openscience/python-r) covers interactive analysis and persistent variables. [Remote compute](/openscience/remote-compute) documents Modal, SSH, Slurm, PBS, and other account connections. [Compute jobs](/openscience/jobs) walks through planning, launch, status, cancellation, and output recovery.

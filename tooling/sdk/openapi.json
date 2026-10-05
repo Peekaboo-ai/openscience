@@ -7108,6 +7108,379 @@
         ]
       }
     },
+    "/settings/compute/monitor": {
+      "get": {
+        "operationId": "settings.compute.monitor",
+        "summary": "Sample compute host or job allocation resources",
+        "responses": {
+          "200": {
+            "description": "Live node telemetry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "targets": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "host",
+                              "slurm",
+                              "pbs",
+                              "ssh",
+                              "modal"
+                            ]
+                          },
+                          "state": {
+                            "type": "string",
+                            "enum": [
+                              "running",
+                              "queued",
+                              "unavailable"
+                            ]
+                          },
+                          "sessionID": {
+                            "type": "string"
+                          },
+                          "jobID": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "label",
+                          "kind",
+                          "state"
+                        ]
+                      }
+                    },
+                    "selected": {
+                      "type": "string"
+                    },
+                    "nodes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "node": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string",
+                      "enum": [
+                        "live",
+                        "queued",
+                        "unavailable",
+                        "finished"
+                      ]
+                    },
+                    "sample": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "sampledAt": {
+                              "type": "number"
+                            },
+                            "hostname": {
+                              "type": "string"
+                            },
+                            "cpu": {
+                              "type": "object",
+                              "properties": {
+                                "utilization": {
+                                  "anyOf": [
+                                    {
+                                      "type": "number",
+                                      "minimum": 0,
+                                      "maximum": 100
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "cores": {
+                                  "type": "number",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "utilization",
+                                "cores"
+                              ]
+                            },
+                            "memory": {
+                              "type": "object",
+                              "properties": {
+                                "used": {
+                                  "anyOf": [
+                                    {
+                                      "type": "number",
+                                      "minimum": 0
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "total": {
+                                  "anyOf": [
+                                    {
+                                      "type": "number",
+                                      "minimum": 0
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "used",
+                                "total"
+                              ]
+                            },
+                            "devices": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": [
+                                      "GPU",
+                                      "DCU",
+                                      "TPU"
+                                    ]
+                                  },
+                                  "source": {
+                                    "type": "string"
+                                  },
+                                  "utilization": {
+                                    "anyOf": [
+                                      {
+                                        "type": "number",
+                                        "minimum": 0,
+                                        "maximum": 100
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "memoryUsed": {
+                                    "anyOf": [
+                                      {
+                                        "type": "number",
+                                        "minimum": 0
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "memoryTotal": {
+                                    "anyOf": [
+                                      {
+                                        "type": "number",
+                                        "minimum": 0
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "memoryPercent": {
+                                    "anyOf": [
+                                      {
+                                        "type": "number",
+                                        "minimum": 0,
+                                        "maximum": 100
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "temperature": {
+                                    "anyOf": [
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "power": {
+                                    "anyOf": [
+                                      {
+                                        "type": "number",
+                                        "minimum": 0
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "name",
+                                  "kind",
+                                  "source",
+                                  "utilization",
+                                  "memoryUsed",
+                                  "memoryTotal",
+                                  "memoryPercent",
+                                  "temperature",
+                                  "power"
+                                ]
+                              }
+                            },
+                            "acceleratorScope": {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "host",
+                                    "allocation",
+                                    "unavailable"
+                                  ]
+                                },
+                                "jobID": {
+                                  "type": "string"
+                                },
+                                "expectedDevices": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "reason": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ]
+                            },
+                            "issues": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          "required": [
+                            "sampledAt",
+                            "hostname",
+                            "cpu",
+                            "memory",
+                            "devices",
+                            "issues"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "intervalMs": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "targets",
+                    "selected",
+                    "nodes",
+                    "state",
+                    "sample",
+                    "issues",
+                    "intervalMs"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "in": "query",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses_[A-Za-z0-9]+$"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 180
+            }
+          },
+          {
+            "in": "query",
+            "name": "node",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,252}$"
+            }
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.settings.compute.monitor({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/settings/compute/jobs": {
       "get": {
         "operationId": "settings.compute.jobs.list",
@@ -23661,6 +24034,689 @@
           {
             "lang": "js",
             "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.settings.usageStats.get({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/settings/memory": {
+      "get": {
+        "operationId": "settings.memory.get",
+        "summary": "Get saved memory for this server",
+        "responses": {
+          "200": {
+            "description": "Get saved memory for this server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryStore"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid memory or scope"
+          },
+          "404": {
+            "description": "Scope or memory not found"
+          },
+          "409": {
+            "description": "Memory was changed by another client or a title is duplicated"
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.settings.memory.get({\n  ...\n})"
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "settings.memory.update",
+        "summary": "Enable or pause automatic memory recall",
+        "responses": {
+          "200": {
+            "description": "Enable or pause automatic memory recall",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryStore"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid memory or scope"
+          },
+          "404": {
+            "description": "Scope or memory not found"
+          },
+          "409": {
+            "description": "Memory was changed by another client or a title is duplicated"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "revision",
+                  "enabled"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.settings.memory.update({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/settings/memory/catalog": {
+      "get": {
+        "operationId": "settings.memory.catalog",
+        "summary": "List memory projects and sessions",
+        "responses": {
+          "200": {
+            "description": "List memory projects and sessions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryCatalog"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid memory or scope"
+          },
+          "404": {
+            "description": "Scope or memory not found"
+          },
+          "409": {
+            "description": "Memory was changed by another client or a title is duplicated"
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "projectID",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_-]{1,160}$"
+            }
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.settings.memory.catalog({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/settings/memory/preview": {
+      "get": {
+        "operationId": "settings.memory.preview",
+        "summary": "Preview the exact saved context for a project or session",
+        "responses": {
+          "200": {
+            "description": "Preview the exact saved context for a project or session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryPreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid memory or scope"
+          },
+          "404": {
+            "description": "Scope or memory not found"
+          },
+          "409": {
+            "description": "Memory was changed by another client or a title is duplicated"
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "projectID",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_-]{1,160}$"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_-]{1,160}$"
+            }
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.settings.memory.preview({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/settings/memory/notes": {
+      "post": {
+        "operationId": "settings.memory.createNote",
+        "summary": "Create a memory note",
+        "responses": {
+          "200": {
+            "description": "Create a memory note",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryStore"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid memory or scope"
+          },
+          "404": {
+            "description": "Scope or memory not found"
+          },
+          "409": {
+            "description": "Memory was changed by another client or a title is duplicated"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "note": {
+                    "type": "object",
+                    "properties": {
+                      "title": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 100
+                      },
+                      "content": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 4000
+                      },
+                      "categoryID": {
+                        "type": "string",
+                        "pattern": "^[a-zA-Z0-9_-]{1,160}$"
+                      },
+                      "scope": {
+                        "$ref": "#/components/schemas/MemoryScope"
+                      },
+                      "enabled": {
+                        "default": true,
+                        "type": "boolean"
+                      },
+                      "expiresAt": {
+                        "default": null,
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "title",
+                      "content",
+                      "categoryID",
+                      "scope"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "revision",
+                  "note"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.settings.memory.createNote({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/settings/memory/notes/{id}": {
+      "put": {
+        "operationId": "settings.memory.updateNote",
+        "summary": "Update a memory note",
+        "responses": {
+          "200": {
+            "description": "Update a memory note",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryStore"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid memory or scope"
+          },
+          "404": {
+            "description": "Scope or memory not found"
+          },
+          "409": {
+            "description": "Memory was changed by another client or a title is duplicated"
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_-]{1,160}$"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "note": {
+                    "type": "object",
+                    "properties": {
+                      "title": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 100
+                      },
+                      "content": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 4000
+                      },
+                      "categoryID": {
+                        "type": "string",
+                        "pattern": "^[a-zA-Z0-9_-]{1,160}$"
+                      },
+                      "scope": {
+                        "$ref": "#/components/schemas/MemoryScope"
+                      },
+                      "enabled": {
+                        "default": true,
+                        "type": "boolean"
+                      },
+                      "expiresAt": {
+                        "default": null,
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "title",
+                      "content",
+                      "categoryID",
+                      "scope"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "revision",
+                  "note"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.settings.memory.updateNote({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/settings/memory/notes/delete": {
+      "post": {
+        "operationId": "settings.memory.deleteNotes",
+        "summary": "Delete selected memory notes",
+        "responses": {
+          "200": {
+            "description": "Delete selected memory notes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryStore"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid memory or scope"
+          },
+          "404": {
+            "description": "Scope or memory not found"
+          },
+          "409": {
+            "description": "Memory was changed by another client or a title is duplicated"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "ids": {
+                    "minItems": 1,
+                    "maxItems": 500,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[a-zA-Z0-9_-]{1,160}$"
+                    }
+                  }
+                },
+                "required": [
+                  "revision",
+                  "ids"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.settings.memory.deleteNotes({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/settings/memory/categories": {
+      "post": {
+        "operationId": "settings.memory.createCategory",
+        "summary": "Create a memory category",
+        "responses": {
+          "200": {
+            "description": "Create a memory category",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryStore"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid memory or scope"
+          },
+          "404": {
+            "description": "Scope or memory not found"
+          },
+          "409": {
+            "description": "Memory was changed by another client or a title is duplicated"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "category": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 60
+                      },
+                      "description": {
+                        "default": "",
+                        "type": "string",
+                        "maxLength": 500
+                      },
+                      "autoRecall": {
+                        "default": true,
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "revision",
+                  "category"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.settings.memory.createCategory({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/settings/memory/categories/{id}": {
+      "put": {
+        "operationId": "settings.memory.updateCategory",
+        "summary": "Update a memory category",
+        "responses": {
+          "200": {
+            "description": "Update a memory category",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryStore"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid memory or scope"
+          },
+          "404": {
+            "description": "Scope or memory not found"
+          },
+          "409": {
+            "description": "Memory was changed by another client or a title is duplicated"
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_-]{1,160}$"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "category": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 60
+                      },
+                      "description": {
+                        "default": "",
+                        "type": "string",
+                        "maxLength": 500
+                      },
+                      "autoRecall": {
+                        "default": true,
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "revision",
+                  "category"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.settings.memory.updateCategory({\n  ...\n})"
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "settings.memory.deleteCategory",
+        "summary": "Delete an empty memory category",
+        "responses": {
+          "200": {
+            "description": "Delete an empty memory category",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryStore"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid memory or scope"
+          },
+          "404": {
+            "description": "Scope or memory not found"
+          },
+          "409": {
+            "description": "Memory was changed by another client or a title is duplicated"
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_-]{1,160}$"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "revision"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.settings.memory.deleteCategory({\n  ...\n})"
           }
         ]
       }
@@ -66169,6 +67225,333 @@
           "activity",
           "options",
           "quality"
+        ]
+      },
+      "MemoryCategory": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "autoRecall": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]{1,160}$"
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "autoRecall",
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "MemoryScope": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "global"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "project"
+              },
+              "projectID": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]{1,160}$"
+              }
+            },
+            "required": [
+              "kind",
+              "projectID"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "session"
+              },
+              "projectID": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]{1,160}$"
+              },
+              "sessionID": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]{1,160}$"
+              }
+            },
+            "required": [
+              "kind",
+              "projectID",
+              "sessionID"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "MemoryNote": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "categoryID": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]{1,160}$"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/MemoryScope"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "expiresAt": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]{1,160}$"
+          },
+          "createdAt": {
+            "type": "number"
+          },
+          "updatedAt": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "title",
+          "content",
+          "categoryID",
+          "scope",
+          "enabled",
+          "expiresAt",
+          "id",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "MemoryStore": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "const": 1
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "categories": {
+            "maxItems": 24,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemoryCategory"
+            }
+          },
+          "notes": {
+            "maxItems": 500,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemoryNote"
+            }
+          }
+        },
+        "required": [
+          "version",
+          "revision",
+          "enabled",
+          "categories",
+          "notes"
+        ]
+      },
+      "MemoryCatalog": {
+        "type": "object",
+        "properties": {
+          "projects": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z0-9_-]{1,160}$"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "archived": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "archived"
+              ]
+            }
+          },
+          "sessions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z0-9_-]{1,160}$"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "parentID": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z0-9_-]{1,160}$"
+                },
+                "archived": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "archived"
+              ]
+            }
+          }
+        },
+        "required": [
+          "projects",
+          "sessions"
+        ]
+      },
+      "MemoryPreview": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "revision": {
+            "type": "number"
+          },
+          "included": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "note": {
+                  "$ref": "#/components/schemas/MemoryNote"
+                },
+                "inherited": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "note",
+                "inherited"
+              ]
+            }
+          },
+          "omitted": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "note": {
+                  "$ref": "#/components/schemas/MemoryNote"
+                },
+                "reason": {
+                  "type": "string",
+                  "enum": [
+                    "memory-off",
+                    "note-off",
+                    "category-off",
+                    "expired",
+                    "overridden",
+                    "budget"
+                  ]
+                }
+              },
+              "required": [
+                "note",
+                "reason"
+              ]
+            }
+          },
+          "inherited": {
+            "type": "number"
+          },
+          "overridden": {
+            "type": "number"
+          },
+          "characters": {
+            "type": "number"
+          },
+          "maxCharacters": {
+            "type": "number"
+          },
+          "maxNotes": {
+            "type": "number"
+          },
+          "system": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled",
+          "revision",
+          "included",
+          "omitted",
+          "inherited",
+          "overridden",
+          "characters",
+          "maxCharacters",
+          "maxNotes",
+          "system"
         ]
       },
       "CliShimStatus": {

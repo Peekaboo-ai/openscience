@@ -34,6 +34,7 @@ import { DataRootBarrier } from "../global/data-root-barrier"
 import { SecretFile } from "../util/secret-file"
 import { ProcessOutput } from "../util/process-output"
 import { ComputeSecrets } from "./secrets"
+import { telemetryScript, type NodeSelection } from "./telemetry-probe"
 
 export class ComputeJobsCorruptError extends Error {
   constructor(
@@ -3940,6 +3941,24 @@ export namespace ComputeJobs {
     await sync(scope, options)
     const jobs = await Promise.all((await read(scope.root)).map((job) => observe(scope.root, job)))
     return jobs.toSorted((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at) || b.id.localeCompare(a.id))
+  }
+
+  // 监控读取不触发作业恢复、产物搬运或生命周期变更，避免高频采样阻塞正常作业。
+  export async function monitorJobs(): Promise<Job[]> {
+    const scope = await scoped({})
+    return (await read(scope.root)).filter((job) => job.status === "running" || job.status === "queued")
+  }
+
+  export async function monitor(id: string, selection?: NodeSelection) {
+    const scope = await scoped({})
+    const job = (await read(scope.root)).find((item) => item.id === id)
+    if (!job?.ssh || !job.authority || !["running", "queued"].includes(job.status)) {
+      throw new Error("This remote job is no longer available for monitoring.")
+    }
+    const result = await sshRun(scope, job, job.ssh.host, job.authority, telemetryScript(selection), {
+      timeout: 25_000,
+    })
+    return result.stdout.toString("utf8")
   }
 
   export async function get(id: string, options: Options = {}): Promise<Job | undefined> {

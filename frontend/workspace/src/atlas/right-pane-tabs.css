@@ -105,10 +105,9 @@
   box-sizing: border-box;
   min-width: 0;
   min-height: 44px;
-  height: 44px;
   display: flex;
   align-items: stretch;
-  flex: 0 0 44px;
+  flex: 0 0 auto;
   border-bottom: 1px solid var(--color-border);
   background: var(--color-bg-subtle);
 }
@@ -181,8 +180,9 @@
 }
 
 .inspector-tabs {
+  box-sizing: border-box;
   min-width: 0;
-  height: 44px;
+  min-height: 44px;
   flex: 1 1 auto;
   display: flex;
   align-items: center;
@@ -191,11 +191,21 @@
   overflow-x: auto;
   overflow-y: hidden;
   border: 0;
-  scrollbar-width: none;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-text-faint) transparent;
 }
 
 .inspector-tabs::-webkit-scrollbar {
-  display: none;
+  height: 6px;
+}
+
+.inspector-tabs::-webkit-scrollbar-thumb {
+  border-radius: var(--atlas-radius-xs);
+  background: var(--color-text-faint);
+}
+
+.inspector-tabs::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .inspector-tab-pair {
@@ -280,9 +290,10 @@
 
 .inspector-tab-pair .inspector-tab__close {
   appearance: none;
-  width: 0;
-  min-width: 0;
+  width: 28px;
+  min-width: 28px;
   min-height: 32px;
+  flex-shrink: 0;
   display: inline-grid;
   place-items: center;
   padding: 0;
@@ -292,26 +303,21 @@
   background: transparent;
   color: var(--color-text-faint);
   cursor: pointer;
-  opacity: 0;
   transition:
     background-color 140ms var(--agent-ease),
     color 140ms var(--agent-ease),
-    opacity 140ms var(--agent-ease),
     transform 120ms var(--agent-ease);
 }
 
 .inspector-tab-pair:hover .inspector-tab__close,
 .inspector-tab-pair:focus-within .inspector-tab__close,
 .inspector-tab-pair[data-active="true"] .inspector-tab__close {
-  width: 28px;
-  min-width: 28px;
-  opacity: 0.72;
+  color: var(--color-text-muted);
 }
 
 .inspector-tab-pair .inspector-tab__close:hover {
   background: var(--color-active);
   color: var(--color-text);
-  opacity: 1;
 }
 
 .inspector-tab-pair .inspector-tab__close:active {
@@ -329,12 +335,10 @@
 
   .research-inspector__header {
     min-height: 48px;
-    height: 48px;
-    flex-basis: 48px;
   }
 
   .inspector-tabs {
-    height: 48px;
+    min-height: 48px;
     padding-block: 2px;
   }
 }

@@ -9,6 +9,7 @@ const modules: Record<(typeof SETTINGS_PANEL_IDS)[number], string> = {
   models: "Models",
   "local-models": "LocalModels",
   skills: "Skills",
+  memory: "Memory",
   "scientific-tools": "ScientificTools",
   connectors: "Connectors",
   compute: "Compute",
@@ -40,6 +41,7 @@ describe("settings registry source contract", () => {
       "Models",
       "Local models",
       "Skills",
+      "Memory",
       "Tools",
       "Connectors",
       "Credentials",
@@ -91,11 +93,11 @@ describe("settings registry source contract", () => {
     expect(general).not.toContain("show_trace")
   })
 
-  test("keeps specialist and memory implementations unavailable from the settings surface", () => {
+  test("keeps specialists unavailable and exposes the persistent memory module", () => {
     expect(SETTINGS_PANEL_IDS).not.toContain("specialists" as never)
-    expect(SETTINGS_PANEL_IDS).not.toContain("memory" as never)
+    expect(SETTINGS_PANEL_IDS).toContain("memory")
     expect(SETTINGS_PANELS.map((panel) => panel.title)).not.toContain("Specialists")
-    expect(SETTINGS_PANELS.map((panel) => panel.title)).not.toContain("Memory")
+    expect(SETTINGS_PANELS.map((panel) => panel.title)).toContain("Memory")
   })
 
   test("keeps research controls in the composer instead of duplicating a settings destination", () => {

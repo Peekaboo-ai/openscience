@@ -28,6 +28,7 @@ import { resolveCredentialFields } from "./credentials"
 import { CredentialLifecycle } from "../../../credentials/lifecycle"
 import { TrustedExecutable } from "../../../process/trusted-executable"
 import { sshConfigTokens } from "../../../compute/ssh/config-tokens"
+import { monitor, ComputeTelemetry } from "../../../compute/telemetry"
 
 const Directory = z.object({
   directory: z.string().trim().min(1).optional(),
@@ -1410,6 +1411,39 @@ export const ComputeSettingsRoutes = lazy(() =>
       }),
       validator("param", z.object({ id: z.string() })),
       async (c) => c.json(await ComputeSettings.removeSshHost(c.req.valid("param").id)),
+    )
+    .get(
+      "/monitor",
+      describeRoute({
+        summary: "Sample compute host or job allocation resources",
+        operationId: "settings.compute.monitor",
+        responses: {
+          200: {
+            description: "Live node telemetry",
+            content: { "application/json": { schema: resolver(ComputeTelemetry.Report) } },
+          },
+          ...errors(400),
+        },
+      }),
+      validator(
+        "query",
+        Directory.extend({
+          sessionID: z
+            .string()
+            .regex(/^ses_[A-Za-z0-9]+$/)
+            .optional(),
+          target: z.string().min(1).max(180).optional(),
+          node: z
+            .string()
+            .regex(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,252}$/)
+            .optional(),
+        }),
+      ),
+      async (c) =>
+        project(c, async () => {
+          c.header("Cache-Control", "no-store")
+          return c.json(await monitor(c.req.valid("query")))
+        }),
     )
     .get(
       "/jobs",

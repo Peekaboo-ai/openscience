@@ -134,7 +134,7 @@ describe("host strip", () => {
     expect(queried).toBe(1)
     expect(host.textContent).toContain("research-node")
     expect(host.textContent).toContain("No supported scheduler client detected")
-    expect(host.textContent).toContain("GPU availability is unknown")
+    expect(host.textContent).toContain("Device availability is unknown")
     expect(host.querySelector("[data-boundary]")).toBeNull()
   })
 
@@ -166,7 +166,7 @@ describe("host strip", () => {
     await settle(calls)
 
     expect(values(host)).toEqual(["412.0 MB", "— of 8"])
-    expect(host.textContent).toContain("2 active · 1 running")
+    expect(host.textContent).toContain("2 tracked · 1 running")
     expect(host.textContent).not.toContain("~0 of 8")
     expect(host.querySelector("[data-health]")?.getAttribute("data-health")).toBe("available")
   })
@@ -206,7 +206,9 @@ describe("host strip", () => {
     expect(host.querySelector("[data-boundary]")).toBeNull()
     expect(values(host)).toEqual(["412.0 MB", "~0.4 of 8"])
     expect(host.textContent).toContain("/ 16.0 GB")
-    expect(host.textContent).toContain("2 active · 1 running")
+    expect(host.textContent).toContain("2 tracked · 1 running")
+    expect(host.textContent).toContain("Runtime memory")
+    expect(host.textContent).toContain("Runtime CPU")
     expect(host.querySelector('[data-host-tile="kernels"]')).toBeNull()
     expect(host.querySelector<HTMLDetailsElement>(".host-strip__environment")?.open).toBe(false)
     expect(host.querySelector("summary")?.textContent).toBe("Environment & cluster status")
