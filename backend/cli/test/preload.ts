@@ -14,6 +14,9 @@ afterAll(async () => {
   // 科研账本在进程级缓存 SQLite；Windows 删除测试目录前必须关闭 WAL 句柄。
   const { Experiments } = await import("../src/experiments")
   Experiments.close()
+  // 产物读取也会保留 SQLite WAL 句柄；Windows 删除测试目录前只释放缓存，不删除产物。
+  const { ArtifactStore } = await import("../src/artifact/store")
+  await ArtifactStore.close()
   const { Log } = await import("../src/util/log")
   await Log.flush()
   await removeFixture(dir)

@@ -1,11 +1,52 @@
 import { expect, test } from "bun:test"
-import { tmpdir } from "../fixture/fixture"
+import { fileURLToPath } from "node:url"
+import { MCP } from "../../src/mcp"
+import { Instance } from "../../src/project/instance"
+import { Sandbox } from "../../src/sandbox/sandbox"
+import { sandboxedExecution, tmpdir, trustProject } from "../fixture/fixture"
 import { spawn } from "../fixture/spawn"
 
-test("inspect reports capabilities from a real local MCP server", async () => {
+// These scenarios require a live local server under the default contained policy.
+const localTest = test.skipIf(!Sandbox.available())
+
+test.skipIf(Sandbox.available())(
+  "unavailable containment leaves a visible MCP failure without launching its command",
+  async () => {
+    await using policy = await sandboxedExecution()
+    await using tmp = await tmpdir({
+      config: {
+        mcp: {
+          blocked: { type: "local", command: [process.execPath, "--eval", 'await Bun.write("started", "started")'] },
+        },
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        await trustProject()
+        try {
+          const detail = await MCP.inspect("blocked")
+          expect(detail.status).toMatchObject({
+            status: "failed",
+            error: expect.stringContaining("Sandbox is enabled but unavailable"),
+          })
+          expect(detail.tools).toEqual([])
+          expect(Object.keys(await MCP.tools())).toEqual([])
+          expect((await MCP.status()).blocked).toEqual(detail.status)
+          expect(await Bun.file(`${tmp.path}/started`).exists()).toBe(false)
+        } finally {
+          await MCP.disposeLocal()
+          await Instance.dispose()
+        }
+      },
+    })
+  },
+)
+
+localTest("inspect reports capabilities from a real local MCP server", async () => {
   await using tmp = await tmpdir()
   const runner = `${tmp.path}/inspect.ts`
-  const server = new URL("../fixture/mcp-capabilities.mjs", import.meta.url).pathname
+  const server = fileURLToPath(new URL("../fixture/mcp-capabilities.mjs", import.meta.url))
 
   await Bun.write(
     `${tmp.path}/openscience.json`,
@@ -67,12 +108,12 @@ process.exit(0)
   expect(detail.errors).toEqual({})
 })
 
-test("an in-flight MCP tool request blocks update until its response is settled", async () => {
+localTest("an in-flight MCP tool request blocks update until its response is settled", async () => {
   await using tmp = await tmpdir()
   const runner = `${tmp.path}/request-quiescence.ts`
   const ready = `${tmp.path}/request-ready`
   const release = `${tmp.path}/request-release`
-  const server = new URL("../fixture/mcp-capabilities.mjs", import.meta.url).pathname
+  const server = fileURLToPath(new URL("../fixture/mcp-capabilities.mjs", import.meta.url))
 
   await Bun.write(
     `${tmp.path}/openscience.json`,
@@ -146,13 +187,13 @@ process.exit(0)
   expect(JSON.parse(output)).toEqual({ active: 1, blocked: true, settled: 0 })
 })
 
-const posixTest = process.platform === "win32" ? test.skip : test
+const posixTest = test.skipIf(process.platform === "win32" || !Sandbox.available())
 
 posixTest("local MCP disposal reaps a direct child that starts a new session", async () => {
   await using tmp = await tmpdir()
   const runner = `${tmp.path}/dispose-descendant.ts`
   const marker = `${tmp.path}/mcp-descendant.pid`
-  const server = new URL("../fixture/mcp-descendant.mjs", import.meta.url).pathname
+  const server = fileURLToPath(new URL("../fixture/mcp-descendant.mjs", import.meta.url))
 
   await Bun.write(
     `${tmp.path}/openscience.json`,

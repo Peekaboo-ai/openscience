@@ -925,6 +925,17 @@ export namespace ArtifactStore {
     return { info: version(row), content }
   }
 
+  /** 关闭缓存句柄，保留磁盘上的产物内容；测试与运行时退出均可安全调用。 */
+  export async function close() {
+    await maintenance.pending
+    const db = await reader.pending
+    using _ = await Lock.write(lock)
+    await using lease = await FileLease.acquire(lock)
+    db?.close()
+    reader.pending = undefined
+    reader.identity = undefined
+  }
+
   export async function reset() {
     await maintenance.pending
     const db = await reader.pending

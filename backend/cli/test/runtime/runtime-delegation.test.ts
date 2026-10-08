@@ -183,12 +183,23 @@ for (const cancellation of ["runtime", "session", "runtime-shell"] as const) {
               })
             ).state,
           ).toBe("cancelled")
-          await until(
-            () =>
+          await until(async () => {
+            const stopped =
               (cancellation === "runtime-shell"
                 ? CommandRuntime.list(parent.projectID, children[0]!.id).length === 0
-                : childStopped) && !SessionPrompt.activeController(children[0]!.id),
-          )
+                : childStopped) && !SessionPrompt.activeController(children[0]!.id)
+            if (!stopped) return false
+            // 进程和控制器先释放，工具终态随后写盘；等待同一持久终态，避免把清理间隙误判为取消失败。
+            return (await Session.messages({ sessionID: children[0]!.id }))
+              .flatMap((message) => message.parts)
+              .some(
+                (part) =>
+                  part.type === "tool" &&
+                  part.tool === (cancellation === "runtime-shell" ? "bash" : "read") &&
+                  (part.state.status === "completed" ||
+                    (cancellation === "runtime-shell" && part.state.status === "error")),
+              )
+          })
           expect(childRequests).toBe(cancellation === "runtime-shell" ? 1 : 2)
           const childMessages = await Session.messages({ sessionID: children[0]!.id })
           expect(

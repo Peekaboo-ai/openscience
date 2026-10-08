@@ -1,4 +1,4 @@
-import { Show, createSignal, onCleanup, onMount } from "solid-js"
+import { Show, createMemo, createSignal, onCleanup, onMount } from "solid-js"
 import type { ArtifactRenderProps } from "../registry"
 
 /**
@@ -35,35 +35,63 @@ const SAMPLE: GenomeTrackData = {
   locus: "chr8:127,735,434-127,742,951",
 }
 
+function snapshot(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(snapshot)
+  if (value && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype)
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, snapshot(item)]))
+  return value
+}
+
 function normalize(data: unknown): GenomeTrackData {
   if (!data || typeof data !== "object") return {}
   const d = data as GenomeTrackData
   return {
-    genome: d.genome,
-    reference: d.reference,
-    locus: d.locus,
-    tracks: Array.isArray(d.tracks) ? d.tracks : undefined,
+    genome: snapshot(d.genome),
+    reference: snapshot(d.reference),
+    locus: Array.isArray(d.locus) ? [...d.locus] : d.locus,
+    tracks: Array.isArray(d.tracks) ? d.tracks.map(snapshot) : undefined,
   }
 }
 
-export function GenomeTrack(props: ArtifactRenderProps) {
+interface GenomeBrowser {
+  createBrowser: (div: HTMLElement, options: Record<string, unknown>) => Promise<unknown>
+  removeBrowser: (browser: unknown) => void
+}
+
+interface GenomeTrackProps extends ArtifactRenderProps {
+  load?: () => Promise<GenomeBrowser>
+}
+
+export function GenomeTrack(props: GenomeTrackProps) {
+  // 读取传给 IGV 的配置快照，才能跟踪 store 中同一对象的参考序列、区间及轨迹更新。
+  const source = createMemo(() => normalize(props.data))
+  return (
+    <Show when={source()} keyed>
+      {(data) => <GenomeDocument data={data} height={props.height} load={props.load} />}
+    </Show>
+  )
+}
+
+function GenomeDocument(props: Pick<GenomeTrackProps, "height" | "load"> & { data: GenomeTrackData }) {
   let host!: HTMLDivElement
   const [error, setError] = createSignal<string>()
-  const data = normalize(props.data)
+  const data = props.data
   const hasConfig = Boolean(data.genome || data.reference || (data.tracks && data.tracks.length))
   // Fall back to a small sample so an empty artifact still shows something useful.
   const config = hasConfig ? data : SAMPLE
 
   onMount(() => {
     let browser: unknown
+    let library: GenomeBrowser | undefined
     let disposed = false
 
     ;(async () => {
       try {
-        const igv = (await import("igv")).default as unknown as {
-          createBrowser: (div: HTMLElement, options: Record<string, unknown>) => Promise<unknown>
-          removeBrowser: (browser: unknown) => void
-        }
+        const igv = await (props.load
+          ? props.load()
+          : import("igv").then((module) => module.default as unknown as GenomeBrowser))
+        if (disposed) return
+        library = igv
         // Build the igv config. igv accepts `genome` (id or object) OR `reference`.
         const options: Record<string, unknown> = {
           showChromosomeWidget: true,
@@ -94,11 +122,11 @@ export function GenomeTrack(props: ArtifactRenderProps) {
     onCleanup(() => {
       disposed = true
       if (!browser) return
-      import("igv")
-        .then((m) => (m.default as unknown as { removeBrowser: (b: unknown) => void }).removeBrowser(browser))
-        .catch(() => {
-          /* ignore teardown races */
-        })
+      try {
+        library?.removeBrowser(browser)
+      } catch {
+        // 浏览器已被库自行销毁时，不能中断其余组件清理。
+      }
     })
   })
 

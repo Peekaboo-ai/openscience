@@ -14,7 +14,17 @@ import { RuntimeAdmission } from "./admission"
 
 export namespace RuntimeRuns {
   const log = Log.create({ service: "runtime-runs" })
-  const hooks = { value: undefined as { beforeSettle?(run: Run): Promise<void> } | undefined }
+  const hooks = {
+    value: undefined as
+      | {
+          beforeSettle?(run: Run): Promise<void>
+          beforeAdmission?(input: { sessionID: string; requestID?: string }): Promise<void>
+          beforeGuideCommit?(message: MessageV2.WithParts): Promise<void>
+          afterGuidePrepared?(message: MessageV2.WithParts): Promise<void>
+          afterGuideMessage?(message: MessageV2.WithParts): Promise<void>
+        }
+      | undefined,
+  }
 
   /** 确定性故障夹具在接收/收尾窗口设置屏障，不修改生产调度顺序。 */
   export function testing(value: NonNullable<typeof hooks.value>) {
@@ -27,6 +37,30 @@ export namespace RuntimeRuns {
     }
   }
   const executions = Instance.state(() => new Map<string, { sessionID: string; controller: AbortSignal }>())
+  const preparations = Instance.state(
+    () =>
+      new Map<
+        string,
+        {
+          sessionID: string
+          runID: string
+          fingerprint: string
+          controller: AbortController
+          work: Promise<{ run: Run; replayed: boolean }>
+        }
+      >(),
+    async (pending) => {
+      for (const entry of pending.values()) entry.controller.abort(new RuntimeEvents.ActiveRunError(entry.sessionID))
+      await Promise.allSettled([...pending.values()].map((entry) => entry.work))
+    },
+  )
+
+  function cancelPreparations(sessionID: string, runID: string) {
+    for (const entry of preparations().values()) {
+      if (entry.sessionID === sessionID && entry.runID === runID)
+        entry.controller.abort(new RuntimeEvents.ActiveRunError(sessionID))
+    }
+  }
 
   export const Input = PromptInput.pick({
     sessionID: true,
@@ -101,10 +135,23 @@ export namespace RuntimeRuns {
   })
   type Record = z.infer<typeof Record>
 
+  const Guidance = z.object({
+    runID: RunID,
+    fingerprint: z.string(),
+    message: MessageV2.WithParts.extend({ info: MessageV2.User }),
+  })
+
   export class ConflictError extends Error {
     constructor() {
       super("This request ID is already bound to a different prompt or configuration")
       this.name = "RuntimeRequestConflictError"
+    }
+  }
+
+  export class PreparationError extends Error {
+    constructor(error: unknown) {
+      super(error instanceof Error ? error.message : String(error), { cause: error })
+      this.name = "RuntimeGuidancePreparationError"
     }
   }
 
@@ -215,119 +262,219 @@ export namespace RuntimeRuns {
     return admitStored(input, agent)
   }
 
-  async function admitStored(input: StoredInput, agent: string) {
+  async function admitStored(input: StoredInput, agent: string, expectedRunID?: string) {
+    await hooks.value?.beforeAdmission?.(input)
     await Session.get(input.sessionID)
     const identity = input.requestID ?? input.messageID
     const fingerprint = digest(JSON.stringify(ordered({ ...input, requestID: undefined, agent })))
     const runID = identity ? "run_" + digest(input.sessionID + "\0" + identity) : Identifier.ascending("runtime")
-    await using lease = await RuntimeAdmission.acquire(input.sessionID)
-    if (tasks().stopping) throw new Error("The project runtime is stopping")
-    const prior = await read(input.sessionID, runID).catch((error) => {
-      if (Storage.NotFoundError.isInstance(error)) return
-      throw error
-    })
-    if (prior) {
-      if (prior.fingerprint !== fingerprint) throw new ConflictError()
-      return { run: await reconcile(prior), replayed: true }
-    }
-    const active = await RuntimeEvents.activeRun(input.sessionID)
-    const busy = (() => {
-      try {
-        SessionPrompt.assertNotBusy(input.sessionID)
-        return false
-      } catch (error) {
-        if (error instanceof Session.BusyError) return true
+    const accept = async (
+      ready?: MessageV2.WithParts,
+    ): Promise<{ run: Run; replayed: boolean } | { prepare: SessionPrompt.PromptInput; target: string }> => {
+      await using lease = await RuntimeAdmission.acquire(input.sessionID)
+      if (tasks().stopping) throw new Error("The project runtime is stopping")
+      const prior = await read(input.sessionID, runID).catch((error) => {
+        if (Storage.NotFoundError.isInstance(error)) return
         throw error
+      })
+      if (prior) {
+        if (prior.fingerprint !== fingerprint) throw new ConflictError()
+        if (expectedRunID && prior.run.runID !== expectedRunID) throw new ConflictError()
+        return { run: await reconcile(prior), replayed: true }
       }
-    })()
-    if (active || busy) {
-      if (input.delivery === "start") throw new RuntimeEvents.ActiveRunError(input.sessionID)
-      // A message sent while a run is live joins that run: the loop reads the
-      // newest user message on its next step and answers both, so the reply
-      // stays one run and Enter never has to mean Stop. Idempotent on the
-      // message id a retry reuses.
-      const current = active
-        ? await read(input.sessionID, active).catch((error) => {
-            if (Storage.NotFoundError.isInstance(error)) return
-            throw error
-          })
-        : undefined
-      if (!current || finished(current.run)) throw new RuntimeEvents.ActiveRunError(input.sessionID)
-      const existing = input.messageID
-        ? await MessageV2.get({ sessionID: input.sessionID, messageID: input.messageID }).catch((error) => {
-            if (Storage.NotFoundError.isInstance(error)) return
-            throw error
-          })
-        : undefined
-      if (!existing) {
-        const { requestID: _, message, effort: _effort, delivery: _delivery, ...rest } = input
-        await SessionPrompt.prompt({
-          ...rest,
-          agent,
-          noReply: true,
-          parts: input.parts ?? [{ type: "text", text: message! }],
+      const guideKey = ["runtime_guidance", Instance.project.id, digest(input.sessionID), runID]
+      const prepared = await Storage.read(guideKey)
+        .then((value) => Guidance.parse(value))
+        .catch((error) => {
+          if (Storage.NotFoundError.isInstance(error)) return
+          throw error
         })
+      if (prepared && (prepared.fingerprint !== fingerprint || (expectedRunID && prepared.runID !== expectedRunID)))
+        throw new ConflictError()
+      expectedRunID ??= prepared?.runID
+      const written = prepared
+        ? await MessageV2.get({ sessionID: input.sessionID, messageID: prepared.message.info.id }).catch((error) => {
+            if (Storage.NotFoundError.isInstance(error)) return
+            throw error
+          })
+        : undefined
+      const active = await RuntimeEvents.activeRun(input.sessionID)
+      // 队列引导只能加入用户看到的那次运行；在接收锁内核对，避免收尾竞态把它变成新任务。
+      if (
+        expectedRunID &&
+        !written &&
+        (active !== expectedRunID || (await RuntimeEvents.cancellationRequested(input.sessionID, expectedRunID)))
+      ) {
+        if (prepared) await Storage.remove(guideKey)
+        throw new RuntimeEvents.ActiveRunError(input.sessionID)
       }
-      // The follow-up's own receipt points at the run it joined, so an exact
-      // retry after that run has ended replays the run instead of starting a
-      // fresh one for a message that is already in the transcript.
+      const busy = (() => {
+        try {
+          SessionPrompt.assertNotBusy(input.sessionID)
+          return false
+        } catch (error) {
+          if (error instanceof Session.BusyError) return true
+          throw error
+        }
+      })()
+      if (active || busy || written) {
+        if (input.delivery === "start") throw new RuntimeEvents.ActiveRunError(input.sessionID, active)
+        // A message sent while a run is live joins that run: the loop reads the
+        // newest user message on its next step and answers both, so the reply
+        // stays one run and Enter never has to mean Stop. Idempotent on the
+        // message id a retry reuses.
+        const target = written ? expectedRunID : active
+        const current = target
+          ? await read(input.sessionID, target).catch((error) => {
+              if (Storage.NotFoundError.isInstance(error)) return
+              throw error
+            })
+          : undefined
+        if (!current || (finished(current.run) && !written)) throw new RuntimeEvents.ActiveRunError(input.sessionID)
+        const existing =
+          !expectedRunID && input.messageID
+            ? await MessageV2.get({ sessionID: input.sessionID, messageID: input.messageID }).catch((error) => {
+                if (Storage.NotFoundError.isInstance(error)) return
+                throw error
+              })
+            : undefined
+        if (!prepared && !existing && !ready) {
+          const { requestID: _, message, delivery: _delivery, ...rest } = input
+          return {
+            prepare: {
+              ...rest,
+              agent,
+              noReply: true,
+              parts: input.parts ?? [{ type: "text" as const, text: message! }],
+            },
+            target: current.run.runID,
+          }
+        }
+        const retained = prepared?.message ?? (ready ? await SessionPrompt.normalizeGuidance(ready) : undefined)
+        if (retained) {
+          if (!prepared) {
+            await Storage.write(guideKey, Guidance.parse({ runID: current.run.runID, fingerprint, message: retained }))
+            await hooks.value?.afterGuidePrepared?.(retained)
+          }
+          // 崩溃可能发生在消息与内容分片写入之间；用预先保存的完整内容和真实 ID 补齐原消息。
+          await SessionPrompt.commitGuidance(
+            { ...input, agent, parts: input.parts ?? [{ type: "text", text: input.message! }] },
+            retained,
+          )
+          await hooks.value?.afterGuideMessage?.(retained)
+        }
+        // The follow-up's own receipt points at the run it joined, so an exact
+        // retry after that run has ended replays the run instead of starting a
+        // fresh one for a message that is already in the transcript.
+        await Storage.write(key(input.sessionID, runID), {
+          run: current.run,
+          input,
+          fingerprint,
+          agent,
+          owner: current.owner,
+        } satisfies Record)
+        if (expectedRunID)
+          await Storage.remove(guideKey).catch((error) =>
+            log.warn("could not remove settled guidance preparation", { sessionID: input.sessionID, runID, error }),
+          )
+        return { run: current.run, replayed: true }
+      }
+      if (input.messageID) {
+        // A cancelled admission may never have persisted a user message. Its
+        // receipt still reserves that message ID; a new request cannot rebind it.
+        for (const item of await Storage.list(prefix(input.sessionID))) {
+          const record = Record.parse(await Storage.read(item))
+          if (record.run.messageID === input.messageID) throw new ConflictError()
+        }
+        const existing = await MessageV2.get({ sessionID: input.sessionID, messageID: input.messageID }).catch(
+          (error) => {
+            if (Storage.NotFoundError.isInstance(error)) return
+            throw error
+          },
+        )
+        if (existing) throw new ConflictError()
+      }
+      const owner = await ProcessIdentity.capture(process.pid)
+      if (!owner) throw new Error("Could not capture runtime process identity")
+      const now = Date.now()
+      const run = Run.parse({
+        runID,
+        sessionID: input.sessionID,
+        requestID: input.requestID,
+        messageID: input.messageID ?? Identifier.ascending("message"),
+        state: "accepted",
+        acceptedAt: now,
+        updatedAt: now,
+      })
       await Storage.write(key(input.sessionID, runID), {
-        run: current.run,
+        run,
         input,
         fingerprint,
         agent,
-        owner: current.owner,
+        owner: { pid: process.pid, identity: owner },
       } satisfies Record)
-      return { run: current.run, replayed: true }
-    }
-    if (input.messageID) {
-      // A cancelled admission may never have persisted a user message. Its
-      // receipt still reserves that message ID; a new request cannot rebind it.
-      for (const item of await Storage.list(prefix(input.sessionID))) {
-        const record = Record.parse(await Storage.read(item))
-        if (record.run.messageID === input.messageID) throw new ConflictError()
-      }
-      const existing = await MessageV2.get({ sessionID: input.sessionID, messageID: input.messageID }).catch(
-        (error) => {
-          if (Storage.NotFoundError.isInstance(error)) return
-          throw error
-        },
-      )
-      if (existing) throw new ConflictError()
-    }
-    const owner = await ProcessIdentity.capture(process.pid)
-    if (!owner) throw new Error("Could not capture runtime process identity")
-    const now = Date.now()
-    const run = Run.parse({
-      runID,
-      sessionID: input.sessionID,
-      requestID: input.requestID,
-      messageID: input.messageID ?? Identifier.ascending("message"),
-      state: "accepted",
-      acceptedAt: now,
-      updatedAt: now,
-    })
-    await Storage.write(key(input.sessionID, runID), {
-      run,
-      input,
-      fingerprint,
-      agent,
-      owner: { pid: process.pid, identity: owner },
-    } satisfies Record)
-    await RuntimeEvents.begin({
-      sessionID: input.sessionID,
-      runID,
-      acceptedAt: now,
-      effort: input.effort,
-    }).catch(async (error) => {
-      await update(input.sessionID, runID, {
-        state: "failed",
-        completedAt: Date.now(),
-        error: { code: "admission_failed", message: error instanceof Error ? error.message : String(error) },
+      await RuntimeEvents.begin({
+        sessionID: input.sessionID,
+        runID,
+        acceptedAt: now,
+        effort: input.effort,
+      }).catch(async (error) => {
+        await update(input.sessionID, runID, {
+          state: "failed",
+          completedAt: Date.now(),
+          error: { code: "admission_failed", message: error instanceof Error ? error.message : String(error) },
+        })
+        throw error
       })
-      throw error
-    })
-    return { run, replayed: false }
+      return { run, replayed: false }
+    }
+    const result = await accept()
+    if (!("prepare" in result)) return result
+    const target = result.target
+    expectedRunID = target
+    const pending = preparations()
+    const existing = pending.get(runID)
+    if (existing) {
+      if (existing.fingerprint !== fingerprint || existing.runID !== expectedRunID) throw new ConflictError()
+      return existing.work
+    }
+    const controller = new AbortController()
+    // 远端进程取消/完成也应撤下等待中的权限卡；轮询不占用会话接收锁。
+    let checking = false
+    const timer = setInterval(() => {
+      if (checking || controller.signal.aborted) return
+      checking = true
+      void (async () => {
+        if (
+          (await RuntimeEvents.activeRun(input.sessionID)) !== target ||
+          (await RuntimeEvents.cancellationRequested(input.sessionID, target))
+        )
+          controller.abort(new RuntimeEvents.ActiveRunError(input.sessionID))
+      })()
+        .catch((error) => controller.abort(error))
+        .finally(() => {
+          checking = false
+        })
+    }, 250)
+    const work = (async () => {
+      try {
+        const message = await SessionPrompt.prepareGuidance(result.prepare, controller).catch((error) => {
+          if (controller.signal.aborted) throw controller.signal.reason
+          throw new PreparationError(error)
+        })
+        controller.signal.throwIfAborted()
+        await hooks.value?.beforeGuideCommit?.(message)
+        controller.signal.throwIfAborted()
+        const admitted = await accept(message)
+        if ("prepare" in admitted) throw new Error("Guidance preparation was not accepted")
+        return admitted
+      } finally {
+        clearInterval(timer)
+        if (pending.get(runID)?.controller === controller) pending.delete(runID)
+      }
+    })()
+    pending.set(runID, { sessionID: input.sessionID, runID: target, fingerprint, controller, work })
+    return work
   }
 
   async function execute(run: Run) {
@@ -368,6 +515,8 @@ export namespace RuntimeRuns {
         await reconcile(await read(run.sessionID, run.runID))
         return
       }
+      // 失败收尾与正常完成、取消共用接收锁，不能在校验引导目标到保存消息期间结束该运行。
+      await using lease = await RuntimeAdmission.acquire(run.sessionID)
       const event = await RuntimeEvents.fail({ sessionID: run.sessionID, runID: run.runID, error })
       await update(run.sessionID, run.runID, {
         state: event.type === "runtime.cancelled" ? "cancelled" : "failed",
@@ -449,6 +598,11 @@ export namespace RuntimeRuns {
     return { runID: result.run.runID, acceptedAt: result.run.acceptedAt }
   }
 
+  export async function guide(input: Input, runID: string) {
+    const result = await admitStored(Input.parse({ ...input, delivery: "guide" }), "research", RunID.parse(runID))
+    return result.run
+  }
+
   function launch(run: Run) {
     const work = tasks().work
     const task = execute(run)
@@ -491,6 +645,7 @@ export namespace RuntimeRuns {
   }
 
   export async function cancel(sessionID: string, runID: string) {
+    cancelPreparations(sessionID, runID)
     await using lease = await RuntimeAdmission.acquire(sessionID)
     const local = executions().get(runID)
     const controller = local?.sessionID === sessionID ? local.controller : undefined

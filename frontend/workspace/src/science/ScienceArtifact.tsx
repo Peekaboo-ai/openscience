@@ -1,4 +1,4 @@
-import { Show, createMemo, type JSX } from "solid-js"
+import { ErrorBoundary, Show, createEffect, createMemo, on, type JSX } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import { get, type ArtifactInspection, type ArtifactKind } from "./renderers"
 
@@ -26,22 +26,48 @@ export function ScienceArtifact(props: ScienceArtifactProps): JSX.Element {
 
   return (
     <div data-component="science-artifact" data-kind={props.kind}>
-      <Show when={renderer()} fallback={<ScienceArtifactFallback kind={props.kind} data={props.data} />}>
-        {(Renderer) => (
-          <Dynamic
-            component={Renderer()}
-            kind={props.kind}
-            data={props.data}
-            height={props.height}
-            onInspect={props.onInspect}
-          />
-        )}
-      </Show>
+      <ErrorBoundary fallback={(error, reset) => <ScienceArtifactFailure {...props} error={error} reset={reset} />}>
+        <Show when={renderer()} fallback={<ScienceArtifactFallback kind={props.kind} data={props.data} />}>
+          {(Renderer) => (
+            <Dynamic
+              component={Renderer()}
+              kind={props.kind}
+              data={props.data}
+              height={props.height}
+              onInspect={props.onInspect}
+            />
+          )}
+        </Show>
+      </ErrorBoundary>
     </div>
   )
 }
 
-function ScienceArtifactFallback(props: { kind: ArtifactKind; data: unknown }): JSX.Element {
+function ScienceArtifactFailure(props: ScienceArtifactProps & { error: unknown; reset: () => void }) {
+  // 只隔离当前产物；新数据到达时重试，避免一次解析失败替换整段会话或后续产物。
+  createEffect(
+    on(
+      () => [props.kind, props.data],
+      () => props.reset(),
+      { defer: true },
+    ),
+  )
+  return (
+    <ScienceArtifactFallback
+      kind={props.kind}
+      data={props.data}
+      error={props.error instanceof Error ? props.error.message : String(props.error)}
+      retry={props.reset}
+    />
+  )
+}
+
+function ScienceArtifactFallback(props: {
+  kind: ArtifactKind
+  data: unknown
+  error?: string
+  retry?: () => void
+}): JSX.Element {
   const preview = createMemo(() => {
     try {
       return JSON.stringify(props.data, null, 2).slice(0, 2000)
@@ -51,7 +77,16 @@ function ScienceArtifactFallback(props: { kind: ArtifactKind; data: unknown }): 
   })
   return (
     <div data-component="science-artifact-fallback">
-      <div data-slot="science-artifact-fallback-title">No renderer registered for artifact kind “{props.kind}”.</div>
+      <div data-slot="science-artifact-fallback-title" role={props.error ? "alert" : undefined}>
+        {props.error
+          ? `Could not render this artifact: ${props.error}`
+          : `No renderer registered for artifact kind “${props.kind}”.`}
+      </div>
+      <Show when={props.retry}>
+        <button type="button" onClick={() => props.retry?.()}>
+          Retry preview
+        </button>
+      </Show>
       <details data-slot="science-artifact-fallback-details">
         <summary>Raw artifact data</summary>
         <pre>{preview()}</pre>

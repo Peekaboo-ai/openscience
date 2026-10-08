@@ -27,6 +27,8 @@ import { useGlobalSDK } from "./global-sdk"
 import { createInflightCache } from "./inflight-cache"
 import { createProjectCatalogSync, projectCatalogCacheKey } from "./project-catalog"
 import { createListeners } from "./listeners"
+import { createSnapshotUpdates } from "./snapshot-updates"
+import { requestDeadline } from "@/utils/request-deadline"
 import {
   createReconnectGenerationGuard,
   mergeHydratedMessages,
@@ -37,16 +39,18 @@ import {
 // import a page.
 type InitError = { code: string; message?: string; cause?: unknown }
 
-export function syncErrorMessage(error: unknown): string {
+export function syncErrorMessage(error: unknown, seen = new Set<object>()): string {
   if (error instanceof Error && error.message.trim()) return error.message
   if (typeof error === "string" && error.trim()) return error
   if (!error || typeof error !== "object") return "The server returned an unexpected response."
+  if (seen.has(error) || seen.size >= 64) return "The server returned an unexpected response."
+  seen.add(error)
 
   const value = error as Record<string, unknown>
   for (const key of ["message", "detail", "error", "data", "cause"] as const) {
     const candidate = value[key]
     if (candidate === error || candidate === undefined || candidate === null) continue
-    const message = syncErrorMessage(candidate)
+    const message = syncErrorMessage(candidate, seen)
     if (message !== "The server returned an unexpected response.") return message
   }
   if (typeof value.status === "number") return `Request failed with status ${value.status}.`
@@ -216,6 +220,13 @@ function createGlobalSync() {
   const iconCache = new Map<string, IconCache>()
 
   const sdkCache = new Map<string, ReturnType<typeof createOpenScienceClient>>()
+  const requests = new AbortController()
+  const read = <T,>(run: (signal: AbortSignal) => Promise<T>) => requestDeadline(run, 30_000, requests.signal)
+  let disposed = false
+  onCleanup(() => {
+    disposed = true
+    requests.abort()
+  })
   const projectFor = (directory: string, projectID?: string) => {
     if (projectID) return projectID
     return globalStore.project.find(
@@ -263,15 +274,18 @@ function createGlobalSync() {
     // managed pricing cache and failure cooldown before answering.
     const parameters = refresh ? { refresh: "true" as const } : undefined
     try {
-      const scoped = await sdkFor(directory, providerScopes.get(key)).provider.list(parameters)
+      const scoped = await read((signal) =>
+        sdkFor(directory, providerScopes.get(key)).provider.list(parameters, { signal }),
+      )
       return normalizeProviderList(scoped.data!)
     } catch (error) {
+      if (disposed) throw error
       // The catalog is a property of the install, not of one project, so a
       // project that has gone stale (its folder deleted — the server answers
       // 410) must not be able to empty it. Every model surface reads this
       // store, so failing here looked like "my API key vanished".
       console.warn("Provider catalog unavailable for this project; using the install catalog", { directory, error })
-      const global = await globalSDK.client.provider.list(parameters)
+      const global = await read((signal) => globalSDK.client.provider.list(parameters, { signal }))
       return normalizeProviderList(global.data!)
     }
   })
@@ -334,7 +348,7 @@ function createGlobalSync() {
   const [catalogState, setCatalogState] = createStore({ loaded: false })
   const projectCatalog = createProjectCatalogSync({
     load: async () => {
-      const response = await globalSDK.client.project.list()
+      const response = await read((signal) => globalSDK.client.project.list(undefined, { signal }))
       if (response.error) throw response.error
       return (response.data ?? [])
         .filter((project) => !!project?.id)
@@ -361,6 +375,8 @@ function createGlobalSync() {
   let root = false
   let running = false
   let timer: ReturnType<typeof setTimeout> | undefined
+  const bootstrapVersions = new Map<string, number>()
+  const reboots = new Set<string>()
 
   const paused = () => untrack(() => globalStore.reload) !== undefined
 
@@ -378,7 +394,7 @@ function createGlobalSync() {
   }
 
   const schedule = () => {
-    if (timer) return
+    if (disposed || timer) return
     timer = setTimeout(() => {
       timer = undefined
       void drain()
@@ -399,11 +415,11 @@ function createGlobalSync() {
   }
 
   async function drain() {
-    if (running) return
+    if (disposed || running) return
     running = true
     try {
       while (true) {
-        if (paused()) return
+        if (disposed || paused()) return
 
         if (root) {
           root = false
@@ -415,7 +431,7 @@ function createGlobalSync() {
         const dirs = take(2)
         if (dirs.length === 0) return
 
-        await Promise.all(dirs.map((dir) => bootstrapInstance(dir)))
+        await Promise.all(dirs.map((dir) => bootstrapInstance(dir, undefined, "refresh")))
         await tick()
       }
     } finally {
@@ -578,6 +594,7 @@ function createGlobalSync() {
   const catalogued = new Set<string>()
   const timers = new Set<ReturnType<typeof setTimeout>>()
   const defer = (fn: () => void, delay: number) => {
+    if (disposed) return
     const timer = setTimeout(() => {
       timers.delete(timer)
       fn()
@@ -620,6 +637,10 @@ function createGlobalSync() {
   }
   const sessionLoads = new Map<string, Promise<void>>()
   const sessionMeta = new Map<string, { limit: number }>()
+  const sessionUpdates = createSnapshotUpdates<Session>()
+  const statusUpdates = createSnapshotUpdates<SessionStatus>()
+  const permissionUpdates = createSnapshotUpdates<PermissionRequest>()
+  const questionUpdates = createSnapshotUpdates<QuestionRequest>()
 
   const sessionRecentWindow = 4 * 60 * 60 * 1000
   const sessionRecentLimit = 50
@@ -782,6 +803,7 @@ function createGlobalSync() {
   }
 
   async function loadSessions(directory: string, projectID?: string, attempt = 0) {
+    if (disposed) return
     const key = scopeFor(directory, projectID)
     const pending = sessionLoads.get(key)
     if (pending) return pending
@@ -796,10 +818,16 @@ function createGlobalSync() {
       return
     }
 
-    const promise = sdkFor(directory, projectID)
-      .session.list()
+    const updates = sessionUpdates.start(directory)
+    const promise = read((signal) => sdkFor(directory, projectID).session.list(undefined, { signal }))
       .then((x) => {
-        const nonArchived = (x.data ?? [])
+        if (disposed) return
+        const snapshot = new Map(
+          [...store.session.filter((s) => !!s.parentID), ...(x.data ?? [])]
+            .filter((s) => !!s?.id)
+            .map((s) => [s.id, s]),
+        )
+        const nonArchived = [...updates.merge(snapshot).values()]
           .filter((s) => !!s?.id)
           .filter((s) => !s.time?.archived)
           .sort((a, b) => a.id.localeCompare(b.id))
@@ -808,15 +836,15 @@ function createGlobalSync() {
         // a request is in-flight still get the expanded result.
         const limit = store.limit
 
-        const children = store.session.filter((s) => !!s.parentID)
-        const sessions = trimSessions([...nonArchived, ...children], { limit, permission: store.permission })
+        const sessions = trimSessions(nonArchived, { limit, permission: store.permission })
 
         // Store total session count (used for "load more" pagination)
-        setStore("sessionTotal", nonArchived.length)
+        setStore("sessionTotal", nonArchived.filter((s) => !s.parentID).length)
         setStore("session", reconcile(sessions, { key: "id" }))
         sessionMeta.set(key, { limit })
       })
       .catch((err) => {
+        if (disposed) return
         console.error("Failed to load sessions", err)
         // A list that failed to load leaves the sidebar on whatever was
         // persisted, with no event to correct it until something changes on
@@ -838,6 +866,7 @@ function createGlobalSync() {
 
     sessionLoads.set(key, promise)
     promise.finally(() => {
+      updates.close()
       sessionLoads.delete(key)
     })
     return promise
@@ -846,32 +875,40 @@ function createGlobalSync() {
   // Catalogs the first paint does not show; they load once the session list
   // is on screen, and only for a project somebody opened.
   function loadCatalogs(directory: string, projectID?: string) {
+    if (disposed) return Promise.resolve()
     if (catalogued.has(directory)) return Promise.resolve()
     catalogued.add(directory)
     const [, setStore] = ensureChild(directory, projectID)
     const sdk = sdkFor(directory, projectID)
-    return Promise.all([
-      sdk.command.list().then((x) => setStore("command", x.data ?? [])),
-      sdk.app
-        .skills()
-        .then((x) => setStore("skill", x.data ?? []))
-        .catch(() => {}),
-      sdk.mcp.status().then((x) => setStore("mcp", x.data!)),
-      sdk.lsp.status().then((x) => setStore("lsp", x.data!)),
-    ]).catch((error) => console.warn("Failed to load project catalogs", { directory, error }))
+    return Promise.allSettled([
+      read((signal) => sdk.command.list(undefined, { signal })).then((x) => setStore("command", x.data ?? [])),
+      read((signal) => sdk.app.skills(undefined, { signal })).then((x) => setStore("skill", x.data ?? [])),
+      read((signal) => sdk.mcp.status(undefined, { signal })).then((x) => setStore("mcp", x.data!)),
+      read((signal) => sdk.lsp.status(undefined, { signal })).then((x) => setStore("lsp", x.data!)),
+    ]).then((results) => {
+      if (disposed) return
+      const errors = results.filter((result) => result.status === "rejected")
+      if (!errors.length) return
+      catalogued.delete(directory)
+      console.warn("Failed to load project catalogs", { directory, errors })
+    })
   }
 
-  async function bootstrapInstance(directory: string, projectID?: string, mode: "open" | "warm" = "open") {
-    if (!directory) return
+  async function bootstrapInstance(directory: string, projectID?: string, mode: "open" | "warm" | "refresh" = "open") {
+    if (disposed || !directory) return
     requested.add(directory)
     const key = scopeFor(directory, projectID)
     const pending = booting.get(key)
     if (pending) {
+      if (mode === "refresh") reboots.add(key)
       // An explicit open joining a warmup owns its failure from here on.
       if (mode === "open") warming.delete(key)
       return pending
     }
     if (mode === "warm") warming.add(key)
+    const version = (bootstrapVersions.get(directory) ?? 0) + 1
+    bootstrapVersions.set(directory, version)
+    const current = () => !disposed && bootstrapVersions.get(directory) === version
     // A fresh bootstrap, first or re-pushed, fetches the catalogs again.
     catalogued.delete(directory)
 
@@ -888,20 +925,31 @@ function createGlobalSync() {
       // projectMeta is synced from persisted storage in ensureChild.
       // vcs is seeded from persisted storage in ensureChild.
 
-      const projectRequest = retry(() => sdk.project.current()).then((x) => setStore("project", x.data!.id))
+      const projectRequest = retry(() => read((signal) => sdk.project.current(undefined, { signal }))).then((x) => {
+        if (current()) setStore("project", x.data!.id)
+      })
       const blockingRequests = {
         project: () => projectRequest,
-        provider: () => updateProvider(directory, projectID, (value) => setStore("provider", reconcile(value))),
-        agent: () => sdk.app.agents().then((x) => setStore("agent", x.data ?? [])),
-        config: () => sdk.config.get().then((x) => setStore("config", x.data!)),
+        provider: () =>
+          updateProvider(directory, projectID, (value) => {
+            if (current()) setStore("provider", reconcile(value))
+          }),
+        agent: () =>
+          read((signal) => sdk.app.agents(undefined, { signal })).then((x) => {
+            if (current()) setStore("agent", x.data ?? [])
+          }),
+        config: () =>
+          read((signal) => sdk.config.get(undefined, { signal })).then((x) => {
+            if (current()) setStore("config", x.data!)
+          }),
       }
 
       // 会话列表不依赖模型目录；先发起，避免远端的大目录响应串行阻塞会话入口。
       // 项目验证失败由下方统一处理；预热仍遵守静默失败约定。
       const sessions =
-        mode === "open"
+        mode !== "warm"
           ? projectRequest.then(
-              () => loadSessions(directory, projectID),
+              () => (current() ? loadSessions(directory, projectID) : undefined),
               () => undefined,
             )
           : undefined
@@ -909,6 +957,7 @@ function createGlobalSync() {
       try {
         await Promise.all(Object.values(blockingRequests).map((p) => retry(p)))
       } catch (err) {
+        if (!current()) return
         if (warming.has(key)) {
           console.warn("Failed to warm project", { directory, error: err })
           // Back to untouched: an explicit open bootstraps again, and the
@@ -925,89 +974,124 @@ function createGlobalSync() {
         return
       }
 
+      if (!current()) return
       if (store.status !== "complete") setStore("status", "partial")
       interactive("project")
 
-      Promise.all([
-        sdk.path.get().then((x) => setStore("path", x.data!)),
+      const updates = statusUpdates.start(directory)
+      const permissions = permissionUpdates.start(directory)
+      const questions = questionUpdates.start(directory)
+      void Promise.allSettled([
+        read((signal) => sdk.path.get(undefined, { signal })).then((x) => {
+          if (current()) setStore("path", x.data!)
+        }),
         // The list holds only busy sessions; a plain set would keep a session
         // that finished while the stream was down marked as working forever.
-        sdk.session.status().then((x) => setStore("session_status", reconcile(x.data ?? {}))),
+        read((signal) => sdk.session.status(undefined, { signal }))
+          .then((x) => {
+            if (!current()) return
+            const snapshot = updates.merge(new Map(Object.entries(x.data ?? {})))
+            setStore("session_status", reconcile(Object.fromEntries(snapshot)))
+          })
+          .finally(updates.close),
         sessions ?? loadSessions(directory, projectID),
-        sdk.vcs.get().then((x) => {
+        read((signal) => sdk.vcs.get(undefined, { signal })).then((x) => {
+          if (!current()) return
           const next = x.data ?? store.vcs
           setStore("vcs", next)
           if (next?.branch) cache.setStore("value", next)
         }),
-        sdk.permission.list().then((x) => {
-          const grouped: Record<string, PermissionRequest[]> = {}
-          for (const perm of x.data ?? []) {
-            if (!perm?.id || !perm.sessionID) continue
-            const existing = grouped[perm.sessionID]
-            if (existing) {
-              existing.push(perm)
-              continue
+        read((signal) => sdk.permission.list(undefined, { signal }))
+          .then((x) => {
+            if (!current()) return
+            const grouped: Record<string, PermissionRequest[]> = {}
+            const snapshot = permissions.merge(
+              new Map((x.data ?? []).filter((perm) => !!perm?.id).map((perm) => [perm.id, perm])),
+            )
+            for (const perm of snapshot.values()) {
+              if (!perm?.id || !perm.sessionID) continue
+              const existing = grouped[perm.sessionID]
+              if (existing) {
+                existing.push(perm)
+                continue
+              }
+              grouped[perm.sessionID] = [perm]
             }
-            grouped[perm.sessionID] = [perm]
-          }
 
-          batch(() => {
-            for (const sessionID of Object.keys(store.permission)) {
-              if (grouped[sessionID]) continue
-              setStore("permission", sessionID, [])
-            }
-            for (const [sessionID, permissions] of Object.entries(grouped)) {
-              setStore(
-                "permission",
-                sessionID,
-                reconcile(
-                  permissions.filter((p) => !!p?.id).sort((a, b) => a.id.localeCompare(b.id)),
-                  { key: "id" },
-                ),
-              )
-            }
+            batch(() => {
+              for (const sessionID of Object.keys(store.permission)) {
+                if (grouped[sessionID]) continue
+                setStore("permission", sessionID, [])
+              }
+              for (const [sessionID, permissions] of Object.entries(grouped)) {
+                setStore(
+                  "permission",
+                  sessionID,
+                  reconcile(
+                    permissions.filter((p) => !!p?.id).sort((a, b) => a.id.localeCompare(b.id)),
+                    { key: "id" },
+                  ),
+                )
+              }
+            })
           })
-        }),
-        sdk.question.list().then((x) => {
-          const grouped: Record<string, QuestionRequest[]> = {}
-          for (const question of x.data ?? []) {
-            if (!question?.id || !question.sessionID) continue
-            const existing = grouped[question.sessionID]
-            if (existing) {
-              existing.push(question)
-              continue
+          .finally(permissions.close),
+        read((signal) => sdk.question.list(undefined, { signal }))
+          .then((x) => {
+            if (!current()) return
+            const grouped: Record<string, QuestionRequest[]> = {}
+            const snapshot = questions.merge(
+              new Map((x.data ?? []).filter((question) => !!question?.id).map((question) => [question.id, question])),
+            )
+            for (const question of snapshot.values()) {
+              if (!question?.id || !question.sessionID) continue
+              const existing = grouped[question.sessionID]
+              if (existing) {
+                existing.push(question)
+                continue
+              }
+              grouped[question.sessionID] = [question]
             }
-            grouped[question.sessionID] = [question]
-          }
 
-          batch(() => {
-            for (const sessionID of Object.keys(store.question)) {
-              if (grouped[sessionID]) continue
-              setStore("question", sessionID, [])
-            }
-            for (const [sessionID, questions] of Object.entries(grouped)) {
-              setStore(
-                "question",
-                sessionID,
-                reconcile(
-                  questions.filter((q) => !!q?.id).sort((a, b) => a.id.localeCompare(b.id)),
-                  { key: "id" },
-                ),
-              )
-            }
+            batch(() => {
+              for (const sessionID of Object.keys(store.question)) {
+                if (grouped[sessionID]) continue
+                setStore("question", sessionID, [])
+              }
+              for (const [sessionID, questions] of Object.entries(grouped)) {
+                setStore(
+                  "question",
+                  sessionID,
+                  reconcile(
+                    questions.filter((q) => !!q?.id).sort((a, b) => a.id.localeCompare(b.id)),
+                    { key: "id" },
+                  ),
+                )
+              }
+            })
           })
-        }),
-      ]).then(() => {
-        setStore("status", "complete")
-        // A warmed project keeps its MCP servers down until its first open.
-        if (opened.has(directory)) defer(() => void loadCatalogs(directory, projectID), CATALOG_DELAY_MS)
-      })
+          .finally(questions.close),
+      ])
+        .then((results) => {
+          if (!current()) return
+          const errors = results.filter((result) => result.status === "rejected")
+          if (errors.length) console.warn("Some project data could not be refreshed", { directory, errors })
+          setStore("status", errors.length ? "partial" : "complete")
+        })
+        .catch((error) => console.warn("Failed to apply project data", { directory, error }))
+      // Secondary reads stay outside the reconnect queue and cannot delay
+      // independent catalogs or another project's essential state.
+      if (opened.has(directory))
+        defer(() => {
+          if (current()) void loadCatalogs(directory, projectID)
+        }, CATALOG_DELAY_MS)
     })()
 
     booting.set(key, promise)
     promise.finally(() => {
       booting.delete(key)
       warming.delete(key)
+      if (reboots.delete(key)) push(directory)
     })
     return promise
   }
@@ -1230,6 +1314,7 @@ function createGlobalSync() {
       }
       case "session.created": {
         const info = event.properties.info
+        sessionUpdates.set(directory, info.id, info)
         const result = Binary.search(store.session, info.id, (s) => s.id)
         if (result.found) {
           setStore("session", result.index, reconcile(info))
@@ -1246,8 +1331,10 @@ function createGlobalSync() {
       }
       case "session.updated": {
         const info = event.properties.info
+        sessionUpdates.set(directory, info.id, info.time.archived ? undefined : info)
         const result = Binary.search(store.session, info.id, (s) => s.id)
         if (info.time.archived) {
+          statusUpdates.set(directory, info.id, undefined)
           if (result.found) {
             setStore(
               "session",
@@ -1273,6 +1360,8 @@ function createGlobalSync() {
       }
       case "session.deleted": {
         const sessionID = event.properties.info.id
+        sessionUpdates.set(directory, sessionID, undefined)
+        statusUpdates.set(directory, sessionID, undefined)
         const result = Binary.search(store.session, sessionID, (s) => s.id)
         if (result.found) {
           setStore(
@@ -1294,6 +1383,7 @@ function createGlobalSync() {
         setStore("todo", event.properties.sessionID, reconcile(event.properties.todos, { key: "id" }))
         break
       case "session.status": {
+        statusUpdates.set(directory, event.properties.sessionID, event.properties.status)
         setStore("session_status", event.properties.sessionID, reconcile(event.properties.status))
         break
       }
@@ -1392,6 +1482,7 @@ function createGlobalSync() {
         break
       }
       case "permission.asked": {
+        permissionUpdates.set(directory, event.properties.id, event.properties)
         const sessionID = event.properties.sessionID
         const permissions = store.permission[sessionID]
         if (!permissions) {
@@ -1416,6 +1507,7 @@ function createGlobalSync() {
       }
       case "permission.cancelled":
       case "permission.replied": {
+        permissionUpdates.set(directory, event.properties.requestID, undefined)
         const permissions = store.permission[event.properties.sessionID]
         if (!permissions) break
         const result = Binary.search(permissions, event.properties.requestID, (p) => p.id)
@@ -1430,6 +1522,7 @@ function createGlobalSync() {
         break
       }
       case "question.asked": {
+        questionUpdates.set(directory, event.properties.id, event.properties)
         const sessionID = event.properties.sessionID
         const questions = store.question[sessionID]
         if (!questions) {
@@ -1455,6 +1548,7 @@ function createGlobalSync() {
       case "question.cancelled":
       case "question.replied":
       case "question.rejected": {
+        questionUpdates.set(directory, event.properties.requestID, undefined)
         const questions = store.question[event.properties.sessionID]
         if (!questions) break
         const result = Binary.search(questions, event.properties.requestID, (q) => q.id)
@@ -1490,10 +1584,11 @@ function createGlobalSync() {
   })
 
   async function bootstrap() {
-    const health = await globalSDK.client.global
-      .health()
+    if (disposed) return
+    const health = await read((signal) => globalSDK.client.global.health({ signal }))
       .then((x) => x.data)
       .catch(() => undefined)
+    if (disposed) return
     if (!health?.healthy) {
       showToast({
         variant: "error",
@@ -1506,13 +1601,13 @@ function createGlobalSync() {
 
     // One path lookup feeds both the store and the provider catalog; the
     // catalog task used to issue its own path.get before the first resolved.
-    const path = retry(() => globalSDK.client.path.get().then((x) => x.data!))
+    const path = retry(() => read((signal) => globalSDK.client.path.get(undefined, { signal })).then((x) => x.data!))
     const tasks = [
       path.then((value) => {
         setGlobalStore("path", value)
       }),
       retry(() =>
-        globalSDK.client.global.config.get().then((x) => {
+        read((signal) => globalSDK.client.global.config.get({ signal })).then((x) => {
           setGlobalStore("config", x.data!)
         }),
       ),
@@ -1527,13 +1622,14 @@ function createGlobalSync() {
         }),
       ),
       retry(() =>
-        globalSDK.client.provider.auth().then((x) => {
+        read((signal) => globalSDK.client.provider.auth(undefined, { signal })).then((x) => {
           setGlobalStore("provider_auth", x.data ?? {})
         }),
       ),
     ]
 
     const results = await Promise.allSettled(tasks)
+    if (disposed) return
     const errors = results.filter((r): r is PromiseRejectedResult => r.status === "rejected").map((r) => r.reason)
 
     if (errors.length) {

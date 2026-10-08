@@ -8,6 +8,13 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 
 ## Unreleased
 
+- **Integrated queue controls.** Dock queued messages against the composer, with a prominent Steer button and directly visible edit/delete controls. Reorder tasks by dragging the handle with mouse or touch, with a drop indicator, automatic edge scrolling and arrow-key alternatives. Keep compact single-message rows and pause/resume controls; cancel stale gestures when the queue or session changes.
+
+- **Queue-first conversation follow-ups.** While Research is running, Send/Enter queues a separate task above the composer. Promote a queued message into the current run with Guide, or edit, remove, reorder, pause and resume pending work. Preserve attachments and model settings, bind guidance to the displayed active run, prevent duplicate delivery across retries, and recover queue reads after transient failures. Ctrl/⌘+Enter sends draft guidance directly.
+
+- **Engineering reliability audit.** Preserve live session titles, running states, approvals and questions when delayed snapshots arrive; bound bootstrap reads, cancel abandoned workspaces, and keep slow project metadata out of the reconnect queue. Fix immediate remote disconnect races, proxy interception of the remote worker's internal HTTP requests, and timeout timers retained after failed operations.
+- **Preview and interaction resilience.** Scope remote preview caches to their source, enforce streamed preview limits, and bound Results thumbnail concurrency and cache memory. Recover scientific/PDF/genome previews after errors or source changes; isolate terminal connection state by tab. Recover stalled Compute/connector reads, reject stale connector responses, and preserve keyboard activation of Autoresearch chart controls.
+
 - **Memory navigation and draft recovery.** Keep categories and scope/project selectors usable while editing, retain separate local/remote drafts across browsing and reconnection, and offer explicit resume/discard actions. Correct scope changes that previously failed validation, replace editor identities safely, and ignore stale store responses.
 
 - **Accurate Compute allocation scope.** Filter Slurm accelerator telemetry using the selected node's allocation count, verified job cgroup and physical device access. Exclude other jobs' cards, isolate history by device assignment, and explain unavailable allocation evidence while retaining node CPU/memory. Clarify tracked-runtime counters and whole-node versus allocated-device metrics.

@@ -77,6 +77,35 @@ const artifact = (over: { filename: string; mimeType?: string; size?: number }) 
   }) as never
 
 describe("artifact thumbnail", () => {
+  test("closing a thumbnail cancels its in-flight authenticated read", async () => {
+    let signal: AbortSignal | undefined
+    mount(() =>
+      subject.ArtifactThumb({
+        artifact: artifact({ filename: "pending.png", mimeType: "image/png" }),
+        read: (_artifact, current) => {
+          signal = current
+          return new Promise<Blob>(() => {})
+        },
+      }),
+    )
+    await settle()
+    expect(signal?.aborted).toBe(false)
+    cleanups.splice(0).forEach((dispose) => dispose())
+    expect(signal?.aborted).toBe(true)
+  })
+
+  test("oversized response bodies remain download-only despite stale artifact metadata", async () => {
+    const host = mount(() =>
+      subject.ArtifactThumb({
+        artifact: artifact({ filename: "unexpected.png", mimeType: "image/png", size: 100 }),
+        read: async () => new Blob([new Uint8Array(8 * 1024 * 1024 + 1)]),
+      }),
+    )
+    await settle()
+    expect(host.querySelector("img")).toBeNull()
+    expect(host.querySelector("[data-thumb-chip]")?.textContent).toBe("png")
+  })
+
   test("renders a static HTML thumbnail with scripts and remote resources blocked", async () => {
     const host = mount(() =>
       subject.ArtifactThumb({

@@ -36305,7 +36305,7 @@
             }
           }
         ],
-        "summary": "Edit, reorder, pause or resume the prompt queue",
+        "summary": "Edit, guide, reorder, pause or resume the prompt queue",
         "responses": {
           "200": {
             "description": "Updated queue",
@@ -36425,6 +36425,27 @@
                           "type",
                           "id",
                           "text"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "const": "guide"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "runID": {
+                            "type": "string",
+                            "pattern": "^run_[A-Za-z0-9_-]+$"
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "id",
+                          "runID"
                         ]
                       }
                     ]
@@ -69356,6 +69377,13 @@
           },
           "reason": {
             "type": "string"
+          },
+          "dispatching": {
+            "type": "string"
+          },
+          "activeRunID": {
+            "type": "string",
+            "pattern": "^run_[A-Za-z0-9_-]+$"
           },
           "items": {
             "type": "array",

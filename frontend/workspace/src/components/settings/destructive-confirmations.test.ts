@@ -21,7 +21,7 @@ describe("settings destructive confirmations", () => {
 
     expect(component).toContain('import { useDialog } from "@synsci/ui/context/dialog"')
     expect(component).toContain('import { confirmDialog } from "@/atlas/dialogs"')
-    expect(component).toContain("const dialog = useDialog()")
+    expect(component).toMatch(/const dialog = (?:props\.services\?\.dialog \?\? )?useDialog\(\)/)
     expect(component).toContain("await confirmDialog(dialog, {")
     expect(component).toContain("danger: true")
     expect(component).not.toContain("window.confirm")

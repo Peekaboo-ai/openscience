@@ -1,16 +1,18 @@
 import { Match, Show, Switch, createEffect, createSignal, onCleanup, type JSX } from "solid-js"
-import { blobDataUrl } from "@/artifacts/bytes"
+import { blobDataUrl, STORED_ARTIFACT_PREVIEW_LIMIT } from "@/artifacts/bytes"
 import type { StoredArtifact } from "@/artifacts/store"
 import { ensurePdfWorker } from "@/science/renderers/documents/pdfjs-worker"
 import { extension, thumbKind, thumbLanguage } from "./artifact-thumb"
 import { molecularThumbnail } from "./molecular-thumbnail"
 import { parseTable } from "@/data/table"
 import { rewriteHtmlAssets } from "@/utils/html-assets"
+import { requestDeadline } from "@/utils/request-deadline"
+import { previewQueue } from "./preview-queue"
 
 export interface ThumbProps {
   artifact: StoredArtifact
   /** Reads immutable bytes through the authenticated transport. */
-  read: (artifact: StoredArtifact) => Promise<Blob>
+  read: (artifact: StoredArtifact, signal?: AbortSignal) => Promise<Blob>
   /** Defaults to the shared shiki highlighter; injected in tests. */
   highlight?: (code: string, lang: string) => Promise<string>
 }
@@ -42,12 +44,19 @@ const notebookText = (body: string) => {
   return { text: source.split("\n").slice(0, PREVIEW_LINES).join("\n"), label: cell?.cell_type ?? "notebook" }
 }
 
-const pdfImage = async (blob: Blob) => {
+const pdfImage = async (blob: Blob, signal: AbortSignal) => {
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs")
+  signal.throwIfAborted()
   ensurePdfWorker(pdfjs.GlobalWorkerOptions)
-  const task = pdfjs.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) })
-  const pdf = await task.promise
+  const bytes = new Uint8Array(await blob.arrayBuffer())
+  signal.throwIfAborted()
+  const task = pdfjs.getDocument({ data: bytes })
+  const stop = () => {
+    void task.destroy().catch(() => undefined)
+  }
+  signal.addEventListener("abort", stop, { once: true })
   try {
+    const pdf = await task.promise
     const page = await pdf.getPage(1)
     const base = page.getViewport({ scale: 1 })
     const viewport = page.getViewport({ scale: Math.min(1.4, 320 / Math.max(1, base.width)) })
@@ -59,7 +68,8 @@ const pdfImage = async (blob: Blob) => {
     await page.render({ canvas, canvasContext: context, viewport }).promise
     return canvas.toDataURL("image/png")
   } finally {
-    await task.destroy()
+    signal.removeEventListener("abort", stop)
+    await task.destroy().catch(() => undefined)
   }
 }
 
@@ -77,13 +87,26 @@ const pdfImage = async (blob: Blob) => {
  */
 const previews = new Map<string, Preview>()
 const PREVIEW_CACHE_LIMIT = 200
+const PREVIEW_CACHE_BYTES = 24 * 1024 * 1024
+const previewBytes = (preview: Preview) =>
+  2 *
+  ((preview.document?.length ?? 0) +
+    (preview.text?.length ?? 0) +
+    (preview.html?.length ?? 0) +
+    (preview.image?.length ?? 0) +
+    (preview.label?.length ?? 0) +
+    (preview.table?.reduce((total, row) => total + row.reduce((size, cell) => size + cell.length, 0), 0) ?? 0))
 
 const remember = (version: string, preview: Preview) => {
-  // Only evict when the map is about to grow: overwriting a key it already holds
-  // would otherwise drop an unrelated entry for nothing.
-  if (!previews.has(version) && previews.size >= PREVIEW_CACHE_LIMIT) {
-    const oldest = previews.keys().next()
-    if (!oldest.done) previews.delete(oldest.value)
+  const size = previewBytes(preview)
+  if (size > PREVIEW_CACHE_BYTES) return
+  previews.delete(version)
+  let held = size
+  for (const value of previews.values()) held += previewBytes(value)
+  for (const [key, value] of previews) {
+    if (previews.size < PREVIEW_CACHE_LIMIT && held <= PREVIEW_CACHE_BYTES) break
+    previews.delete(key)
+    held -= previewBytes(value)
   }
   previews.set(version, preview)
 }
@@ -112,79 +135,104 @@ export function ArtifactThumb(props: ThumbProps): JSX.Element {
     }
 
     let live = true
-    onCleanup(() => (live = false))
+    const controller = new AbortController()
+    onCleanup(() => {
+      live = false
+      controller.abort()
+    })
 
-    void (async () => {
-      try {
-        // Inside the try, because `read` can throw rather than reject:
-        // sdk.request is a plain function that throws when no project is open.
-        const blob = await props.read(artifact)
-        if (!live) return
-        if (previewKind === "image") {
-          const typed =
-            blob.type === artifact.current.mimeType ? blob : new Blob([blob], { type: artifact.current.mimeType })
-          const preview = { image: await blobDataUrl(typed) }
-          remember(artifact.current.id, preview)
-          if (live) setPreview(preview)
-          return
-        }
-        if (previewKind === "pdf") {
-          const preview = { image: await pdfImage(blob), label: "PDF preview" }
-          remember(artifact.current.id, preview)
-          if (live) setPreview(preview)
-          return
-        }
-        const body = await blob.text()
-        if (previewKind === "html") {
-          // 缩略图只展示静态排版，避免滚动目录时执行脚本或访问外部资源。
-          const doc = new DOMParser().parseFromString(
-            rewriteHtmlAssets(body, (src) => (src.startsWith("data:") ? src : "about:blank")),
-            "text/html",
-          )
-          doc.querySelectorAll("script, iframe, object, embed, base, meta[http-equiv]").forEach((node) => node.remove())
-          const policy = doc.createElement("meta")
-          policy.setAttribute("http-equiv", "Content-Security-Policy")
-          policy.setAttribute("content", "default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:")
-          doc.head.prepend(policy)
-          const preview = { document: `<!doctype html>${doc.documentElement.outerHTML}` }
-          remember(artifact.current.id, preview)
-          if (live) setPreview(preview)
-          return
-        }
-        if (previewKind === "molecule") {
-          const image = await molecularThumbnail(body, extension(artifact.current.filename))
-          if (!image) {
-            if (live) setFailed(true)
-            return
-          }
-          const preview = { image }
-          remember(artifact.current.id, preview)
-          if (live) setPreview(preview)
-          return
-        }
-        if (previewKind === "table") {
-          const preview = { table: cells(body, artifact.current.filename) }
-          remember(artifact.current.id, preview)
-          if (live) setPreview(preview)
-          return
-        }
-        if (previewKind === "notebook") {
-          const preview = notebookText(body)
-          remember(artifact.current.id, preview)
-          if (live) setPreview(preview)
-          return
-        }
-        const lines = body.split("\n").slice(0, PREVIEW_LINES).join("\n")
-        const html = await (props.highlight ?? shared)(lines, thumbLanguage(artifact.current.filename)).catch(
-          () => undefined,
-        )
-        const preview = { text: lines, html }
-        remember(artifact.current.id, preview)
-        if (live) setPreview(preview)
-      } catch {
-        if (live) setFailed(true)
-      }
-    })()
+    void previewQueue(
+      () =>
+        requestDeadline(
+          async (signal) => {
+            try {
+              // Inside the try, because `read` can throw rather than reject:
+              // sdk.request is a plain function that throws when no project is open.
+              const blob = await props.read(artifact, signal)
+              if (!live) return
+              if (blob.size > STORED_ARTIFACT_PREVIEW_LIMIT)
+                throw new Error("Artifact thumbnail exceeds the browser limit")
+              if (previewKind === "image") {
+                const typed =
+                  blob.type === artifact.current.mimeType ? blob : new Blob([blob], { type: artifact.current.mimeType })
+                const preview = { image: await blobDataUrl(typed) }
+                remember(artifact.current.id, preview)
+                if (live) setPreview(preview)
+                return
+              }
+              if (previewKind === "pdf") {
+                const preview = { image: await pdfImage(blob, signal), label: "PDF preview" }
+                remember(artifact.current.id, preview)
+                if (live) setPreview(preview)
+                return
+              }
+              const body = await blob.text()
+              if (!live) return
+              if (previewKind === "html") {
+                // 缩略图只展示静态排版，避免滚动目录时执行脚本或访问外部资源。
+                const doc = new DOMParser().parseFromString(
+                  rewriteHtmlAssets(body, (src) => (src.startsWith("data:") ? src : "about:blank")),
+                  "text/html",
+                )
+                doc
+                  .querySelectorAll("script, iframe, object, embed, base, meta[http-equiv]")
+                  .forEach((node) => node.remove())
+                const policy = doc.createElement("meta")
+                policy.setAttribute("http-equiv", "Content-Security-Policy")
+                policy.setAttribute(
+                  "content",
+                  "default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:",
+                )
+                doc.head.prepend(policy)
+                const preview = { document: `<!doctype html>${doc.documentElement.outerHTML}` }
+                remember(artifact.current.id, preview)
+                if (live) setPreview(preview)
+                return
+              }
+              if (previewKind === "molecule") {
+                const image = await molecularThumbnail(body, extension(artifact.current.filename))
+                if (!image) {
+                  if (live) setFailed(true)
+                  return
+                }
+                const preview = { image }
+                remember(artifact.current.id, preview)
+                if (live) setPreview(preview)
+                return
+              }
+              if (previewKind === "table") {
+                const preview = { table: cells(body, artifact.current.filename) }
+                remember(artifact.current.id, preview)
+                if (live) setPreview(preview)
+                return
+              }
+              if (previewKind === "notebook") {
+                const preview = notebookText(body)
+                remember(artifact.current.id, preview)
+                if (live) setPreview(preview)
+                return
+              }
+              const lines = body.split("\n").slice(0, PREVIEW_LINES).join("\n")
+              const html = await (props.highlight ?? shared)(lines, thumbLanguage(artifact.current.filename)).catch(
+                () => undefined,
+              )
+              const preview = { text: lines, html }
+              remember(artifact.current.id, preview)
+              if (live) setPreview(preview)
+            } catch {
+              if (live) setFailed(true)
+            }
+          },
+          45_000,
+          controller.signal,
+        ),
+      controller.signal,
+    ).catch(() => {
+      if (!live) return
+      setFailed(true)
+      live = false
+      controller.abort()
+    })
   })
 
   const chip = () => (

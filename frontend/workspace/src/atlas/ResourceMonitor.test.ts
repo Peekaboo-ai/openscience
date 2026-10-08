@@ -1,4 +1,4 @@
-import { afterAll, afterEach, expect, test } from "bun:test"
+import { afterAll, afterEach, expect, spyOn, test } from "bun:test"
 import { fileURLToPath } from "node:url"
 import solid from "vite-plugin-solid"
 import { createTestServer } from "../../test/vite"
@@ -84,6 +84,44 @@ function mount(request: MonitorRequest) {
   cleanups.push(dispose)
   return { host, dispose, changeSession, changeVisibility }
 }
+
+test.each(["headers", "body"])("a stalled %s read times out, recovers and ignores its late sample", async (phase) => {
+  const timeout = globalThis.setTimeout
+  const timer = spyOn(globalThis, "setTimeout").mockImplementation(((
+    callback: (...args: unknown[]) => void,
+    delay?: number,
+    ...args: unknown[]
+  ) => timeout(callback, delay === 30_000 ? 30 : delay, ...args)) as typeof setTimeout)
+  const stalled = Promise.withResolvers<unknown>()
+  let attempts = 0
+  let signal: AbortSignal | null | undefined
+  try {
+    const { host } = mount(async (_, init) => {
+      signal = init?.signal
+      attempts++
+      if (attempts > 1) {
+        const next = report(105_000)
+        next.sample!.cpu.utilization = 61
+        return Response.json(next)
+      }
+      if (phase === "headers") return stalled.promise as Promise<Response>
+      return { ok: true, json: () => stalled.promise } as Response
+    })
+    await ready(() => host.querySelector(".resource-monitor")?.getAttribute("data-state") === "unavailable")
+    expect(signal?.aborted).toBe(true)
+    expect(host.textContent).toContain("too long")
+    refresh()
+    await ready(() => host.querySelector(".resource-monitor")?.getAttribute("data-state") === "live")
+    expect(host.textContent).toContain("61.0%")
+    stalled.resolve(phase === "headers" ? Response.json(report()) : report())
+    await Bun.sleep(20)
+    expect(host.textContent).toContain("61.0%")
+    expect(attempts).toBe(2)
+  } finally {
+    timer.mockRestore()
+  }
+})
+
 test("renders device metrics and preserves chart focus across fresh samples", async () => {
   let time = 100_000
   const { host } = mount(async () => Response.json(report((time += 5000))))

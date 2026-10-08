@@ -13,6 +13,9 @@ export async function runRemoteWorker() {
   const { Server } = await import("../server/server")
   const { Instance } = await import("../project/instance")
   const server = Server.listen({ port: 0 })
+  // HTTP dispatch stays in-process so an inherited proxy cannot intercept
+  // authenticated requests between the bridge and its own backend.
+  const internal = Server.internalFetch()
   const requests = new Map<string, AbortController>()
   const sockets = new Map<string, WebSocket>()
   let stopping = false
@@ -94,7 +97,7 @@ export async function runRemoteWorker() {
       const abort = new AbortController()
       requests.set(frame.id, abort)
       try {
-        const response = await fetch(url, {
+        const response = await internal(url, {
           method: frame.method,
           headers,
           body: frame.data ? Buffer.from(frame.data, "base64") : undefined,

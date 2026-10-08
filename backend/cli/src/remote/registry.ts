@@ -60,11 +60,17 @@ export namespace RemoteWorkspaces {
     return status(bookmark)
   }
   export async function connect(id: string) {
-    const bookmark = await get(id)
     const current = active.get(id)
-    if (current && current.state !== "error") return status(bookmark)
+    if (current && current.state !== "error") return status(await get(id))
     const entry: Active = { abort: new AbortController(), state: "connecting", progress: "Preparing connection…" }
+    // Reserve ownership before reading storage so an immediate disconnect can
+    // cancel this attempt instead of letting a late read start another SSH process.
     active.set(id, entry)
+    const bookmark = await get(id).catch((error) => {
+      if (active.get(id) === entry) active.delete(id)
+      throw error
+    })
+    if (entry.abort.signal.aborted || active.get(id) !== entry) return status(bookmark)
     void prepare(bookmark.target, entry.abort.signal, (value) => {
       entry.progress = value
     })

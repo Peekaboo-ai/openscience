@@ -64,7 +64,7 @@ export async function loadStoredArtifactPreview(
   return { kind, data: await blobDataUrl(typed) }
 }
 
-async function boundedBytes(response: Response, limit: number) {
+export async function boundedBytes(response: Response, limit: number) {
   const declared = Number(response.headers.get("content-length"))
   if (Number.isFinite(declared) && declared > limit) {
     await response.body?.cancel().catch(() => undefined)

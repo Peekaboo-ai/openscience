@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test"
 import fs from "node:fs/promises"
+import { fileURLToPath } from "node:url"
+import { Sandbox } from "../../src/sandbox/sandbox"
 import { tmpdir } from "../fixture/fixture"
 import { spawn } from "../fixture/spawn"
 
@@ -9,7 +11,7 @@ async function stopInFlightCall(reason: string) {
   await using tmp = await tmpdir()
   const runner = `${tmp.path}/cancellation.ts`
   const marker = `${tmp.path}/cancel.txt`
-  const server = new URL("../fixture/mcp-cancellation.mjs", import.meta.url).pathname
+  const server = fileURLToPath(new URL("../fixture/mcp-cancellation.mjs", import.meta.url))
 
   await Bun.write(
     `${tmp.path}/openscience.json`,
@@ -102,60 +104,82 @@ process.exit(0)
   return { ...JSON.parse(output), started: await fs.readFile(marker, "utf8") }
 }
 
-test("stopping a turn cancels the in-flight MCP request at the server", async () => {
-  const result = await stopInFlightCall("openscience-session-stopped")
+const localTest = test.skipIf(!Sandbox.available())
 
-  // The server saw cancellation, not a request timeout: the cancellation
-  // reached the remote peer instead of being abandoned locally.
-  expect(result.started).toContain("started")
-  expect(result.observed).toContain("cancelled MCP tool call cancelled")
-  expect(result.outcome.outcome).toBe("rejected")
-  expect(result.elapsed).toBeLessThan(3_000)
+localTest(
+  "stopping a turn cancels the in-flight MCP request at the server",
+  async () => {
+    const result = await stopInFlightCall("openscience-session-stopped")
 
-  // A stopped call reports cancellation, not the RequestTimeout the MCP SDK
-  // raises for it, so callers that key on the name do not read Stop as failure.
-  expect(result.outcome.name).toBe("AbortError")
-  expect(result.outcome.message).not.toContain("timed out")
-  expect(result.outcome.message).toMatch(/\baborted\b/i)
-}, 30_000)
+    // The server saw cancellation, not a request timeout: the cancellation
+    // reached the remote peer instead of being abandoned locally.
+    expect(result.started).toContain("started")
+    expect(result.observed).toContain("cancelled MCP tool call cancelled")
+    expect(result.outcome.outcome).toBe("rejected")
+    expect(result.elapsed).toBeLessThan(3_000)
 
-test("a plain Stop keeps the abort reason it was given", async () => {
-  // Every production Stop path calls abort() with no reason, so the runtime
-  // supplies the AbortError itself. That one is already right and is passed
-  // through rather than rewrapped.
-  const result = await stopInFlightCall("default")
+    // A stopped call reports cancellation, not the RequestTimeout the MCP SDK
+    // raises for it, so callers that key on the name do not read Stop as failure.
+    expect(result.outcome.name).toBe("AbortError")
+    expect(result.outcome.message).not.toContain("timed out")
+    expect(result.outcome.message).toMatch(/\baborted\b/i)
+  },
+  30_000,
+)
 
-  expect(result.outcome.outcome).toBe("rejected")
-  expect(result.outcome.name).toBe("AbortError")
-  expect(result.outcome.message).toMatch(/\baborted\b/i)
-  expect(result.outcome.message).not.toContain("The MCP tool call was aborted:")
-}, 30_000)
+localTest(
+  "a plain Stop keeps the abort reason it was given",
+  async () => {
+    // Every production Stop path calls abort() with no reason, so the runtime
+    // supplies the AbortError itself. That one is already right and is passed
+    // through rather than rewrapped.
+    const result = await stopInFlightCall("default")
 
-test("a turn aborted for an unrelated reason still reports cancellation", async () => {
-  // Loop disposal and credential revocation abort with their own reason, whose
-  // wording never mentions cancellation. The tool card reads that wording, so
-  // the reason has to be carried without losing what happened.
-  const result = await stopInFlightCall("error")
+    expect(result.outcome.outcome).toBe("rejected")
+    expect(result.outcome.name).toBe("AbortError")
+    expect(result.outcome.message).toMatch(/\baborted\b/i)
+    expect(result.outcome.message).not.toContain("The MCP tool call was aborted:")
+  },
+  30_000,
+)
 
-  expect(result.outcome.outcome).toBe("rejected")
-  expect(result.outcome.name).toBe("AbortError")
-  expect(result.outcome.message).toMatch(/\baborted\b/i)
-  expect(result.outcome.message).toContain("MCP credentials changed")
-}, 30_000)
+localTest(
+  "a turn aborted for an unrelated reason still reports cancellation",
+  async () => {
+    // Loop disposal and credential revocation abort with their own reason, whose
+    // wording never mentions cancellation. The tool card reads that wording, so
+    // the reason has to be carried without losing what happened.
+    const result = await stopInFlightCall("error")
 
-test("an ordinary Error mentioning aborted is still classified as cancellation", async () => {
-  const result = await stopInFlightCall("misleading-error")
+    expect(result.outcome.outcome).toBe("rejected")
+    expect(result.outcome.name).toBe("AbortError")
+    expect(result.outcome.message).toMatch(/\baborted\b/i)
+    expect(result.outcome.message).toContain("MCP credentials changed")
+  },
+  30_000,
+)
 
-  expect(result.outcome.outcome).toBe("rejected")
-  expect(result.outcome.name).toBe("AbortError")
-  expect(result.outcome.message).toContain("Request aborted after credentials changed")
-}, 30_000)
+localTest(
+  "an ordinary Error mentioning aborted is still classified as cancellation",
+  async () => {
+    const result = await stopInFlightCall("misleading-error")
 
-test("the protocol cancellation does not disclose the local abort reason", async () => {
-  const result = await stopInFlightCall("secret")
+    expect(result.outcome.outcome).toBe("rejected")
+    expect(result.outcome.name).toBe("AbortError")
+    expect(result.outcome.message).toContain("Request aborted after credentials changed")
+  },
+  30_000,
+)
 
-  expect(result.outcome.outcome).toBe("rejected")
-  expect(result.outcome.name).toBe("AbortError")
-  expect(result.observed).toContain("cancelled MCP tool call cancelled")
-  expect(result.observed).not.toContain("mcp-server-secret")
-}, 30_000)
+localTest(
+  "the protocol cancellation does not disclose the local abort reason",
+  async () => {
+    const result = await stopInFlightCall("secret")
+
+    expect(result.outcome.outcome).toBe("rejected")
+    expect(result.outcome.name).toBe("AbortError")
+    expect(result.observed).toContain("cancelled MCP tool call cancelled")
+    expect(result.observed).not.toContain("mcp-server-secret")
+  },
+  30_000,
+)

@@ -19,16 +19,22 @@ export namespace RuntimeQueue {
       revision: z.number().int().nonnegative(),
       paused: z.boolean(),
       reason: z.string().optional(),
+      dispatching: z.string().optional(),
+      activeRunID: z.lazy(() => RuntimeRuns.RunID).optional(),
       items: z.array(Item),
     })
     .meta({ ref: "RuntimeQueueSnapshot" })
-  const State = Snapshot.extend({
+  const State = Snapshot.omit({ activeRunID: true }).extend({
     owner: z.object({ pid: z.number(), identity: z.string() }).optional(),
     barrier: z.lazy(() => RuntimeRuns.RunID).optional(),
-    dispatching: z.string().optional(),
+    guiding: z.object({ id: z.string(), runID: z.lazy(() => RuntimeRuns.RunID) }).optional(),
     receipts: z.record(
       z.string(),
-      z.object({ fingerprint: z.string(), runID: z.lazy(() => RuntimeRuns.RunID).optional() }),
+      z.object({
+        fingerprint: z.string(),
+        runID: z.lazy(() => RuntimeRuns.RunID).optional(),
+        guidedTo: z.lazy(() => RuntimeRuns.RunID).optional(),
+      }),
     ),
   })
   type State = z.infer<typeof State>
@@ -42,6 +48,7 @@ export namespace RuntimeQueue {
         z.object({ type: z.literal("remove"), id: z.string() }),
         z.object({ type: z.literal("move"), id: z.string(), before: z.string().nullable() }),
         z.object({ type: z.literal("edit"), id: z.string(), text: z.string().trim().min(1).max(1_000_000) }),
+        z.object({ type: z.literal("guide"), id: z.string(), runID: z.lazy(() => RuntimeRuns.RunID) }),
       ]),
     })
     .strict()
@@ -86,7 +93,7 @@ export namespace RuntimeQueue {
     await using lease = await FileLease.acquire(lock(sessionID))
     const state = await read(sessionID)
     await recover(state)
-    return Snapshot.parse(state)
+    return Snapshot.parse({ ...state, activeRunID: await RuntimeEvents.activeRun(sessionID) })
   }
 
   function canonical(value: unknown): unknown {
@@ -135,12 +142,16 @@ export namespace RuntimeQueue {
 
   export async function mutate(value: z.infer<typeof Mutation>) {
     const input = Mutation.parse(value)
-    await (async () => {
+    const pending = await (async () => {
       await using lease = await FileLease.acquire(lock(input.sessionID))
       const state = await read(input.sessionID)
       await recover(state)
-      if (state.revision !== input.revision) throw new ConflictError()
       const change = input.change
+      // 响应丢失后的重试仍可跨队列版本复用回执，但必须对应同一条消息和目标运行。
+      if (change.type === "guide" && state.receipts[change.id]?.guidedTo === change.runID) return
+      const retrying =
+        change.type === "guide" && state.guiding?.id === change.id && state.guiding.runID === change.runID
+      if (state.revision !== input.revision && !retrying) throw new ConflictError()
       if (change.type === "pause" || change.type === "resume") {
         state.paused = change.type === "pause"
         state.reason = state.paused ? "user" : undefined
@@ -152,16 +163,26 @@ export namespace RuntimeQueue {
         }
       } else {
         const index = state.items.findIndex((item) => item.id === change.id)
-        if (index < 0 || state.dispatching === change.id)
+        if (index < 0 || (state.dispatching === change.id && !retrying))
           throw new ConflictError("This queued prompt has already been submitted")
         const item = state.items[index]!
+        if (change.type === "guide") {
+          if (state.dispatching && !retrying) throw new ConflictError("Another queued prompt is still being submitted")
+          if (!retrying) {
+            state.dispatching = item.id
+            state.guiding = { id: item.id, runID: change.runID }
+            await write(state)
+          }
+          return { item, runID: change.runID }
+        }
         if (change.type === "remove") state.items.splice(index, 1)
         if (change.type === "edit") {
           if (item.input.message !== undefined) item.input.message = change.text
           else {
             const text = item.input.parts?.find((part) => part.type === "text")
-            if (text?.type === "text") text.text = change.text
-            else item.input.parts?.unshift({ type: "text", text: change.text })
+            if (text?.type === "text") {
+              text.text = change.text
+            } else item.input.parts?.unshift({ type: "text", text: change.text })
           }
         }
         if (change.type === "move" && change.before !== change.id) {
@@ -175,8 +196,54 @@ export namespace RuntimeQueue {
       }
       await write(state)
     })()
-    if (input.change.type === "resume") await drain(input.sessionID)
+    if (pending) await guide(input.sessionID, pending.item, pending.runID)
+    if (input.change.type === "resume") await drain(input.sessionID, true)
     return get(input.sessionID)
+  }
+
+  async function guide(sessionID: string, item: z.infer<typeof Item>, runID: string) {
+    try {
+      const run = await SessionPrompt.detached(() =>
+        RuntimeRuns.guide({ ...item.input, requestID: `queue:${item.id}` }, runID),
+      )
+      await using lease = await FileLease.acquire(lock(sessionID))
+      const state = await read(sessionID)
+      if (state.receipts[item.id]?.guidedTo === run.runID) return
+      if (state.guiding?.id !== item.id || state.guiding.runID !== runID)
+        throw new ConflictError("The pending guidance changed before its receipt was saved")
+      state.receipts[item.id]!.runID = run.runID
+      state.receipts[item.id]!.guidedTo = run.runID
+      state.items = state.items.filter((entry) => entry.id !== item.id)
+      state.dispatching = undefined
+      state.guiding = undefined
+      state.barrier = run.runID
+      await write(state)
+    } catch (error) {
+      await using lease = await FileLease.acquire(lock(sessionID))
+      const state = await read(sessionID)
+      if (state.receipts[item.id]?.guidedTo === runID) return
+      if (state.guiding?.id !== item.id || state.guiding.runID !== runID) throw error
+      // 明确拒绝接收时尚无副作用，允许继续编辑或删除；未知失败保留原提交意图供精确恢复。
+      if (error instanceof RuntimeEvents.ActiveRunError) {
+        state.dispatching = undefined
+        state.guiding = undefined
+        state.barrier ??= runID
+        await write(state)
+        throw new ConflictError("The selected run has ended or changed. This prompt remains queued.")
+      }
+      if (error instanceof RuntimeRuns.PreparationError) {
+        // 附件拒绝/读取失败发生在写入对话前，释放条目供修正；已经提交的未知失败仍保留 claim。
+        state.dispatching = undefined
+        state.guiding = undefined
+      }
+      state.paused = true
+      state.reason = "submission_failed"
+      await write(state)
+      throw error
+    } finally {
+      // 原运行可能在引导回执写入队列前已收尾；清理 claim 后再次按屏障的真实终态推进。
+      await drain(sessionID)
+    }
   }
 
   export async function pause(sessionID: string, reason = "user", runID?: string) {
@@ -209,53 +276,81 @@ export namespace RuntimeQueue {
     if (ready) await drain(sessionID)
   }
 
-  async function drain(sessionID: string) {
-    await using lease = await FileLease.acquire(lock(sessionID))
-    const state = await read(sessionID)
-    await recover(state)
-    while (!state.paused && state.items.length) {
-      if (state.barrier) {
-        const run = await RuntimeRuns.get(sessionID, state.barrier)
-        if (["accepted", "running"].includes(run.state)) return
-        if (run.state !== "completed") {
-          state.paused = true
-          state.reason = run.state
+  async function drain(sessionID: string, recoverGuidance = false) {
+    const pending = await (async () => {
+      await using lease = await FileLease.acquire(lock(sessionID))
+      const state = await read(sessionID)
+      await recover(state)
+      while (!state.paused && state.items.length) {
+        // 接收引导后重启必须核对原回执，不能把同一条消息改成新任务再次执行。
+        if (state.guiding) {
+          if (!recoverGuidance) return
+          const item = state.items.find((entry) => entry.id === state.guiding!.id)
+          if (!item) throw new ConflictError("The pending guidance could not be recovered")
+          return { item, runID: state.guiding.runID }
+        }
+        if (state.barrier) {
+          const run = await RuntimeRuns.get(sessionID, state.barrier)
+          if (["accepted", "running"].includes(run.state)) return
+          if (run.state !== "completed") {
+            state.paused = true
+            state.reason = run.state
+            await write(state)
+            return
+          }
+          state.barrier = undefined
+        }
+        const active = await RuntimeEvents.activeRun(sessionID)
+        if (active) {
+          // 直接发送可能抢在旧运行收尾后取得会话；后继运行必须接管队列屏障才能继续推进。
+          state.barrier = active
           await write(state)
           return
         }
-        state.barrier = undefined
-      }
-      if (await RuntimeEvents.activeRun(sessionID)) return
-      try {
-        SessionPrompt.assertNotBusy(sessionID)
-      } catch (error) {
-        if (error instanceof Session.BusyError) return
-        throw error
-      }
-      const item = state.items[0]!
-      // 先持久化提交意图；崩溃后使用相同幂等请求恢复回执，绝不重复执行副作用。
-      state.dispatching = item.id
-      await write(state)
-      try {
-        const receipt = await SessionPrompt.detached(() =>
-          RuntimeRuns.prompt({ ...item.input, requestID: `queue:${item.id}`, delivery: "start" }),
-        )
-        state.receipts[item.id]!.runID = receipt.runID
-        state.items.shift()
-        state.dispatching = undefined
-        state.barrier = receipt.runID
+        try {
+          SessionPrompt.assertNotBusy(sessionID)
+        } catch (error) {
+          if (error instanceof Session.BusyError) {
+            // Shell/旧控制器没有可跟踪的持久运行结果，显式暂停等待用户继续，避免静默停滞或取消后启动下一项。
+            state.paused = true
+            state.reason = "session_busy"
+            await write(state)
+            return
+          }
+          throw error
+        }
+        const item = state.items[0]!
+        // 先持久化提交意图；崩溃后使用相同幂等请求恢复回执，绝不重复执行副作用。
+        state.dispatching = item.id
         await write(state)
-      } catch (error) {
-        if (error instanceof RuntimeEvents.ActiveRunError) {
+        try {
+          const receipt = await SessionPrompt.detached(() =>
+            RuntimeRuns.prompt({ ...item.input, requestID: `queue:${item.id}`, delivery: "start" }),
+          )
+          state.receipts[item.id]!.runID = receipt.runID
+          state.items.shift()
           state.dispatching = undefined
+          state.barrier = receipt.runID
           await write(state)
-          return
+        } catch (error) {
+          if (error instanceof RuntimeEvents.ActiveRunError) {
+            state.dispatching = undefined
+            // 接收前最后一刻可能被直接发送抢占；记录当时的具体运行，即使它已结束也不能丢失其终态。
+            state.barrier = error.runID ?? (await RuntimeEvents.activeRun(sessionID))
+            await write(state)
+            continue
+          }
+          state.paused = true
+          state.reason = "submission_failed"
+          await write(state)
+          throw error
         }
-        state.paused = true
-        state.reason = "submission_failed"
-        await write(state)
-        throw error
       }
+    })()
+    // 只用持久 claim 占有该条消息；附件授权期间允许查询、暂停以及编辑其他排队项。
+    if (pending) {
+      await guide(sessionID, pending.item, pending.runID)
+      await drain(sessionID)
     }
   }
 }

@@ -59,7 +59,8 @@ const mount = (view: () => JSX.Element) => {
 const button = (host: HTMLElement, label: string) => host.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)
 const editor = async (host: HTMLElement) => {
   if (!host.querySelector(".cm-editor")) button(host, "Edit")?.click()
-  for (let i = 0; i < 30 && !host.querySelector(".cm-editor"); i++) await settle()
+  const deadline = Date.now() + 5_000
+  while (!host.querySelector(".cm-editor") && Date.now() < deadline) await settle()
   const node = host.querySelector<HTMLElement>(".cm-editor")
   expect(node).not.toBeNull()
   return codemirror.EditorView.findFromDOM(node!)!

@@ -6,4 +6,4 @@ await $`bun ./tooling/sdk/js/script/build.ts`
 
 await $`bun dev generate > ../../tooling/sdk/openapi.json`.cwd("backend/cli")
 
-await $`./tooling/repo/format.ts`
+await $`bun ./tooling/repo/format.ts`

@@ -5872,7 +5872,7 @@ export class Runtime extends HeyApiClient {
   }
 
   /**
-   * Edit, reorder, pause or resume the prompt queue
+   * Edit, guide, reorder, pause or resume the prompt queue
    */
   public updateQueue<ThrowOnError extends boolean = false>(
     parameters: {
@@ -5899,6 +5899,11 @@ export class Runtime extends HeyApiClient {
             type: "edit"
             id: string
             text: string
+          }
+        | {
+            type: "guide"
+            id: string
+            runID: string
           }
     },
     options?: Options<never, ThrowOnError>,

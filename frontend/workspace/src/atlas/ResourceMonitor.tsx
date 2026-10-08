@@ -4,6 +4,7 @@ import { useParams } from "@solidjs/router"
 import { Button } from "@synsci/ui/button"
 import { useSDK } from "@/context/sdk"
 import type { ProjectRequest } from "@/utils/openscience-fetch"
+import { requestDeadline } from "@/utils/request-deadline"
 import { ResourceChart } from "./ResourceChart"
 import {
   appendSample,
@@ -85,18 +86,25 @@ export function ResourceMonitor(props: Props = {}) {
           ...(target ? { target } : {}),
           ...(node ? { node } : {}),
         }
-        const response = await request(
-          "/settings/compute/monitor",
-          { cache: "no-store", signal: AbortSignal.any([lifetime.signal, AbortSignal.timeout(30_000)]) },
-          query,
+        // 部分桌面传输忽略取消信号，响应体也可能停住；限制整个读取，确保下一轮采样能恢复。
+        const report = await requestDeadline(
+          async (signal) => {
+            const response = await request(
+              "/settings/compute/monitor",
+              { cache: "no-store", signal: AbortSignal.any([signal, lifetime.signal]) },
+              query,
+            )
+            if (!response.ok)
+              throw new Error(
+                response.status === 404
+                  ? "Resource monitoring requires an updated backend on this host."
+                  : "Could not refresh node resources. Reconnecting automatically…",
+              )
+            return parseMonitor(await response.json())
+          },
+          30_000,
+          lifetime.signal,
         )
-        if (!response.ok)
-          throw new Error(
-            response.status === 404
-              ? "Resource monitoring requires an updated backend on this host."
-              : "Could not refresh node resources. Reconnecting automatically…",
-          )
-        const report = parseMonitor(await response.json())
         if (lifetime.signal.aborted) return
         const previousNode = untrack(() => (state.report?.selected === report.selected ? state.report.node : undefined))
         const selectedNode = report.node ?? (node || previousNode) ?? ""

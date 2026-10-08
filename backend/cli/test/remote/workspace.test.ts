@@ -98,6 +98,66 @@ test("offline bookmarks never fall back to a local API and cancellation survives
   }
 })
 
+test("disconnect cancels a connection before its bookmark finishes loading", async () => {
+  const bookmark = await RemoteWorkspaces.create({
+    name: "Cancel during bookmark read",
+    target: { kind: "ssh", host_id: "missing-host" },
+  })
+  try {
+    const connecting = RemoteWorkspaces.connect(bookmark.id)
+    RemoteWorkspaces.disconnect(bookmark.id)
+    expect((await connecting).state).toBe("disconnected")
+    expect((await RemoteWorkspaces.list()).find((item) => item.id === bookmark.id)?.state).toBe("disconnected")
+  } finally {
+    await RemoteWorkspaces.remove(bookmark.id)
+  }
+})
+
+test("remote worker loopback requests bypass inherited HTTP proxies", async () => {
+  await using root = await tmpdir()
+  let intercepted = 0
+  using proxy = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch() {
+      intercepted++
+      return Response.json({ healthy: false, error: "Internal request reached the proxy" }, { status: 502 })
+    },
+  })
+  const proc = spawn(
+    process.execPath,
+    ["--conditions=browser", path.resolve(import.meta.dir, "../../src/bootstrap.ts"), "workspace-bridge"],
+    {
+      windowsHide: true,
+      stdio: ["pipe", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        OPENSCIENCE_TEST_HOME: root.path,
+        XDG_DATA_HOME: path.join(root.path, "data"),
+        XDG_CONFIG_HOME: path.join(root.path, "config"),
+        XDG_CACHE_HOME: path.join(root.path, "cache"),
+        XDG_STATE_HOME: path.join(root.path, "state"),
+        HTTP_PROXY: proxy.url.origin,
+        http_proxy: proxy.url.origin,
+        NO_PROXY: "",
+        no_proxy: "",
+      },
+    },
+  )
+  const exited = new Promise<void>((resolve) => proc.once("close", () => resolve()))
+  const client = new RemoteClient(proc, () => undefined)
+  try {
+    await client.ready
+    const response = await client.request("/global/health")
+    expect(response.status).toBe(200)
+    expect((await response.json()).healthy).toBe(true)
+    expect(intercepted).toBe(0)
+  } finally {
+    client.close()
+    await exited
+  }
+}, 30_000)
+
 test("real remote worker serves isolated backend requests and streaming events over stdio", async () => {
   await using root = await tmpdir()
   const proc = spawn(

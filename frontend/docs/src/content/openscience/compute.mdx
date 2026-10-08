@@ -127,6 +127,8 @@ A lost connection preserves the last values and
 marks them stale. Queued, finished, unsupported, and permission-denied states are
 shown explicitly. A dash means the metric is unknown, not zero utilization.
 
+A resource read that stops responding is released after 30 seconds, including when the response body stalls. The monitor keeps the available history and retries automatically; a late response cannot replace a newer sample.
+
 On supported Linux nodes, kernel device metrics identify cards by stable PCI
 addresses, so a scheduler's logical device renumbering cannot merge histories
 from different physical cards. For Slurm AMD/Hygon allocations, the monitor checks

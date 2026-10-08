@@ -117,6 +117,25 @@ afterEach(() => {
   document.body.replaceChildren()
 })
 
+test("chart visibility buttons keep keyboard activation separate from run expansion", async () => {
+  const f = mount()
+  await ready(() => !!f.host.querySelector(".ar-run__swatch"))
+  const swatch = f.host.querySelector<HTMLButtonElement>(".ar-run__swatch")!
+  const row = swatch.closest<HTMLElement>(".ar-run__row")!
+  for (const key of ["Enter", " "]) {
+    const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true })
+    swatch.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
+    expect(row.getAttribute("aria-expanded")).toBe("false")
+  }
+  const selected = swatch.getAttribute("aria-pressed")
+  swatch.click()
+  expect(swatch.getAttribute("aria-pressed")).not.toBe(selected)
+  expect(row.getAttribute("aria-expanded")).toBe("false")
+  row.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }))
+  expect(row.getAttribute("aria-expanded")).toBe("true")
+})
+
 test("failed steering preserves its draft, reports failure, and prevents overlapping submissions", async () => {
   const f = mount()
   await ready(() => !!f.button("Steer"))

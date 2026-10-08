@@ -1,4 +1,4 @@
-import { For, Show, createMemo, createSignal, onMount } from "solid-js"
+import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js"
 import { Button } from "@synsci/ui/button"
 import { Select } from "@synsci/ui/select"
 import { Switch } from "@synsci/ui/switch"
@@ -6,7 +6,7 @@ import { Icon } from "@synsci/ui/icon"
 import { showToast } from "@synsci/ui/toast"
 import { useDialog } from "@synsci/ui/context/dialog"
 import { confirmDialog } from "@/atlas/dialogs"
-import { useGlobalSync } from "@/context/global-sync"
+import { syncErrorMessage as message, useGlobalSync } from "@/context/global-sync"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { usePlatform } from "@/context/platform"
 import { useServer } from "@/context/server"
@@ -41,10 +41,18 @@ import {
 import type { ConnectorCatalogRecord } from "./scientific-tools-state"
 import { loadScientificTools } from "./scientific-tools-loader"
 import { ProviderLogo } from "./ProviderLogo"
+import { requestDeadline } from "@/utils/request-deadline"
 
 type McpConfig = NonNullable<Config["mcp"]>[string]
 type PendingAuthorization = { authorizationUrl: string; flowId: string }
 type AuthenticationStart = ({ state: "pending" } & PendingAuthorization) | { state: "settled"; result: McpStatus }
+type ConnectorServices = {
+  sync: Pick<ReturnType<typeof useGlobalSync>, "data" | "set">
+  sdk: Pick<ReturnType<typeof useGlobalSDK>, "client">
+  dialog: ReturnType<typeof useDialog>
+  platform: Pick<ReturnType<typeof usePlatform>, "fetch" | "openLink">
+  server: Pick<ReturnType<typeof useServer>, "url">
+}
 
 function isConfigured(value: McpConfig | undefined): value is ConfiguredMcp {
   return !!value && typeof value === "object" && "type" in value
@@ -56,12 +64,16 @@ const OAUTH_OPTIONS: Array<{ value: OAuthMode; label: string }> = [
   { value: "off", label: "No OAuth" },
 ]
 
-export default function Connectors() {
-  const sync = useGlobalSync()
-  const sdk = useGlobalSDK()
-  const dialog = useDialog()
-  const platform = usePlatform()
-  const server = useServer()
+export default function Connectors(props: { services?: ConnectorServices } = {}) {
+  const sync = props.services?.sync ?? useGlobalSync()
+  const sdk = props.services?.sdk ?? useGlobalSDK()
+  const dialog = props.services?.dialog ?? useDialog()
+  const platform = props.services?.platform ?? usePlatform()
+  const server = props.services?.server ?? useServer()
+  const lifetime = new AbortController()
+  let statusRequest = 0
+  let catalogRequest = 0
+  onCleanup(() => lifetime.abort())
 
   const [status, setStatus] = createSignal<Record<string, McpStatus>>({})
   const [details, setDetails] = createSignal<Record<string, McpInspection>>({})
@@ -136,26 +148,36 @@ export default function Connectors() {
   )
 
   async function loadCatalog(refresh = false) {
+    const id = ++catalogRequest
     setCatalogLoading(true)
     try {
       const fetcher = platform.fetch ?? fetch
       const result = await loadScientificTools(server.url, fetcher, refresh)
+      if (lifetime.signal.aborted || id !== catalogRequest) return
       setCatalog(result.connectors)
       setCatalogProblem("")
     } catch (error) {
+      if (lifetime.signal.aborted || id !== catalogRequest) return
       setCatalogProblem(message(error))
     } finally {
-      setCatalogLoading(false)
+      if (!lifetime.signal.aborted && id === catalogRequest) setCatalogLoading(false)
     }
   }
 
   async function refresh() {
+    const id = ++statusRequest
     try {
-      const res = await sdk.client.mcp.status()
+      const res = await requestDeadline(
+        (signal) => sdk.client.mcp.status(undefined, { signal }),
+        30_000,
+        lifetime.signal,
+      )
+      // 初次读取可能晚于启停后的刷新，旧状态不能覆盖更新的连接状态。
+      if (lifetime.signal.aborted || id !== statusRequest) return
       setStatus(res.data ?? {})
       setProblem("")
     } catch (error) {
-      setProblem(message(error))
+      if (!lifetime.signal.aborted && id === statusRequest) setProblem(message(error))
       throw error
     }
   }
@@ -165,13 +187,18 @@ export default function Connectors() {
     setBusy(key, true)
     setInspectionProblems((current) => ({ ...current, [name]: "" }))
     try {
-      const result = await sdk.client.mcp.inspect({ name })
+      const result = await requestDeadline(
+        (signal) => sdk.client.mcp.inspect({ name }, { signal }),
+        30_000,
+        lifetime.signal,
+      )
+      if (lifetime.signal.aborted) return
       if (!result.data) throw new Error("The connector returned no capability details.")
       setDetails((current) => ({ ...current, [name]: result.data! }))
     } catch (error) {
-      setInspectionProblems((current) => ({ ...current, [name]: message(error) }))
+      if (!lifetime.signal.aborted) setInspectionProblems((current) => ({ ...current, [name]: message(error) }))
     } finally {
-      setBusy(key, false)
+      if (!lifetime.signal.aborted) setBusy(key, false)
     }
   }
   function toggleDetails(name: string) {
@@ -1152,10 +1179,6 @@ function ConnectorForm(props: {
       </div>
     </section>
   )
-}
-
-function message(err: unknown) {
-  return err instanceof Error ? err.message : String(err)
 }
 
 function ConnectorInspection(props: { detail?: McpInspection }) {

@@ -80,6 +80,8 @@ Services can require subscriptions, paid API usage, or organization approval. Th
 
 ## Troubleshooting
 
+Status and capability-detail reads stop waiting after 30 seconds and show a retry action. Retry the failed read after checking the connection; refreshing status keeps the newest response when earlier reads finish late.
+
 For a remote connection, check the endpoint, authorization, and account access. For a local connection, run its documented startup command in a terminal to check installation errors.
 
 If a connection is saved but off, enable it. If it is connected but has no relevant tool, inspect the service's actual capabilities rather than assuming the missing action exists.

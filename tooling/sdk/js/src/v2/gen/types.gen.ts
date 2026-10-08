@@ -3055,6 +3055,8 @@ export type RuntimeQueueSnapshot = {
   revision: number
   paused: boolean
   reason?: string
+  dispatching?: string
+  activeRunID?: string
   items: Array<{
     id: string
     input: {
@@ -14613,6 +14615,11 @@ export type RuntimeUpdateQueueData = {
           type: "edit"
           id: string
           text: string
+        }
+      | {
+          type: "guide"
+          id: string
+          runID: string
         }
   }
   path?: never

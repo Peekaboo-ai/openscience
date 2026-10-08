@@ -13,6 +13,7 @@ export namespace SessionController {
   type Owner = { controller: AbortController; phase: Phase; waiters: Waiter[] }
   const active = new Set<Owner>()
   const context = new AsyncLocalStorage<{ sessionID: string; owner: Owner }>()
+  const preflight = new AsyncLocalStorage<{ sessionID: string; controller: AbortController }>()
   export const completed = Symbol("prompt.completed")
   const transitions: Record<Phase, readonly Phase[]> = {
     preparing: ["running", "completed", "cancelled"],
@@ -47,6 +48,8 @@ export namespace SessionController {
   export const ids = () => [...owners().keys()]
   export const signal = (sessionID: string) => owners().get(sessionID)?.controller.signal
   export function preparation(sessionID: string) {
+    const pending = preflight.getStore()
+    if (pending?.sessionID === sessionID) return pending.controller
     const current = context.getStore()
     return current?.sessionID === sessionID ? current.owner.controller : undefined
   }
@@ -61,7 +64,21 @@ export namespace SessionController {
     if (has(sessionID)) throw new Session.BusyError(sessionID)
   }
   export function detached<T>(action: () => Promise<T>) {
-    return context.exit(action)
+    return context.exit(() => preflight.exit(action))
+  }
+  /** 引导附件使用独立取消信号，不能覆盖正在执行回合的控制器。 */
+  export async function prepare<T>(sessionID: string, controller: AbortController, action: () => Promise<T>) {
+    const signal = controller.signal
+    signal.throwIfAborted()
+    const cancelled = Promise.withResolvers<never>()
+    const stop = () => cancelled.reject(signal.reason)
+    signal.addEventListener("abort", stop, { once: true })
+    try {
+      // MCP/插件未必支持 AbortSignal，先释放接收任务；迟到操作仍由 assertPreparing 阻止提交。
+      return await preflight.run({ sessionID, controller }, () => Promise.race([action(), cancelled.promise]))
+    } finally {
+      signal.removeEventListener("abort", stop)
+    }
   }
 
   function create(sessionID: string, phase: "preparing" | "running") {

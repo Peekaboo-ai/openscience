@@ -386,6 +386,7 @@ function ResearchPane(props: { services: ResearchServices }): JSX.Element {
           aria-expanded={isOpen()}
           onClick={() => setOpen(isOpen() ? undefined : run().id)}
           onKeyDown={(event) => {
+            if (event.target !== event.currentTarget) return
             if (event.key !== "Enter" && event.key !== " ") return
             event.preventDefault()
             setOpen(isOpen() ? undefined : run().id)

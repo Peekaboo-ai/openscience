@@ -1,45 +1,49 @@
 import { expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
+import { fileURLToPath } from "node:url"
+import { Sandbox } from "../../src/sandbox/sandbox"
 import { tmpdir } from "../fixture/fixture"
 import { spawn } from "../fixture/spawn"
 
 const src = (relative: string) => JSON.stringify(new URL(`../../src/${relative}`, import.meta.url).href)
 
-test("an overlay expiry stops only the local MCP transport whose environment carried the overlay", async () => {
-  await using tmp = await tmpdir()
-  const runner = `${tmp.path}/dispose-overlay.ts`
-  const server = new URL("../fixture/mcp-capabilities.mjs", import.meta.url).pathname
-  // The runner saves a workspace session, writes a grant, and registers MCP
-  // transports in the credential process ledger. Global.Path.data follows the
-  // data-root link under XDG_CONFIG_HOME, which a child inherits from this
-  // process, so a private OPENSCIENCE_TEST_HOME alone would still share the
-  // suite's store and ledger: give the runner every root of its own.
-  const home = path.join(tmp.path, "home")
-  await fs.mkdir(home, { recursive: true })
-  const roots = {
-    OPENSCIENCE_DATA_DIR: path.join(tmp.path, "data"),
-    OPENSCIENCE_CONFIG_DIR: path.join(tmp.path, "config"),
-    OPENSCIENCE_TEST_HOME: home,
-    XDG_DATA_HOME: path.join(tmp.path, "xdg-data"),
-    XDG_CONFIG_HOME: path.join(tmp.path, "xdg-config"),
-    XDG_CACHE_HOME: path.join(tmp.path, "xdg-cache"),
-    XDG_STATE_HOME: path.join(tmp.path, "xdg-state"),
-  }
+test.skipIf(!Sandbox.available())(
+  "an overlay expiry stops only the local MCP transport whose environment carried the overlay",
+  async () => {
+    await using tmp = await tmpdir()
+    const runner = `${tmp.path}/dispose-overlay.ts`
+    const server = fileURLToPath(new URL("../fixture/mcp-capabilities.mjs", import.meta.url))
+    // The runner saves a workspace session, writes a grant, and registers MCP
+    // transports in the credential process ledger. Global.Path.data follows the
+    // data-root link under XDG_CONFIG_HOME, which a child inherits from this
+    // process, so a private OPENSCIENCE_TEST_HOME alone would still share the
+    // suite's store and ledger: give the runner every root of its own.
+    const home = path.join(tmp.path, "home")
+    await fs.mkdir(home, { recursive: true })
+    const roots = {
+      OPENSCIENCE_DATA_DIR: path.join(tmp.path, "data"),
+      OPENSCIENCE_CONFIG_DIR: path.join(tmp.path, "config"),
+      OPENSCIENCE_TEST_HOME: home,
+      XDG_DATA_HOME: path.join(tmp.path, "xdg-data"),
+      XDG_CONFIG_HOME: path.join(tmp.path, "xdg-config"),
+      XDG_CACHE_HOME: path.join(tmp.path, "xdg-cache"),
+      XDG_STATE_HOME: path.join(tmp.path, "xdg-state"),
+    }
 
-  await Bun.write(
-    `${tmp.path}/openscience.json`,
-    JSON.stringify({
-      mcp: {
-        before: { type: "local", command: [process.execPath, server] },
-        after: { type: "local", command: [process.execPath, server], enabled: false },
-      },
-    }),
-  )
+    await Bun.write(
+      `${tmp.path}/openscience.json`,
+      JSON.stringify({
+        mcp: {
+          before: { type: "local", command: [process.execPath, server] },
+          after: { type: "local", command: [process.execPath, server], enabled: false },
+        },
+      }),
+    )
 
-  await Bun.write(
-    runner,
-    `
+    await Bun.write(
+      runner,
+      `
 import { CredentialOverlay } from ${src("credentials/overlay.ts")}
 import { CredentialProcessLedger } from ${src("credentials/process-ledger.ts")}
 import { CredentialRevocation } from ${src("credentials/revocation.ts")}
@@ -88,34 +92,36 @@ const result = await Instance.provide({
 process.stdout.write(JSON.stringify(result))
 process.exit(0)
 `,
-  )
+    )
 
-  const proc = spawn([process.execPath, runner, tmp.path], {
-    cwd: tmp.path,
-    env: roots,
-    stdout: "pipe",
-    stderr: "pipe",
-  })
-  const [output, error, exit] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  expect(exit, error).toBe(0)
-  const result = JSON.parse(output)
+    const proc = spawn([process.execPath, runner, tmp.path], {
+      cwd: tmp.path,
+      env: roots,
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    const [output, error, exit] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ])
+    expect(exit, error).toBe(0)
+    const result = JSON.parse(output)
 
-  expect(result.initial, error).toEqual({ before: { status: "connected" }, after: { status: "disabled" } })
-  expect(result.untouched).toBeNull()
-  expect(result.injected).toBe("fixture-cloud-github")
-  expect(result.keys).toEqual(["GH_TOKEN", "GITHUB_TOKEN"])
-  expect(result.connected).toEqual({ before: { status: "connected" }, after: { status: "connected" } })
-  // Exactly one transport was stamped: the one launched with the overlay.
-  expect(result.stamps).toEqual([null, "org_a"])
-  expect(result.disposed).toBe(1)
-  expect(result.after).toEqual({
-    before: { status: "connected" },
-    after: { status: "failed", error: result.expired },
-  })
-  expect(result.survivors).toEqual(["before"])
-  expect(result.remaining).toBe(1)
-}, 30_000)
+    expect(result.initial, error).toEqual({ before: { status: "connected" }, after: { status: "disabled" } })
+    expect(result.untouched).toBeNull()
+    expect(result.injected).toBe("fixture-cloud-github")
+    expect(result.keys).toEqual(["GH_TOKEN", "GITHUB_TOKEN"])
+    expect(result.connected).toEqual({ before: { status: "connected" }, after: { status: "connected" } })
+    // Exactly one transport was stamped: the one launched with the overlay.
+    expect(result.stamps).toEqual([null, "org_a"])
+    expect(result.disposed).toBe(1)
+    expect(result.after).toEqual({
+      before: { status: "connected" },
+      after: { status: "failed", error: result.expired },
+    })
+    expect(result.survivors).toEqual(["before"])
+    expect(result.remaining).toBe(1)
+  },
+  30_000,
+)

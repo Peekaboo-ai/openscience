@@ -51,7 +51,10 @@ export namespace RuntimeEvents {
   const TERMINAL_TYPES = new Set(["runtime.completed", "runtime.failed", "runtime.cancelled"])
 
   export class ActiveRunError extends Error {
-    constructor(readonly sessionID: string) {
+    constructor(
+      readonly sessionID: string,
+      readonly runID?: string,
+    ) {
       super(`Session ${sessionID} already has an active runtime run`)
     }
   }

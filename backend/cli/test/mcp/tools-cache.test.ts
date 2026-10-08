@@ -1,13 +1,15 @@
 import { expect, test } from "bun:test"
 import fs from "node:fs/promises"
+import { fileURLToPath } from "node:url"
+import { Sandbox } from "../../src/sandbox/sandbox"
 import { tmpdir } from "../fixture/fixture"
 import { spawn } from "../fixture/spawn"
 
-test("repeated tool resolution reuses a real MCP server tool list", async () => {
+test.skipIf(!Sandbox.available())("repeated tool resolution reuses a real MCP server tool list", async () => {
   await using tmp = await tmpdir()
   const runner = `${tmp.path}/tools-cache.ts`
   const marker = `${tmp.path}/list-calls.txt`
-  const server = new URL("../fixture/mcp-tool-cache.mjs", import.meta.url).pathname
+  const server = fileURLToPath(new URL("../fixture/mcp-tool-cache.mjs", import.meta.url))
 
   await Bun.write(
     `${tmp.path}/openscience.json`,

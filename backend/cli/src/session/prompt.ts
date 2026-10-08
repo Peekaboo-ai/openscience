@@ -198,9 +198,10 @@ export namespace SessionPrompt {
     }
   }
 
-  export const activeCount = SessionController.activeCount
-  const preparation = SessionController.preparation
-  const assertPreparing = SessionController.assertPreparing
+  // controller 与 prompt 经 Session 存在循环依赖，延迟读取避免直接导入控制器时访问未初始化模块。
+  export const activeCount = () => SessionController.activeCount()
+  const preparation = (sessionID: string) => SessionController.preparation(sessionID)
+  const assertPreparing = (sessionID: string) => SessionController.assertPreparing(sessionID)
 
   /** Run work outside the calling turn's admission context. Background
    * workers outlive the turn that dispatched them; a wake-up issued from
@@ -213,13 +214,12 @@ export namespace SessionPrompt {
   // The loop aborts its controller during disposal to stop any remaining
   // background work. That cleanup is not a cancellation of the completed
   // prompt returned to its caller.
-  const completed = SessionController.completed
 
   async function cancellable<T>(signal: AbortSignal, action: () => Promise<T>) {
     signal.throwIfAborted()
     const cancelled = Promise.withResolvers<never>()
     const stop = () => {
-      if (signal.reason !== completed) cancelled.reject(signal.reason)
+      if (signal.reason !== SessionController.completed) cancelled.reject(signal.reason)
     }
     signal.addEventListener("abort", stop, { once: true })
     try {
@@ -325,7 +325,7 @@ export namespace SessionPrompt {
           return await cancellable(owner, action)
         } finally {
           signal?.removeEventListener("abort", stop)
-          cancel(sessionID, owner, completed)
+          cancel(sessionID, owner, SessionController.completed)
         }
       },
       signal,
@@ -355,7 +355,36 @@ export namespace SessionPrompt {
     return RuntimeRuns.submit(input)
   })
 
-  export const prompt = fn(RuntimePromptInput, async (input) => {
+  export const prompt = fn(RuntimePromptInput, (input) => writePrompt(input))
+
+  /** 附件授权和读取在运行接收锁外完成；准备阶段不写入对话。 */
+  export async function prepareGuidance(input: PromptInput, controller: AbortController) {
+    return SessionController.prepare(input.sessionID, controller, () =>
+      createUserMessage(RuntimePromptInput.parse({ ...input, noReply: true }), true),
+    )
+  }
+
+  export function commitGuidance(input: PromptInput, message: MessageV2.WithParts) {
+    return writePrompt(RuntimePromptInput.parse({ ...input, noReply: true }), message)
+  }
+
+  /** 准备期间可能已有新消息；提交锁内重新确定排序并同步更新内部标记。 */
+  export async function normalizeGuidance(message: MessageV2.WithParts) {
+    const previous = message.info.id
+    const id = await MessageV2.nextMessageID(message.info.sessionID, previous)
+    if (id === previous) return message
+    message.info.id = id
+    if (message.info.role === "user") message.info.internal = SessionLoopState.prompt(id)
+    for (const part of message.parts) {
+      part.messageID = id
+      if (part.id !== SessionLoopState.partID(previous, "breaker-reset")) continue
+      part.id = SessionLoopState.partID(id, "breaker-reset")
+      if (part.type === "text") part.metadata = SessionLoopState.compactionReset(id)
+    }
+    return message
+  }
+
+  async function writePrompt(input: PromptInput, prepared?: MessageV2.WithParts) {
     const reservation = SessionController.reserved(input.sessionID)
     if (reservation && reservation !== preparation(input.sessionID) && !input.noReply)
       throw new Session.BusyError(input.sessionID)
@@ -365,17 +394,23 @@ export namespace SessionPrompt {
     await SessionRevert.cleanup(session)
     assertPreparing(input.sessionID)
 
-    const message = await createUserMessage(input).catch((e) => {
-      assertPreparing(input.sessionID)
-      // e.g. no providers are available at all — surface the failure to the
-      // session (the web UI listens for session.error) instead of only throwing.
-      const message = e instanceof Error ? e.message : String(e)
-      Bus.publish(Session.Event.Error, {
-        sessionID: input.sessionID,
-        error: new NamedError.Unknown({ message }).toObject(),
-      })
-      throw e
-    })
+    const message =
+      prepared ??
+      (await createUserMessage(input).catch((e) => {
+        assertPreparing(input.sessionID)
+        // e.g. no providers are available at all — surface the failure to the
+        // session (the web UI listens for session.error) instead of only throwing.
+        const message = e instanceof Error ? e.message : String(e)
+        Bus.publish(Session.Event.Error, {
+          sessionID: input.sessionID,
+          error: new NamedError.Unknown({ message }).toObject(),
+        })
+        throw e
+      }))
+    if (prepared) {
+      await Session.updateMessage(prepared.info)
+      for (const part of prepared.parts) await Session.updatePart(part)
+    }
     assertPreparing(input.sessionID)
     await Session.touch(input.sessionID)
     assertPreparing(input.sessionID)
@@ -404,7 +439,7 @@ export namespace SessionPrompt {
     }
 
     return loop(input.sessionID)
-  })
+  }
 
   export async function resolvePromptParts(template: string): Promise<PromptInput["parts"]> {
     const parts: PromptInput["parts"] = [
@@ -2015,7 +2050,7 @@ export namespace SessionPrompt {
       return SessionController.join(sessionID)
     }
 
-    using _ = defer(() => cancel(sessionID, abort, completed))
+    using _ = defer(() => cancel(sessionID, abort, SessionController.completed))
 
     await using lease = await FileLease.acquire(loopLeasePath(session.projectID, sessionID), LOOP_LEASE_TIMEOUT, abort)
     return await lease.during(async () => {
@@ -2537,7 +2572,7 @@ export namespace SessionPrompt {
     }
   }
 
-  async function createUserMessage(input: PromptInput) {
+  async function createUserMessage(input: PromptInput, prepareOnly = false) {
     assertPreparing(input.sessionID)
     const agent = await Agent.get(input.agent ?? (await Agent.defaultAgent()))
     const session = await Session.get(input.sessionID)
@@ -3042,6 +3077,7 @@ export namespace SessionPrompt {
       metadata: SessionLoopState.compactionReset(messageID),
     })
 
+    if (prepareOnly) return { info, parts }
     await Session.updateMessage(info)
     for (const part of parts) {
       assertPreparing(input.sessionID)

@@ -1,4 +1,4 @@
-import { createEffect, createMemo, For, on, Show, type JSX } from "solid-js"
+import { createEffect, createMemo, For, on, onCleanup, Show, type JSX } from "solid-js"
 import { createStore } from "solid-js/store"
 import { preloadTerminal, Terminal, type TerminalController, type TerminalSearchResult } from "@/components/terminal"
 import { useSDK } from "@/context/sdk"
@@ -15,6 +15,7 @@ import {
 } from "@/atlas/shared/Icon"
 import { terminalEndpointAvailable } from "@/atlas/terminal-endpoint"
 import { useExecutionAuthority } from "@/atlas/use-execution-authority"
+import { createTerminalConnections } from "@/atlas/terminal-connections"
 import "@/atlas/TerminalSurface.css"
 
 const EMPTY_RESULT: TerminalSearchResult = { current: 0, total: 0 }
@@ -26,7 +27,6 @@ export function TerminalSurface(props: { active?: boolean } = {}): JSX.Element {
   const authority = useExecutionAuthority("terminal")
   const [state, setState] = createStore({
     starting: false,
-    connecting: false,
     error: "",
     searching: false,
     query: "",
@@ -34,6 +34,14 @@ export function TerminalSurface(props: { active?: boolean } = {}): JSX.Element {
   })
   const available = createMemo(() => terminalEndpointAvailable(sdk.url))
   const active = createMemo(() => terminal.all().find((item) => item.id === terminal.active()))
+  const connections = createTerminalConnections(() => active()?.id)
+  const error = () => state.error || connections.error()
+  const connecting = () => state.starting || connections.pending()
+  const owner = createMemo(() => ({ scope: sdk.scope }))
+  let mounted = true
+  onCleanup(() => (mounted = false))
+  createEffect(() => connections.retain(terminal.all().map((pty) => pty.id)))
+  createEffect(on(owner, () => setState({ starting: false, error: "" })))
   const controls = new Map<string, TerminalController>()
   const search = { input: undefined as HTMLInputElement | undefined }
 
@@ -68,7 +76,7 @@ export function TerminalSurface(props: { active?: boolean } = {}): JSX.Element {
   createEffect(
     on(
       () => active()?.id,
-      () => setState("result", EMPTY_RESULT),
+      () => setState({ result: EMPTY_RESULT, error: "" }),
     ),
   )
 
@@ -78,17 +86,23 @@ export function TerminalSurface(props: { active?: boolean } = {}): JSX.Element {
       setState("error", authority.message() ?? "This session cannot start a terminal.")
       return
     }
-    setState({ starting: true, connecting: true, error: "" })
+    const location = owner()
+    const owns = () => mounted && owner() === location
+    setState({ starting: true, error: "" })
     void terminal
       .new()
-      .then(() => setState("error", ""))
+      .then(() => {
+        if (owns()) setState("error", "")
+      })
       .catch((cause: unknown) => {
+        if (!owns()) return
         setState({
-          connecting: false,
           error: cause instanceof Error ? cause.message : "OneLab could not start the terminal.",
         })
       })
-      .finally(() => setState("starting", false))
+      .finally(() => {
+        if (owns()) setState("starting", false)
+      })
   }
 
   const recover = () => {
@@ -98,19 +112,23 @@ export function TerminalSurface(props: { active?: boolean } = {}): JSX.Element {
       return
     }
     if (!available() || state.starting || !authority.allowed()) return
-    setState({ starting: true, connecting: true, error: "" })
+    const location = owner()
+    const owns = () => mounted && owner() === location
+    setState({ starting: true, error: "" })
     void terminal
       .clone(id)
       .then((replacement) => {
         if (!replacement) throw new Error("The terminal tab is no longer available.")
       })
       .catch((cause: unknown) => {
+        if (!owns()) return
         setState({
-          connecting: false,
           error: cause instanceof Error ? cause.message : "OneLab could not reconnect the terminal.",
         })
       })
-      .finally(() => setState("starting", false))
+      .finally(() => {
+        if (owns()) setState("starting", false)
+      })
   }
 
   const autostart = { requested: false }
@@ -123,7 +141,7 @@ export function TerminalSurface(props: { active?: boolean } = {}): JSX.Element {
 
   return (
     <section class="terminal-surface" aria-label="Session terminal">
-      <Show when={state.error}>
+      <Show when={error()}>
         {(message) => (
           <div class="terminal-surface__error" role="alert">
             <IconAlertCircle size={14} strokeWidth={1.5} />
@@ -273,7 +291,7 @@ export function TerminalSurface(props: { active?: boolean } = {}): JSX.Element {
             </Show>
 
             <div class="terminal-surface__viewport">
-              <Show when={state.connecting}>
+              <Show when={connecting()}>
                 <div class="terminal-surface__connecting" role="status" aria-live="polite">
                   <span class="terminal-surface__connecting-mark" aria-hidden="true">
                     <IconTerminal size={14} strokeWidth={1.5} />
@@ -301,10 +319,10 @@ export function TerminalSurface(props: { active?: boolean } = {}): JSX.Element {
                       onOpenSearch={openSearch}
                       onCleanup={(next) => terminal.update(next)}
                       onConnect={() => {
-                        setState({ connecting: false, error: "" })
+                        connections.connected(pty.id)
                       }}
                       onConnectError={(cause) => {
-                        setState({ connecting: false, error: cause.message })
+                        connections.failed(pty.id, cause)
                       }}
                     />
                   </div>

@@ -19,6 +19,38 @@ test("an old cancellation and completion cannot take ownership from a replacemen
   })
 })
 
+test("cancelling independent guidance releases a stalled preparation without taking the running controller", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await Instance.provide({
+    directory: tmp.path,
+    async fn() {
+      const active = SessionController.start("session")!
+      const controller = new AbortController()
+      const delayed = Promise.withResolvers<void>()
+      const reached = Promise.withResolvers<void>()
+      const late = Promise.withResolvers<void>()
+      const failure = new Error("Preparation cancelled")
+      const preparing = SessionController.prepare("session", controller, async () => {
+        reached.resolve()
+        await delayed.promise
+        try {
+          SessionController.assertPreparing("session")
+        } finally {
+          late.resolve()
+        }
+      })
+      await reached.promise
+      controller.abort(failure)
+      await expect(preparing).rejects.toBe(failure)
+      expect(active.aborted).toBe(false)
+      expect(SessionController.signal("session")).toBe(active)
+      delayed.resolve()
+      await late.promise
+      SessionController.cancel("session", active)
+    },
+  })
+})
+
 test("preparation transfers its exact controller to the loop and detached work cannot inherit it", async () => {
   await using tmp = await tmpdir({ git: true })
   await Instance.provide({

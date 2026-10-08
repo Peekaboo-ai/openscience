@@ -16,6 +16,7 @@ const server = await createServer({
 })
 const subject = (await server.ssrLoadModule("/src/atlas/files/RemoteFileView.tsx")) as typeof import("./RemoteFileView")
 const web = (await server.ssrLoadModule("solid-js/web")) as typeof import("solid-js/web")
+const solidjs = (await server.ssrLoadModule("solid-js")) as typeof import("solid-js")
 const cleanups: Array<() => void> = []
 
 afterAll(() => server.close())
@@ -46,6 +47,7 @@ const waitFor = async <T>(read: () => T | null | undefined, timeout = 2_000) => 
 
 let unique = 0
 const props = (over: Record<string, unknown> = {}) => ({
+  cacheScope: "remote-preview-tests",
   file: { name: "notes.md", path: `notes-${(unique += 1)}.md`, volume: "weights", size: 12 },
   read: async () => new Blob(["# Objective"], { type: "text/markdown" }),
   onDownload: () => {},
@@ -55,6 +57,91 @@ const props = (over: Record<string, unknown> = {}) => ({
 })
 
 describe("remote file view", () => {
+  test("isolates identical volume paths and sizes by server and project", async () => {
+    const file = { name: "same.txt", path: "same.txt", volume: "weights", size: 5 }
+    const [scope, setScope] = solidjs.createSignal("server-a/project-a")
+    const read = async () => new Blob([scope() === "server-a/project-a" ? "alpha" : "bravo"])
+    const host = mount(() =>
+      subject.RemoteFileView({
+        ...props({ file, read }),
+        get cacheScope() {
+          return scope()
+        },
+      } as never),
+    )
+    await settle()
+    expect(host.textContent).toContain("alpha")
+    setScope("server-b/project-b")
+    await settle()
+    expect(host.textContent).toContain("bravo")
+    expect(host.textContent).not.toContain("alpha")
+  })
+
+  test("a new directory snapshot refreshes equal-length edited content", async () => {
+    const file = { name: "edited.txt", path: "edited.txt", volume: "weights", size: 5 }
+    const [scope, setScope] = solidjs.createSignal("same-project/listing-1")
+    const host = mount(() =>
+      subject.RemoteFileView({
+        ...props({ file, read: async () => new Blob([scope().endsWith("1") ? "first" : "later"]) }),
+        get cacheScope() {
+          return scope()
+        },
+      } as never),
+    )
+    await settle()
+    expect(host.textContent).toContain("first")
+    setScope("same-project/listing-2")
+    await settle()
+    expect(host.textContent).toContain("later")
+    expect(host.textContent).not.toContain("first")
+  })
+
+  test("aborts a closed preview and ignores its late response after reopening", async () => {
+    const pending = Promise.withResolvers<Blob>()
+    let signal: AbortSignal | undefined
+    const file = { name: "late.txt", path: "late.txt", volume: "weights", size: 5 }
+    const first = mount(() =>
+      subject.RemoteFileView(
+        props({
+          file,
+          read: (_file: unknown, value: AbortSignal) => {
+            signal = value
+            return pending.promise
+          },
+        }) as never,
+      ),
+    )
+    await settle()
+    cleanups.splice(0).forEach((dispose) => dispose())
+    expect(signal?.aborted).toBe(true)
+    const next = mount(() => subject.RemoteFileView(props({ file, read: async () => new Blob(["newer"]) }) as never))
+    await settle()
+    pending.resolve(new Blob(["older"]))
+    await settle()
+    expect(first.textContent).toBe("")
+    expect(next.textContent).toContain("newer")
+    expect(next.textContent).not.toContain("older")
+  })
+
+  test("rejects oversized response bytes even when the directory reported a small file", async () => {
+    let highlights = 0
+    const host = mount(() =>
+      subject.RemoteFileView(
+        props({
+          read: async () => new Blob([new Uint8Array(8 * 1024 * 1024 + 1)]),
+          highlight: async () => {
+            highlights++
+            return "unexpected"
+          },
+        }) as never,
+      ),
+    )
+    await settle()
+    expect(host.querySelector("[data-remote-error]")?.textContent).toContain("8 MB preview limit")
+    expect(host.querySelector("[data-remote-download]")).not.toBeNull()
+    expect(highlights).toBe(0)
+  })
+
   test("shows readable bytes before a slow highlighter finishes", async () => {
     const pending = Promise.withResolvers<string>()
     const host = mount(() => subject.RemoteFileView(props({ highlight: () => pending.promise }) as never))

@@ -1,4 +1,4 @@
-import { For, Show, onCleanup, onMount } from "solid-js"
+import { For, Show, createMemo, onCleanup, onMount } from "solid-js"
 import { ViewerControls } from "@/atlas/file-chrome"
 import { createStore } from "solid-js/store"
 import type { ArtifactRenderProps } from "../registry"
@@ -36,6 +36,8 @@ interface PdfViewState {
 }
 
 const ZOOM_LEVELS = [0.35, 0.5, 0.75, 1, 1.25, 1.5, 2, 2.5]
+const CANVAS_PIXELS = 24 * 1024 * 1024
+const CANVAS_EDGE = 8192
 
 function decodeBase64(input: string): Uint8Array {
   const comma = input.indexOf(",")
@@ -89,12 +91,38 @@ interface PdfLib {
   GlobalWorkerOptions: { workerSrc: string }
 }
 
-export function PdfViewer(props: ArtifactRenderProps) {
+interface PdfViewerProps extends ArtifactRenderProps {
+  load?: () => Promise<PdfLib>
+}
+
+interface PdfInput {
+  config: PdfData
+  error?: string
+}
+
+export function PdfViewer(props: PdfViewerProps) {
+  // 在依赖跟踪中读取源字段；Solid store 原位更新会保留 data 引用。
+  const source = createMemo<PdfInput>(() => {
+    try {
+      return { config: normalize(props.data) }
+    } catch (cause) {
+      return { config: normalize(undefined), error: cause instanceof Error ? cause.message : String(cause) }
+    }
+  })
+  return (
+    <Show when={source()} keyed>
+      {(input) => <PdfDocument input={input} height={props.height} load={props.load} />}
+    </Show>
+  )
+}
+
+function PdfDocument(props: Pick<PdfViewerProps, "height" | "load"> & { input: PdfInput }) {
   let shell!: HTMLElement
   let viewport!: HTMLDivElement
   let host!: HTMLDivElement
   let thumbHost!: HTMLElement
-  const cfg = normalize(props.data)
+  const input = props.input
+  const cfg = input.config
   const hasSource = Boolean(cfg.url || cfg.bytes || cfg.base64)
   const [view, setView] = createStore<PdfViewState>({
     status: hasSource ? "Loading PDF…" : "",
@@ -104,6 +132,7 @@ export function PdfViewer(props: ArtifactRenderProps) {
     viewportWidth: 0,
     fitScale: 1,
     thumbnails: false,
+    error: input.error,
   })
 
   let requestRender = () => {}
@@ -183,6 +212,13 @@ export function PdfViewer(props: ArtifactRenderProps) {
         if (n === 1) setView("fitScale", fitScale)
         const scale = view.zoom === "fit" ? fitScale : (view.zoom as number)
         const size = page.getViewport({ scale })
+        // 超大页面与高 DPI 不应申请无界画布；CSS 保持缩放尺寸，像素预算由当前文档共享。
+        const ratio = Math.min(
+          dpr,
+          CANVAS_EDGE / Math.max(1, size.width),
+          CANVAS_EDGE / Math.max(1, size.height),
+          Math.sqrt(CANVAS_PIXELS / Math.max(1, shown * size.width * size.height)),
+        )
 
         const frame = document.createElement("section")
         frame.className = "pdf-viewer-page"
@@ -191,8 +227,8 @@ export function PdfViewer(props: ArtifactRenderProps) {
         frame.setAttribute("aria-label", `Page ${n} of ${total}`)
 
         const canvas = document.createElement("canvas")
-        canvas.width = Math.max(1, Math.floor(size.width * dpr))
-        canvas.height = Math.max(1, Math.floor(size.height * dpr))
+        canvas.width = Math.max(1, Math.floor(size.width * ratio))
+        canvas.height = Math.max(1, Math.floor(size.height * ratio))
         canvas.style.width = `${Math.floor(size.width)}px`
         canvas.style.height = `${Math.floor(size.height)}px`
         canvas.setAttribute("aria-label", `Rendered PDF page ${n}`)
@@ -239,13 +275,14 @@ export function PdfViewer(props: ArtifactRenderProps) {
 
         const context = canvas.getContext("2d")
         if (!context) continue
-        if (dpr !== 1) context.scale(dpr, dpr)
+        if (ratio !== 1) context.scale(ratio, ratio)
         const task = page.render({ canvasContext: context, viewport: size })
         tasks.push(task)
         try {
           await Promise.all([task.promise, thumbTask?.promise])
-        } catch {
+        } catch (cause) {
           if (disposed || version !== renderVersion) return
+          throw cause
         }
         if (disposed || version !== renderVersion) return
         setView("pages", { total, shown, rendered: n })
@@ -260,7 +297,14 @@ export function PdfViewer(props: ArtifactRenderProps) {
     requestRender = () => {
       if (disposed) return
       cancelAnimationFrame(renderFrame)
-      renderFrame = requestAnimationFrame(() => void renderPages())
+      renderFrame = requestAnimationFrame(() => {
+        const version = renderVersion + 1
+        void renderPages().catch((cause: unknown) => {
+          if (disposed || version !== renderVersion) return
+          cancelTasks()
+          setView({ rendering: false, error: cause instanceof Error ? cause.message : String(cause) })
+        })
+      })
     }
 
     const setCurrentPage = (page: number) => {
@@ -313,12 +357,23 @@ export function PdfViewer(props: ArtifactRenderProps) {
     if (hasSource) {
       ;(async () => {
         try {
-          const pdfjs = (await import("pdfjs-dist/legacy/build/pdf.mjs")) as unknown as PdfLib
+          const pdfjs = await (props.load
+            ? props.load()
+            : (import("pdfjs-dist/legacy/build/pdf.mjs") as unknown as Promise<PdfLib>))
+          if (disposed) return
           ensurePdfWorker(pdfjs.GlobalWorkerOptions)
 
           const src: Record<string, unknown> = cfg.url
             ? { url: cfg.url }
-            : { data: cfg.bytes ?? decodeBase64(cfg.base64 ?? "") }
+            : {
+                // pdf.js 会转移 ArrayBuffer 到 worker；保留调用方字节，供重新打开或下载。
+                data:
+                  cfg.bytes instanceof Uint8Array
+                    ? cfg.bytes.slice()
+                    : cfg.bytes instanceof ArrayBuffer
+                      ? new Uint8Array(cfg.bytes.slice(0))
+                      : decodeBase64(cfg.base64 ?? ""),
+              }
           loadingTask = pdfjs.getDocument(src)
           const loaded = await loadingTask.promise
           if (disposed) {
@@ -433,7 +488,7 @@ export function PdfViewer(props: ArtifactRenderProps) {
           aria-hidden={!view.thumbnails}
         />
         <div ref={viewport} class="atlas-scroll pdf-viewer-body" data-slot="pdf-body">
-          <Show when={!hasSource}>
+          <Show when={!hasSource && !view.error}>
             <div class="pdf-viewer-message" data-slot="pdf-empty">
               No PDF source. Provide <code>{`{ url }`}</code>, <code>{`{ bytes }`}</code>, or{" "}
               <code>{`{ base64 }`}</code>.

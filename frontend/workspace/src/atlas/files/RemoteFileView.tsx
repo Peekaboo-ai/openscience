@@ -2,7 +2,8 @@ import { Match, Show, Switch, createEffect, createSignal, onCleanup, type JSX } 
 import { IconDownload, IconX } from "@/atlas/shared/Icon"
 import { bytes } from "./bytes"
 import { thumbLanguage } from "./artifact-thumb"
-import { remoteMime, remotePreview, type RemotePreview } from "./remote-preview"
+import { remoteMime, remotePreview, REMOTE_PREVIEW_LIMIT, type RemotePreview } from "./remote-preview"
+import { requestDeadline } from "@/utils/request-deadline"
 import { resolveViewer } from "./viewer-registry"
 import { TextContentView } from "./TextContentView"
 
@@ -17,7 +18,9 @@ export interface RemoteFile {
 export interface RemoteFileViewProps {
   file: RemoteFile
   /** Fetches the file's bytes. Injected so a standalone mount needs no network. */
-  read: (file: RemoteFile) => Promise<Blob>
+  read: (file: RemoteFile, signal?: AbortSignal) => Promise<Blob>
+  /** 服务、项目及目录快照共同限定缓存；未知归属时不共享缓存。 */
+  cacheScope?: string
   onDownload: (file: RemoteFile) => void
   onClose: () => void
   /** Defaults to the shared shiki highlighter; injected in tests. */
@@ -32,6 +35,7 @@ const visual = (name: string, content: string) =>
 
 interface Cached {
   bytes: number
+  expires: number
   text?: { body: string; html?: string }
   /** Images keep their data: URL, which needs no revoking and can be reused. */
   dataUrl?: string
@@ -42,18 +46,17 @@ interface Cached {
 /**
  * Files already fetched out of a Volume.
  *
- * Closing a focused preview unmounts this viewer, so without it reopening went
- * back to Modal -- seconds each time for bytes already in hand. Keyed by volume,
- * path and size: a Volume file can change, unlike an artifact version, and the
- * size is the cheapest signal a listing gives us. A file edited in place to
- * exactly the same length serves the previous bytes until the pane reloads.
+ * 关闭后短时间重开可复用字节，但缓存必须属于相同服务、项目和目录快照。
+ * 远端文件可原地改写且大小不变，所以即便没有重新列目录也设置短期失效。
  */
 const fetched = new Map<string, Cached>()
 const CACHE_BUDGET = 32 * 1024 * 1024
 
-const cacheKey = (file: RemoteFile) => `${file.volume}\u0000${file.path}\u0000${file.size ?? "?"}`
+const cacheKey = (scope: string, file: RemoteFile) => JSON.stringify([scope, file.volume, file.path, file.size ?? null])
 
-const keep = (key: string, entry: Cached) => {
+const keep = (key: string | undefined, value: Omit<Cached, "expires">) => {
+  if (!key || value.bytes > CACHE_BUDGET) return
+  const entry = { ...value, expires: Date.now() + 30_000 }
   let held = entry.bytes
   for (const [existing, value] of fetched) if (existing !== key) held += value.bytes
   // Oldest out first; a preview is worth re-fetching, a wedged tab is not.
@@ -78,6 +81,7 @@ export function RemoteFileView(props: RemoteFileViewProps): JSX.Element {
   createEffect(() => {
     const file = props.file
     const shape = kind()
+    const scope = props.cacheScope
     setText(undefined)
     setUrl(undefined)
     setFailed("")
@@ -85,15 +89,19 @@ export function RemoteFileView(props: RemoteFileViewProps): JSX.Element {
 
     let live = true
     let revoke: string | undefined
+    const controller = new AbortController()
     onCleanup(() => {
       live = false
+      controller.abort()
       // The blob is this component's to release; leaving it costs the tab's
       // bytes for the lifetime of the document.
       if (revoke) URL.revokeObjectURL(revoke)
     })
 
-    const key = cacheKey(file)
-    const hit = fetched.get(key)
+    const key = scope ? cacheKey(scope, file) : undefined
+    const cached = key ? fetched.get(key) : undefined
+    const hit = cached && cached.expires > Date.now() ? cached : undefined
+    if (key && cached && !hit) fetched.delete(key)
     if (hit) {
       if (hit.text) setText(hit.text)
       if (hit.dataUrl) setUrl(hit.dataUrl)
@@ -106,8 +114,10 @@ export function RemoteFileView(props: RemoteFileViewProps): JSX.Element {
 
     void (async () => {
       try {
-        const blob = await props.read(file)
+        const blob = await requestDeadline((signal) => props.read(file, signal), 45_000, controller.signal)
         if (!live) return
+        if (blob.size > REMOTE_PREVIEW_LIMIT)
+          throw new Error("This file exceeds the 8 MB preview limit. Download it to view the complete file.")
         if (shape === "text") {
           const body = await blob.text()
           // 内容已到达就可阅读；语法高亮的懒加载不能继续遮住远端文件。
@@ -140,6 +150,7 @@ export function RemoteFileView(props: RemoteFileViewProps): JSX.Element {
             reader.onerror = () => reject(reader.error ?? new Error("could not decode the image"))
             reader.readAsDataURL(typed)
           })
+          if (!live) return
           keep(key, { bytes: typed.size, dataUrl: encoded })
           if (live) setUrl(encoded)
           return

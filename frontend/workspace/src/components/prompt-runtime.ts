@@ -3,6 +3,19 @@ import { requestDeadline } from "@/utils/request-deadline"
 
 type RuntimePrompt = Parameters<OpenScienceClient["runtime"]["prompt"]>[0]
 
+export function composerDelivery(input: {
+  working: boolean
+  agent?: string
+  mode: "normal" | "shell"
+  intent?: string | null
+  action?: string
+  requested?: "guide" | "queue"
+}) {
+  if (input.agent !== "research" || input.mode !== "normal" || input.intent || input.action) return "guide"
+  // 默认行为不依赖尚未返回的能力探测，避免首次发送意外进入正在执行的任务。
+  return input.requested ?? (input.working ? "queue" : "guide")
+}
+
 export type ComposerPromptInput = Omit<RuntimePrompt, "requestID" | "message" | "parts" | "messageID"> & {
   agent: string
   messageID: string

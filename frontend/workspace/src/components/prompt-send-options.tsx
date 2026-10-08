@@ -20,14 +20,16 @@ export function PromptSendOptions(props: {
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content>
-          <DropdownMenu.Item onSelect={() => props.send("guide")}>
-            <DropdownMenu.ItemLabel>{t("Guide current task", "引导当前任务")}</DropdownMenu.ItemLabel>
-            <DropdownMenu.ItemDescription>{t("Send now · Enter", "立即发送 · Enter")}</DropdownMenu.ItemDescription>
-          </DropdownMenu.Item>
           <DropdownMenu.Item onSelect={() => props.send("queue")}>
             <DropdownMenu.ItemLabel>{t("Add to queue", "加入队列")}</DropdownMenu.ItemLabel>
             <DropdownMenu.ItemDescription>
-              {t("Run after this task · Ctrl/⌘ + Enter", "当前任务完成后执行 · Ctrl/⌘ + Enter")}
+              {t("Run after this task · Enter", "当前任务完成后执行 · Enter")}
+            </DropdownMenu.ItemDescription>
+          </DropdownMenu.Item>
+          <DropdownMenu.Item onSelect={() => props.send("guide")}>
+            <DropdownMenu.ItemLabel>{t("Guide current task", "引导当前任务")}</DropdownMenu.ItemLabel>
+            <DropdownMenu.ItemDescription>
+              {t("Steer the current task · Ctrl/⌘ + Enter", "补充当前任务指令 · Ctrl/⌘ + Enter")}
             </DropdownMenu.ItemDescription>
           </DropdownMenu.Item>
         </DropdownMenu.Content>

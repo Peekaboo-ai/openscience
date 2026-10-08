@@ -141,7 +141,7 @@ export const RuntimeRoutes = lazy(() => {
     .patch(
       "/queue",
       describeRoute({
-        summary: "Edit, reorder, pause or resume the prompt queue",
+        summary: "Edit, guide, reorder, pause or resume the prompt queue",
         operationId: "runtime.updateQueue",
         responses: {
           200: {

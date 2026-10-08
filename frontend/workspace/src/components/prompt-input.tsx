@@ -92,7 +92,7 @@ import { createPendingPrompts, pendingPromptKey as pendingKey } from "./prompt-p
 import { createPromptActivity } from "./prompt-activity"
 import { getNodeLength, isPillNode, setCursorPosition } from "./prompt-editor-cursor"
 import { applyHighlight, clearHighlight, slashTokenRanges } from "./prompt-highlight"
-import { submitComposerPrompt, type ComposerPromptInput } from "./prompt-runtime"
+import { composerDelivery, submitComposerPrompt, type ComposerPromptInput } from "./prompt-runtime"
 import { PromptQueue } from "./prompt-queue"
 import { PromptSendOptions } from "./prompt-send-options"
 import { requestFailure, requestStatus } from "@/utils/request-error"
@@ -573,13 +573,21 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const submitting = () => submissions[composerKey()] === true
   const queueText = (en: string, zh: string) => (language.locale().startsWith("zh") ? zh : en)
   const showStop = () => working() && !prompt.dirty()
+  const defaultDelivery = () =>
+    composerDelivery({
+      working: working(),
+      agent: local.agent.current()?.name,
+      mode: store.mode,
+      intent: store.intent,
+    })
 
   const placeholder = createMemo(() => {
     if (submitting()) return "Sending…"
     if (store.mode === "shell") return language.t("prompt.placeholder.shell")
-    // Enter adds to the running turn; only the button and Esc stop it, so a
-    // message typed mid-turn is never lost to an accidental abort.
-    if (working() && !store.intent && commentCount() === 0) return language.t("prompt.placeholder.working")
+    if (working() && !store.intent && commentCount() === 0)
+      return defaultDelivery() === "queue"
+        ? queueText("Keep typing to queue follow-up changes…", "继续输入，发送后将加入后续任务队列…")
+        : language.t("prompt.placeholder.working")
     if (backgroundWorkers() > 0 && !store.intent && commentCount() === 0)
       return language.t(
         backgroundWorkers() === 1 ? "prompt.placeholder.backgroundWorker" : "prompt.placeholder.backgroundWorkers",
@@ -1936,7 +1944,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
     // Note: Shift+Enter is handled earlier, before IME check
     if (event.key === "Enter" && !event.shiftKey) {
-      handleSubmit(event, undefined, (event.ctrlKey || event.metaKey) && store.queueAvailable ? "queue" : "guide")
+      handleSubmit(event, undefined, event.ctrlKey || event.metaKey ? "guide" : undefined)
     }
     if (event.key === "Escape") {
       if (store.popover) {
@@ -1947,7 +1955,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     }
   }
 
-  const handleSubmit = async (event: Event, action?: string, delivery: "guide" | "queue" = "guide") => {
+  const handleSubmit = async (event: Event, action?: string, delivery?: "guide" | "queue") => {
     event.preventDefault()
 
     // A first prompt may need to create its session (and sometimes a
@@ -1964,8 +1972,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     const setSubmitting = (value: boolean) =>
       setSubmissions(
         produce((draft) => {
-          if (value) draft[sourceKey] = true
-          else delete draft[sourceKey]
+          if (value) draft[viewKey] = true
+          else delete draft[viewKey]
         }),
       )
     const sourceID = params.id
@@ -1987,7 +1995,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     const intent = action ? null : store.intent
     const wasWorking = working()
     const queuedDelivery =
-      !action && !intent && mode === "normal" && delivery === "queue" && local.agent.current()?.name === "research"
+      composerDelivery({
+        working: wasWorking,
+        agent: local.agent.current()?.name,
+        mode,
+        intent,
+        action,
+        requested: delivery,
+      }) === "queue"
 
     const typedIntent = !intent && images.length === 0 ? text.trim().match(/^\/(plan|goal)$/)?.[1] : undefined
     if (typedIntent === "plan" || typedIntent === "goal") {
@@ -2195,7 +2210,15 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           composer = prompt.capture(session.id, destinationScope)
           recovery.transfer(composer)
         }
+        const previousKey = viewKey
         viewKey = pendingKey(sourceURL, destinationScope, session.id)
+        // 新建会话跳转后仍由同一次准入请求持有发送锁。
+        setSubmissions(
+          produce((draft) => {
+            delete draft[previousKey]
+            draft[viewKey] = true
+          }),
+        )
         if (follow) navigate(href)
       }
     }
@@ -2289,7 +2312,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           setSubmitting(false)
           restoreInputAfterFailure()
           showToast({
-            title: queueText("Use Send now for slash commands", "斜杠命令请使用立即发送"),
+            title: queueText("Use Guide current task for slash commands", "斜杠命令请选择引导当前任务"),
             description: queueText(
               "The queue accepts conversation messages and their attachments.",
               "队列支持对话消息及其附件。",
@@ -2408,7 +2431,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           id: string
           type: "text"
           text: string
-          synthetic?: boolean
         }
       | {
           id: string
@@ -2446,7 +2468,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           id: Identifier.ascending("part"),
           type: "text",
           text: commentNote(input.path, input.selection, comment),
-          synthetic: true,
         })
       }
 
@@ -2482,7 +2503,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       type: "text" as const,
       text,
     }
-    const requestParts = [
+    const requestParts: ComposerPromptInput["parts"] = [
       textPart,
       ...fileAttachmentParts,
       ...conversationAttachmentParts,
@@ -2491,7 +2512,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       ...agentAttachmentParts,
       ...imageAttachmentParts,
     ]
-    const sendParts = requestParts as unknown as ComposerPromptInput["parts"]
+    const sendParts = requestParts
 
     const optimisticParts = requestParts.map((part) => ({
       ...part,
@@ -2545,7 +2566,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     }
 
     if (!queuedDelivery) addOptimisticMessage()
-    setSubmitting(false)
+    // Research 返回准入回执后才放开下一次发送，防止新队列抢在首条任务前启动。
+    if (agent !== "research") setSubmitting(false)
 
     const restoreSubmission = () => {
       removeOptimisticMessage()
@@ -2634,11 +2656,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         .then(() => {
           settleActivity?.(true)
           if (currentComposer()) setStore("queueVersion", (value) => value + 1)
-          if (queuedDelivery) showToast({ title: queueText("Message queued", "消息已加入队列") })
-          else if (wasWorking)
+          if (queuedDelivery && !currentComposer())
+            showToast({ title: queueText("Message queued", "消息已加入队列"), duration: 2500 })
+          else if (!queuedDelivery && wasWorking)
             showToast({
               title: queueText("Guidance sent", "引导消息已发送"),
               description: queueText("The agent will read it at the next step.", "智能体将在下一步读取补充指令。"),
+              duration: 2000,
             })
         })
         .catch((error) => {
@@ -2647,11 +2671,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         .finally(submitted)
     }
 
-    void send().catch((err) => {
-      const failure = requestFailure(err, "Send prompt")
-      showToast({ title: failure.title, description: failure.description })
-      restoreSubmission()
-    })
+    void send()
+      .catch((err) => {
+        const failure = requestFailure(err, "Send prompt")
+        showToast({ title: failure.title, description: failure.description })
+        restoreSubmission()
+      })
+      .finally(() => setSubmitting(false))
   }
 
   createEffect(() => {
@@ -2908,6 +2934,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         working={working()}
         locale={language.locale()}
         onAvailable={(available) => setStore("queueAvailable", available)}
+        onGuided={() =>
+          showToast({
+            title: queueText("Guidance sent", "引导消息已发送"),
+            description: queueText("The agent will read it at the next step.", "智能体将在下一步读取补充指令。"),
+            duration: 2000,
+          })
+        }
       />
       <form
         onSubmit={handleSubmit}
@@ -3077,7 +3110,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   : undefined
             }
             dir="auto"
-            contenteditable={submitting() ? "false" : "true"}
+            contenteditable="true"
             onInput={handleInput}
             onPaste={handlePaste}
             onCompositionStart={() => setComposing(true)}
@@ -3327,7 +3360,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   <Match when={true}>
                     <div class="flex items-center gap-2">
                       <span>
-                        {working() ? queueText("Guide current task", "引导当前任务") : language.t("prompt.action.send")}
+                        {defaultDelivery() === "queue"
+                          ? queueText("Add to queue", "加入队列")
+                          : working()
+                            ? queueText("Guide current task", "引导当前任务")
+                            : language.t("prompt.action.send")}
                       </span>
                       <Icon name="enter" size="small" class="text-icon-base" />
                     </div>
@@ -3337,7 +3374,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             >
               <IconButton
                 type="submit"
-                disabled={submitting() || (!prompt.dirty() && !working())}
+                disabled={(submitting() && !showStop()) || (!prompt.dirty() && !working())}
                 icon={showStop() ? "stop" : "arrow-up"}
                 variant="primary"
                 class="workspace-composer__send rounded-full"
@@ -3345,12 +3382,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 aria-label={
                   showStop()
                     ? language.t("prompt.action.stop")
-                    : working()
-                      ? queueText("Guide current task", "引导当前任务")
-                      : language.t("prompt.action.send")
+                    : defaultDelivery() === "queue"
+                      ? queueText("Add to queue", "加入队列")
+                      : working()
+                        ? queueText("Guide current task", "引导当前任务")
+                        : language.t("prompt.action.send")
                 }
                 onClick={(event: MouseEvent) => {
-                  // 有草稿时主按钮发送；停止保留独立入口，不能把引导消息误当成中止。
+                  // 有草稿时主按钮提交消息，停止保留独立入口。
                   if (!showStop()) return
                   event.preventDefault()
                   void abort()

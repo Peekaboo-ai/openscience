@@ -7,6 +7,7 @@ import {
   createMemo,
   createResource,
   createSignal,
+  createUniqueId,
   onCleanup,
   onMount,
   untrack,
@@ -27,8 +28,8 @@ import { TrashList, type TrashedFile } from "@/atlas/files/TrashList"
 import { buildSources, defaultSource, primarySources, type PaneSource } from "@/atlas/files/sources"
 import { readSource, writeSource } from "@/atlas/files/last-source"
 import { RemoteFileView, type RemoteFile } from "@/atlas/files/RemoteFileView"
-import { remotePreview } from "@/atlas/files/remote-preview"
-import { downloadBlob, requestStoredArtifact } from "@/artifacts/bytes"
+import { remotePreview, REMOTE_PREVIEW_LIMIT } from "@/atlas/files/remote-preview"
+import { boundedBytes, downloadBlob, requestStoredArtifact } from "@/artifacts/bytes"
 import { loadStoredArtifacts, restoreStoredArtifact } from "@/artifacts/resource"
 import type { StoredArtifact } from "@/artifacts/store"
 import { uiStore } from "@/atlas/store/ui"
@@ -657,6 +658,8 @@ export function FilesPane(
     { equals: (a, b) => (a && b ? a.every((value, index) => value === b[index]) : a === b) },
   )
   const listingRequest = createFileRequestOwner()
+  const previewOwner = createUniqueId()
+  const [remoteSnapshot, setRemoteSnapshot] = createSignal(0)
   const listingRetry = { key: "", count: 0 }
   onCleanup(() => listingRequest.dispose())
   const [entries, { refetch: refetchEntries }] = createResource<{ key: string; rows: FileRow[] }, ListingKey>(
@@ -676,6 +679,7 @@ export function FilesPane(
         if (owns()) {
           listingRetry.count = 0
           setListingError("")
+          if (kind === "modal") setRemoteSnapshot((version) => version + 1)
         }
         return { key: ownerKey, rows }
       }
@@ -910,8 +914,11 @@ export function FilesPane(
   // path they were captured from — that file keeps changing after capture.
   // The authenticated request transport is mandatory: a raw browser URL does
   // not carry the desktop client's auth headers.
-  const readArtifact = (artifact: StoredArtifact) =>
-    requestStoredArtifact(transport, artifact.id, artifact.current.id).then((response) => response.blob())
+  const readArtifact = async (artifact: StoredArtifact, signal?: AbortSignal) => {
+    const response = await requestStoredArtifact(transport, artifact.id, artifact.current.id, false, signal)
+    const bytes = await boundedBytes(response, REMOTE_PREVIEW_LIMIT)
+    return new Blob([bytes], { type: artifact.current.mimeType })
+  }
 
   const mutate = async (
     ticket: ReturnType<typeof operation>,
@@ -1005,14 +1012,15 @@ export function FilesPane(
    * did. The seam exists because a standalone mount has no document to click
    * through and no object URLs to revoke.
    */
-  const remoteBytes = async (file: RemoteFile) => {
+  const remoteBytes = async (file: RemoteFile, signal?: AbortSignal) => {
     const response = await transport(
       `/settings/compute/modal/volumes/${encodeURIComponent(file.volume)}/file`,
-      undefined,
+      { signal },
       { path: `/${file.path.replace(/^\/+/, "")}` },
     )
     if (!response.ok) throw new Error((await response.text()) || `Could not read ${file.name} (${response.status})`)
-    return response.blob()
+    const bytes = await boundedBytes(response, REMOTE_PREVIEW_LIMIT)
+    return new Blob([bytes], { type: response.headers.get("content-type") ?? "application/octet-stream" })
   }
 
   const downloadRemote = async (row: FileRow, volume = path()[0]) => {
@@ -1640,6 +1648,7 @@ export function FilesPane(
           <RemoteFileView
             file={file}
             read={remoteBytes}
+            cacheScope={JSON.stringify([projectScope(), previewOwner, remoteSnapshot()])}
             onDownload={(remote) =>
               void downloadRemote({ name: remote.name, type: "file", path: remote.path }, remote.volume)
             }

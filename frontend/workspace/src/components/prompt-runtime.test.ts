@@ -2,7 +2,7 @@ import { expect, test } from "bun:test"
 import { createServer, type IncomingMessage } from "node:http"
 import { once } from "node:events"
 import { createOpenScienceClient } from "@synsci/sdk/v2/client"
-import { submitComposerPrompt, type ComposerPromptInput } from "./prompt-runtime"
+import { composerDelivery, submitComposerPrompt, type ComposerPromptInput } from "./prompt-runtime"
 
 type Recorded = { method?: string; path: string; body?: unknown; headers: IncomingMessage["headers"] }
 type Reply = { status: number; body?: unknown } | "disconnect"
@@ -127,6 +127,39 @@ test("queued prompts preserve attachments and model settings and never enter the
   expect(server.requests.map((request) => request.path)).toEqual(["/runtime/capabilities", "/runtime/queue"])
   const { agent: _, ...expected } = input
   expect(server.requests[1].body).toEqual({ ...expected, requestID: input.messageID })
+})
+
+test("the default running composer sends to the queue before queue availability has been read", async () => {
+  await using server = await host((request) =>
+    request.method === "GET" ? { status: 200, body: capabilities } : accepted(),
+  )
+  const delivery = composerDelivery({ working: true, agent: "research", mode: "normal" })
+  await submitComposerPrompt(server.client, { ...input, queued: delivery === "queue" })
+  expect(server.requests.map((request) => request.path)).toEqual(["/runtime/capabilities", "/runtime/queue"])
+})
+
+test("idle messages start immediately while an explicit guide joins the current research run", async () => {
+  for (const value of [{ working: false }, { working: true, requested: "guide" as const }]) {
+    await using server = await host((request) =>
+      request.method === "GET" ? { status: 200, body: capabilities } : accepted(),
+    )
+    const delivery = composerDelivery({ agent: "research", mode: "normal", ...value })
+    await submitComposerPrompt(server.client, { ...input, queued: delivery === "queue" })
+    expect(server.requests.map((request) => request.path)).toEqual(["/runtime/capabilities", "/runtime/prompt"])
+  }
+})
+
+test("shell, intents, command actions and specialized agents keep their existing submission path", () => {
+  const base = { working: true, agent: "research", mode: "normal" as const }
+  for (const value of [
+    { mode: "shell" as const },
+    { intent: "plan" },
+    { intent: "goal" },
+    { action: "compact" },
+    { agent: "plan" },
+  ])
+    expect(composerDelivery({ ...base, ...value })).toBe("guide")
+  expect(composerDelivery({ ...base, working: false, requested: "queue" })).toBe("queue")
 })
 
 test("an old server cannot silently downgrade queueing to immediate execution", async () => {

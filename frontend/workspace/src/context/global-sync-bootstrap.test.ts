@@ -2,7 +2,7 @@ import { afterAll, afterEach, describe, expect, test } from "bun:test"
 import { fileURLToPath } from "node:url"
 import { createTestServer as createServer } from "../../test/vite"
 import solid from "vite-plugin-solid"
-import type { Project } from "@synsci/sdk/v2/client"
+import type { Project, Session } from "@synsci/sdk/v2/client"
 import type { Platform } from "@/context/platform"
 
 const server = await createServer({
@@ -208,6 +208,192 @@ const projects = [
 ]
 
 describe("project bootstrap", () => {
+  test("disposing a workspace cancels its pending reads without scheduling catalogs after a late response", async () => {
+    const fake = createFakeServer(projects)
+    let release: (() => void) | undefined
+    let signal: AbortSignal | undefined
+    const fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(input, init)
+      if (
+        new URL(request.url).pathname === "/config" &&
+        request.headers.get("x-openscience-directory") === "/research/a"
+      ) {
+        signal = request.signal
+        return new Promise<Response>((resolve) => {
+          release = () => resolve(Response.json({}))
+        })
+      }
+      return fake.fetch(request)
+    }) as typeof globalThis.fetch
+    const sync = mount(fetch)
+    await until(() => !!sync()?.ready)
+    sync()!.child("/research/a", { projectID: "prj_a" })
+    await until(() => !!release)
+    cleanups.pop()!()
+    expect(signal?.aborted).toBe(true)
+    release!()
+    await settle(subject.CATALOG_DELAY_MS + 50)
+    expect(fake.hits.some((hit) => hit.path === "/command" && hit.directory === "/research/a")).toBe(false)
+  })
+
+  test("a delayed session list preserves live creations, renames, archives and deletions", async () => {
+    const fake = createFakeServer(projects)
+    const session = (id: string, title = id): Session => ({
+      id,
+      title,
+      slug: id,
+      projectID: "prj_a",
+      directory: "/research/a",
+      version: "1",
+      time: { created: Date.now(), updated: Date.now() },
+    })
+    let release: (() => void) | undefined
+    const fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(input, init)
+      if (
+        new URL(request.url).pathname === "/session" &&
+        request.headers.get("x-openscience-directory") === "/research/a"
+      ) {
+        return new Promise<Response>((resolve) => {
+          release = () =>
+            resolve(Response.json([session("ses_renamed", "old"), session("ses_deleted"), session("ses_archived")]))
+        })
+      }
+      return fake.fetch(request)
+    }) as typeof globalThis.fetch
+    const sync = mount(fetch)
+    await until(() => !!sync()?.ready)
+    await settle(50)
+    const [store] = sync()!.child("/research/a", { projectID: "prj_a" })
+    await until(() => !!release)
+    fake.emit({ type: "session.created", properties: { info: session("ses_created") } }, "/research/a")
+    fake.emit({ type: "session.updated", properties: { info: session("ses_renamed", "new") } }, "/research/a")
+    fake.emit(
+      {
+        type: "session.updated",
+        properties: { info: { ...session("ses_archived"), time: { created: 1, updated: 2, archived: 3 } } },
+      },
+      "/research/a",
+    )
+    fake.emit({ type: "session.deleted", properties: { info: session("ses_deleted") } }, "/research/a")
+    fake.emit(
+      { type: "session.status", properties: { sessionID: "ses_created", status: { type: "idle" } } },
+      "/research/a",
+    )
+    await until(() => store.session_status.ses_created?.type === "idle")
+    release!()
+    await until(() => store.status === "complete")
+    expect(store.session.map((item) => [item.id, item.title])).toEqual([
+      ["ses_created", "ses_created"],
+      ["ses_renamed", "new"],
+    ])
+    expect(store.sessionTotal).toBe(2)
+  })
+
+  test("a delayed status snapshot cannot overwrite a task starting or finishing live", async () => {
+    const fake = createFakeServer(projects)
+    let release: (() => void) | undefined
+    const fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(input, init)
+      if (
+        new URL(request.url).pathname === "/session/status" &&
+        request.headers.get("x-openscience-directory") === "/research/a"
+      ) {
+        return new Promise<Response>((resolve) => {
+          release = () => resolve(Response.json({ ses_finished: { type: "busy" } }))
+        })
+      }
+      return fake.fetch(request)
+    }) as typeof globalThis.fetch
+    const sync = mount(fetch)
+    await until(() => !!sync()?.ready)
+    await settle(50)
+    const [store] = sync()!.child("/research/a", { projectID: "prj_a" })
+    await until(() => !!release)
+    fake.emit(
+      { type: "session.status", properties: { sessionID: "ses_started", status: { type: "busy" } } },
+      "/research/a",
+    )
+    fake.emit(
+      { type: "session.status", properties: { sessionID: "ses_finished", status: { type: "idle" } } },
+      "/research/a",
+    )
+    await until(() => store.session_status.ses_finished?.type === "idle")
+    release!()
+    await until(() => store.status === "complete")
+    expect(store.session_status.ses_started?.type).toBe("busy")
+    expect(store.session_status.ses_finished?.type).toBe("idle")
+  })
+
+  test("an unavailable VCS does not prevent commands and skills from loading", async () => {
+    const fake = createFakeServer(projects)
+    const fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(input, init)
+      if (
+        new URL(request.url).pathname === "/vcs" &&
+        request.headers.get("x-openscience-directory") === "/research/a"
+      ) {
+        return Response.json({ message: "VCS temporarily unavailable" }, { status: 503 })
+      }
+      return fake.fetch(request)
+    }) as typeof globalThis.fetch
+    const sync = mount(fetch)
+    await until(() => !!sync()?.ready)
+    sync()!.child("/research/a", { projectID: "prj_a" })
+    await until(() => fake.hits.some((hit) => hit.path === "/command" && hit.directory === "/research/a"))
+    expect(fake.hits.some((hit) => hit.path === "/skill" && hit.directory === "/research/a")).toBe(true)
+  })
+
+  test.each(["permission", "question"] as const)(
+    "a delayed %s snapshot preserves new requests and resolved requests",
+    async (kind) => {
+      const fake = createFakeServer(projects)
+      const request = (id: string) => ({
+        id,
+        sessionID: "ses_live",
+        permission: "bash",
+        patterns: ["*"],
+        metadata: {},
+        always: [],
+        questions: [],
+      })
+      let release: (() => void) | undefined
+      const fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const pending = input instanceof Request ? input : new Request(input, init)
+        if (
+          new URL(pending.url).pathname === `/${kind}` &&
+          pending.headers.get("x-openscience-directory") === "/research/a"
+        ) {
+          return new Promise<Response>((resolve) => {
+            release = () => resolve(Response.json([request("req_finished")]))
+          })
+        }
+        return fake.fetch(pending)
+      }) as typeof globalThis.fetch
+      const sync = mount(fetch)
+      await until(() => !!sync()?.ready)
+      await settle(50)
+      const [store] = sync()!.child("/research/a", { projectID: "prj_a" })
+      await until(() => !!release)
+      fake.emit({ type: `${kind}.asked`, properties: request("req_new") }, "/research/a")
+      fake.emit(
+        {
+          type: `${kind}.replied`,
+          properties: { sessionID: "ses_live", requestID: "req_finished", reply: "once", answers: [] },
+        },
+        "/research/a",
+      )
+      fake.emit(
+        { type: "session.status", properties: { sessionID: "ses_live", status: { type: "idle" } } },
+        "/research/a",
+      )
+      await until(() => store.session_status.ses_live?.type === "idle")
+      release!()
+      await until(() => store.status === "complete")
+      expect(store[kind].ses_live?.map((item) => item.id)).toEqual(["req_new"])
+    },
+  )
+
   test("session lists load while unrelated project configuration is still pending", async () => {
     let release: (() => void) | undefined
     const fake = createFakeServer(projects)
@@ -545,4 +731,67 @@ describe("recentProject", () => {
     expect(subject.recentProject([archived])).toBeUndefined()
     expect(subject.recentProject([])).toBeUndefined()
   })
+})
+
+test("instance disposal during an in-flight status snapshot must request a fresh generation", async () => {
+  const fake = createFakeServer(projects)
+  let release: (() => void) | undefined
+  let count = 0
+  const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = input instanceof Request ? input : new Request(input, init)
+    if (
+      new URL(request.url).pathname === "/session/status" &&
+      request.headers.get("x-openscience-directory") === "/research/a"
+    ) {
+      count++
+      if (count === 1)
+        return new Promise<Response>((resolve) => {
+          release = () => resolve(Response.json({ stale: { type: "busy" } }))
+        })
+      return Response.json({})
+    }
+    return fake.fetch(request)
+  }) as typeof fetch
+  const sync = mount(fetcher)
+  await until(() => !!sync()?.ready)
+  await settle(50)
+  const [store] = sync()!.child("/research/a", { projectID: "prj_a" })
+  await until(() => !!release)
+  fake.emit({ type: "server.instance.disposed", properties: {} }, "/research/a")
+  await settle(100)
+  release!()
+  await until(() => store.status === "complete")
+  await settle(150)
+  expect(count).toBe(2)
+  expect(store.session_status.stale).toBeUndefined()
+})
+
+test("unrelated secondary reads must not block the next directory after reconnect", async () => {
+  const fake = createFakeServer(projects)
+  let reconnect = false
+  const releases: (() => void)[] = []
+  let refreshedC = 0
+  const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = input instanceof Request ? input : new Request(input, init)
+    const directory = request.headers.get("x-openscience-directory")
+    const path = new URL(request.url).pathname
+    if (reconnect && path === "/config" && directory === "/research/c") refreshedC++
+    if (reconnect && path === "/vcs" && (directory === "/research/a" || directory === "/research/b")) {
+      return new Promise<Response>((resolve) => releases.push(() => resolve(Response.json({ branch: "main" }))))
+    }
+    return fake.fetch(request)
+  }) as typeof fetch
+  const sync = mount(fetcher)
+  await until(() => !!sync()?.ready)
+  await settle(50)
+  const stores = projects.map((project) => sync()!.child(project.worktree, { projectID: project.id })[0])
+  await until(() => stores.every((store) => store.status === "complete"))
+  reconnect = true
+  fake.emit({ type: "server.connected", properties: {} })
+  await until(() => releases.length === 2)
+  await settle(150)
+  const whileUnrelatedVcsWasPending = refreshedC
+  releases.forEach((release) => release())
+  await until(() => refreshedC > 0)
+  expect(whileUnrelatedVcsWasPending).toBeGreaterThan(0)
 })
