@@ -4,6 +4,7 @@
 
 ## Local Dev
 
+- For a user asking to start the workspace for daily use, use `bun run start:ui` from the repo root, with `--server <existing API URL>` when needed. It serves a built UI without reconnect-triggered Vite reloads. Use `dev:ui` for live source editing.
 - For local UI changes, run the backend and app dev servers separately.
 - Backend (repo root): `bun dev serve` (listens on 4096, falls back to 4097; set `VITE_OPENSCIENCE_SERVER_PORT` if it did).
 - App (repo root): `bun run dev:ui`, then open `http://localhost:3000`.

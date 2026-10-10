@@ -7,6 +7,28 @@ description: "Plan a task, choose research effort, and decide when OpenScience s
 
 Start with a clear goal, the inputs, an output location, and any limits on time or spending.
 
+## Custom specialists
+
+Open **Settings → Specialists** to search the built-in and custom experts available on the current OneLab server. Profiles are shared across projects on that server; local and remote servers keep separate registries. Project permissions still apply when an expert runs.
+
+**Add specialist** offers two paths:
+
+- **Chat with OneLab** opens a fresh conversation with `/customize Help me create a new specialist.` in the composer. Describe its research area, expected inputs, evidence standards and deliverables, then send. OneLab can inspect, create and edit profiles through the specialist management tool. You can also type `/cust` in any conversation and select `/customize` to complete the command before entering your requirements.
+- **Write from scratch** opens an editor for the name, stable agent ID, color, icon, description and additional instructions. Instructions are appended to the shared specialist base prompt.
+
+`/customize` follows your request: asking what it can do gives an explanation;
+asking for a draft keeps the proposal in the conversation. A specialist is saved
+only when you request creation or an edit. Your original message stays visible,
+and the skill loads before the model answers, just like other slash skills.
+Discovery searches relevant profiles or capabilities instead of loading the full
+library; the default **All available** scope does not require browsing the catalog.
+
+Skills and connectors each have independent **All available** and **Selected only** modes. All available follows the live catalog, including future additions. Selected only limits access to the chosen names; an empty selection means no access to that category. Core workspace tools retain normal project permissions. Selecting a connector does not authenticate or enable it; configure that separately in Connectors.
+
+The lead can delegate to enabled experts, and the composer’s `@` menu includes them. Changes update the available agents immediately. Disable hides an expert from new delegation; running work can finish. Duplicate a profile to use it as a starting point. Delete removes a custom profile, while Restore defaults removes overrides on a built-in expert. Profiles defined in agent configuration files are displayed read-only and can be duplicated.
+
+If another window or a customization conversation changes profiles while you edit, saving reports a version conflict and keeps your draft. Review your edits before choosing **Reload saved profile**, which replaces the draft with the latest saved version.
+
 ## Plan before execution
 
 Use `/plan` when you want to agree on an approach before implementation:

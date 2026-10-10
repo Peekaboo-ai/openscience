@@ -1,0 +1,17 @@
+Inspect and manage OneLab specialist profiles. Load the customize skill first.
+
+An invocation of /customize selects a capability; it does not authorize creating or modifying an expert.
+Answer questions about what customization can do directly from the skill, without this tool.
+Drafting, comparing roles, or asking for suggestions does not authorize saving a profile.
+
+list returns a page of profile summaries and the current revision. Use query to narrow discovery.
+get with name returns one complete profile and revision; use it before editing to preserve unrelated fields.
+catalog returns a page of exact skill/connector names and short description previews.
+Use query and optional kind (skill or connector); offset/limit paginate, with default 10 and maximum 20 items.
+nextOffset is null at the end. Do not enumerate all pages unless the user actually needs the whole catalog.
+Catalog discovery is unnecessary for profiles with skillNames:null and connectors:null (all permitted capabilities).
+
+create/update save the complete profile; toggle enables or disables; remove deletes a custom profile or resets a built-in.
+Mutations require an explicit user request and the revision returned by list/get. On conflict, read again and preserve intervening changes.
+Writes return a compact receipt for the affected profile; get can verify its full saved contents if needed.
+Profiles apply to this OneLab server; project permissions still apply. Only change profiles the user has requested.

@@ -45,6 +45,7 @@ import { ScientificCapabilityTool } from "./scientific-capability"
 import { ProviderComputeTool } from "./provider-compute"
 import { Identifier } from "../id/id"
 import { RecallTool } from "./recall"
+import { SpecialistTool } from "./specialist"
 import { ToolVisibility } from "./visibility"
 import { researchSearchConfigured } from "./research-search"
 
@@ -200,6 +201,7 @@ export namespace ToolRegistry {
       SkillTool,
       ApplyPatchTool,
       RecallTool,
+      SpecialistTool,
       ...(Flag.OPENSCIENCE_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
       ...(Flag.OPENSCIENCE_EXPERIMENTAL_PLAN_MODE && Flag.OPENSCIENCE_CLIENT === "cli"
         ? [PlanExitTool, PlanEnterTool]

@@ -99,6 +99,7 @@ import { requestFailure, requestStatus } from "@/utils/request-error"
 import { readTimeout } from "@/utils/read-timeout"
 import {
   slashBlurb,
+  slashCommandName,
   slashGroup,
   slashIcon,
   slashMode,
@@ -850,7 +851,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         .map((agent) => ({
           type: "agent" as const,
           name: agent.name,
-          display: agent.name,
+          display: agent.displayName ? `${agent.displayName} (${agent.name})` : agent.name,
           description: agent.description,
         }))
     )
@@ -997,7 +998,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       plan: "/plan [objective]",
       goal: "/goal [objective]",
     }
-    const catalog = new Map(sync.data.command.map((item) => [item.name, item]))
+    const catalog = new Map(sync.data.command.map((item) => [slashCommandName(item.name), item]))
     const permitted = (name: string) => skillAction(sync.data.config.permission, name) !== "deny"
     const local = command.options
       .filter((item) => item.slash && !item.disabled && (item.slash !== "stop" || working()))
@@ -1041,7 +1042,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         usage: item.usage,
         source: "builtin" as const,
         category: (item.category ?? "session") as SlashCommand["category"],
-        type: "action" as const,
+        type: name === "customize" ? ("command" as const) : ("action" as const),
       }
     })
     const project = sync.data.command
@@ -1105,7 +1106,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const slashItems = (query: string) => {
     const items = store.slashInline
-      ? slashCommands().filter((item) => item.type === "skill" || item.type === "mode")
+      ? slashCommands().filter((item) => item.type === "skill" || item.type === "command" || item.type === "mode")
       : slashCommands()
     return slashMatches(items, query, SLASH_QUERY_LIMIT)
   }
@@ -1200,7 +1201,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       return
     }
 
-    if (cmd.type === "skill") {
+    if (cmd.type === "skill" || cmd.type === "command") {
       replaceSlash(`/${cmd.trigger} `)
       return
     }
@@ -2053,8 +2054,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     const delegationConfig = delegation()
     const delegationEnabled = delegationConfig.level !== "off"
     const [head, ...tail] = text.split(" ")
-    const name = text.startsWith("/") ? head.slice(1) : undefined
-    const command = name ? sync.data.command.find((item) => item.name === name) : undefined
+    const name = text.startsWith("/") ? slashCommandName(head.slice(1)) : undefined
+    const command = name ? sync.data.command.find((item) => slashCommandName(item.name) === name) : undefined
     const native = command?.source === "builtin" && command.menu
     const active = projectData.session.find((session) => session.id === sourceID)
     if (native && active && mode === "normal" && images.length === 0) {
@@ -2287,11 +2288,12 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
     if (text.startsWith("/")) {
       const [cmdName, ...args] = text.split(" ")
-      const commandName = cmdName.slice(1)
+      const commandName = slashCommandName(cmdName.slice(1))
       // Catalogs load after first paint; an early slash command must not become
       // ordinary prompt text just because that background request is pending.
       const commands =
-        sessionDirectory === projectDirectory && projectData.command.some((command) => command.name === commandName)
+        sessionDirectory === projectDirectory &&
+        projectData.command.some((command) => slashCommandName(command.name) === commandName)
           ? projectData.command
           : await client.command
               .list()
@@ -2306,7 +2308,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         restoreInputAfterFailure()
         return
       }
-      const customCommand = commands.find((command) => command.name === commandName)
+      const customCommand = commands.find((command) => slashCommandName(command.name) === commandName)
       if (customCommand) {
         if (queuedDelivery) {
           setSubmitting(false)

@@ -1111,6 +1111,13 @@ export type EventExperimentStudyEvent = {
   }
 }
 
+export type EventSpecialistUpdated = {
+  type: "specialist.updated"
+  properties: {
+    revision: number
+  }
+}
+
 export type EventMcpToolsChanged = {
   type: "mcp.tools.changed"
   properties: {
@@ -1382,6 +1389,7 @@ export type Event =
   | EventExperimentStudyUpdated
   | EventExperimentIdeaUpdated
   | EventExperimentStudyEvent
+  | EventSpecialistUpdated
   | EventMcpToolsChanged
   | EventMcpBrowserOpenFailed
   | EventCommandExecuted
@@ -3365,6 +3373,49 @@ export type SkillRoots = {
   revision: number
 }
 
+export type SpecialistProfile = {
+  name: string
+  displayName: string
+  description?: string
+  instructions?: string
+  icon?: "brain" | "flask" | "atom" | "code" | "chart" | "book" | "search" | "sparkles"
+  color?: "neutral" | "blue" | "purple" | "green" | "orange" | "pink"
+  enabled?: boolean
+  skillNames?: Array<string> | null
+  connectors?: Array<string> | null
+  source: "builtin" | "custom" | "configured"
+  updatedAt: number
+}
+
+export type SpecialistSnapshot = {
+  revision: number
+  profiles: Array<SpecialistProfile>
+}
+
+export type SpecialistCatalog = {
+  skills: Array<{
+    name: string
+    description: string
+    category?: string
+  }>
+  connectors: Array<{
+    name: string
+    enabled: boolean
+  }>
+}
+
+export type SpecialistInput = {
+  name: string
+  displayName: string
+  description?: string
+  instructions?: string
+  icon?: "brain" | "flask" | "atom" | "code" | "chart" | "book" | "search" | "sparkles"
+  color?: "neutral" | "blue" | "purple" | "green" | "orange" | "pink"
+  enabled?: boolean
+  skillNames?: Array<string> | null
+  connectors?: Array<string> | null
+}
+
 export type Path = {
   home: string
   state: string
@@ -3394,6 +3445,11 @@ export type Command = {
 
 export type Agent = {
   name: string
+  displayName?: string
+  icon?: string
+  disabled?: boolean
+  skillNames?: Array<string>
+  connectors?: Array<string>
   description?: string
   mode: "subagent" | "primary" | "all"
   native?: boolean
@@ -20834,6 +20890,226 @@ export type SettingsSkillsInstallResponses = {
 }
 
 export type SettingsSkillsInstallResponse = SettingsSkillsInstallResponses[keyof SettingsSkillsInstallResponses]
+
+export type SettingsSpecialistsListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/settings/specialists"
+}
+
+export type SettingsSpecialistsListErrors = {
+  /**
+   * Invalid specialist or capabilities
+   */
+  400: unknown
+  /**
+   * Specialist not found
+   */
+  404: unknown
+  /**
+   * Conflicting revision or agent ID
+   */
+  409: unknown
+}
+
+export type SettingsSpecialistsListResponses = {
+  /**
+   * List built-in and custom specialists
+   */
+  200: SpecialistSnapshot
+}
+
+export type SettingsSpecialistsListResponse = SettingsSpecialistsListResponses[keyof SettingsSpecialistsListResponses]
+
+export type SettingsSpecialistsCreateData = {
+  body?: {
+    revision: number
+    profile: SpecialistInput
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/settings/specialists"
+}
+
+export type SettingsSpecialistsCreateErrors = {
+  /**
+   * Invalid specialist or capabilities
+   */
+  400: unknown
+  /**
+   * Specialist not found
+   */
+  404: unknown
+  /**
+   * Conflicting revision or agent ID
+   */
+  409: unknown
+}
+
+export type SettingsSpecialistsCreateResponses = {
+  /**
+   * Create a specialist
+   */
+  200: SpecialistSnapshot
+}
+
+export type SettingsSpecialistsCreateResponse =
+  SettingsSpecialistsCreateResponses[keyof SettingsSpecialistsCreateResponses]
+
+export type SettingsSpecialistsCatalogData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/settings/specialists/catalog"
+}
+
+export type SettingsSpecialistsCatalogErrors = {
+  /**
+   * Invalid specialist or capabilities
+   */
+  400: unknown
+  /**
+   * Specialist not found
+   */
+  404: unknown
+  /**
+   * Conflicting revision or agent ID
+   */
+  409: unknown
+}
+
+export type SettingsSpecialistsCatalogResponses = {
+  /**
+   * List available specialist capabilities
+   */
+  200: SpecialistCatalog
+}
+
+export type SettingsSpecialistsCatalogResponse =
+  SettingsSpecialistsCatalogResponses[keyof SettingsSpecialistsCatalogResponses]
+
+export type SettingsSpecialistsRemoveData = {
+  body?: {
+    revision: number
+  }
+  path: {
+    name: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/settings/specialists/{name}"
+}
+
+export type SettingsSpecialistsRemoveErrors = {
+  /**
+   * Invalid specialist or capabilities
+   */
+  400: unknown
+  /**
+   * Specialist not found
+   */
+  404: unknown
+  /**
+   * Conflicting revision or agent ID
+   */
+  409: unknown
+}
+
+export type SettingsSpecialistsRemoveResponses = {
+  /**
+   * Delete a custom specialist or restore a built-in specialist
+   */
+  200: SpecialistSnapshot
+}
+
+export type SettingsSpecialistsRemoveResponse =
+  SettingsSpecialistsRemoveResponses[keyof SettingsSpecialistsRemoveResponses]
+
+export type SettingsSpecialistsToggleData = {
+  body?: {
+    revision: number
+    enabled: boolean
+  }
+  path: {
+    name: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/settings/specialists/{name}"
+}
+
+export type SettingsSpecialistsToggleErrors = {
+  /**
+   * Invalid specialist or capabilities
+   */
+  400: unknown
+  /**
+   * Specialist not found
+   */
+  404: unknown
+  /**
+   * Conflicting revision or agent ID
+   */
+  409: unknown
+}
+
+export type SettingsSpecialistsToggleResponses = {
+  /**
+   * Enable or disable a specialist
+   */
+  200: SpecialistSnapshot
+}
+
+export type SettingsSpecialistsToggleResponse =
+  SettingsSpecialistsToggleResponses[keyof SettingsSpecialistsToggleResponses]
+
+export type SettingsSpecialistsUpdateData = {
+  body?: {
+    revision: number
+    profile: SpecialistInput
+  }
+  path: {
+    name: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/settings/specialists/{name}"
+}
+
+export type SettingsSpecialistsUpdateErrors = {
+  /**
+   * Invalid specialist or capabilities
+   */
+  400: unknown
+  /**
+   * Specialist not found
+   */
+  404: unknown
+  /**
+   * Conflicting revision or agent ID
+   */
+  409: unknown
+}
+
+export type SettingsSpecialistsUpdateResponses = {
+  /**
+   * Update a specialist
+   */
+  200: SpecialistSnapshot
+}
+
+export type SettingsSpecialistsUpdateResponse =
+  SettingsSpecialistsUpdateResponses[keyof SettingsSpecialistsUpdateResponses]
 
 export type SettingsNetworkGetData = {
   body?: never

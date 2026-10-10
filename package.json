@@ -9,6 +9,7 @@
     "setup": "bun run tooling/repo/setup.ts",
     "dev": "bun --no-env-file run --cwd backend/cli --conditions=browser src/index.ts",
     "dev:ui": "bun run --cwd frontend/workspace dev",
+    "start:ui": "bun run --cwd frontend/workspace start",
     "typecheck": "turbo typecheck",
     "test": "bun run --cwd backend/cli test",
     "eval:launch:validate": "bun evals/launch/validate.ts",

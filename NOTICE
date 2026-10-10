@@ -7,6 +7,15 @@ Licensed under the Apache License, Version 2.0.
 It bundles or accesses the following third-party software and services.
 
 --------------------------------------------------------------------------------
+Claude Science Customize — specialist customization workflow reference
+Author: Anthropic (per AcademicForge ATTRIBUTIONS.md)
+https://github.com/HughYau/AcademicForge/tree/site-first/skills/claude-science/customize
+Upstream skill license: Apache License, Version 2.0.
+Retrieved 2026-10-09. Adapted and rewritten by Synthetic Sciences for OneLab's
+specialist tool, persistence, permission model and settings interface. The
+upstream Claude control-plane implementation is not bundled.
+
+--------------------------------------------------------------------------------
 ZCode — harness command admission, stable tool-input serialization and lifecycle design reference
 https://github.com/zai-org/ZCode
 Reference revision: 328c1a0c0ffaa5a4f65e8fa199af5e4c20706e5f

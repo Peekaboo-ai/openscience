@@ -12,6 +12,7 @@ import {
   slashActionSkill,
   slashBlurb,
   slashCatalog,
+  slashCommandName,
   slashGroup,
   slashIcon,
   slashEdit,
@@ -85,7 +86,7 @@ test("a bare slash lists core in workflow order, then pinned, session and the li
 
   expect(SLASH_NATIVE).toEqual(["plan", "goal", "compact"])
   expect(SLASH_CONTEXTUAL).toEqual(["stop"])
-  expect(SLASH_SESSION).toEqual(["stop", "init", "handoff", "checkpoint", "resume"])
+  expect(SLASH_SESSION).toEqual(["stop", "init", "handoff", "checkpoint", "resume", "customize"])
   expect(SLASH_CORE.slice(0, 2)).toEqual(["plan", "goal"])
   expect(SLASH_CORE.at(-1)).toBe("compact")
   expect(SLASH_CORE).not.toContain("status")
@@ -144,6 +145,20 @@ test("rows carry fixed icons for the core toolkit and subject icons for the libr
   expect(SLASH_ACTION_SKILLS).toEqual(["init", "stop", "handoff", "checkpoint"])
   expect(SLASH_ACTION_SKILLS.every(slashActionSkill)).toBe(true)
   expect(slashActionSkill("review")).toBe(false)
+})
+
+test("customize appears in the catalog and prefix search while legacy drafts resolve to lowercase", () => {
+  const customize = command("customize", "builtin", { type: "command", category: "project" })
+  const commands = [...menu(), customize]
+  expect(slashCatalog(commands).filter((item) => item.trigger === "customize")).toHaveLength(1)
+  for (const query of ["cus", "cust", "customize", "CUSTOMIZE"]) {
+    expect(slashMatches(commands, query)[0]?.trigger).toBe("customize")
+  }
+  expect(slashCommandName("Customize")).toBe("customize")
+  expect(slashCommandName("customize")).toBe("customize")
+  expect(slashCommandName("MyProjectCommand")).toBe("MyProjectCommand")
+  expect(slashIcon(customize)).toBe("network")
+  expect(slashEdit("/cust Review RNA data", 5, "/customize ")?.content).toBe("/customize Review RNA data")
 })
 
 test("blurbs are one sentence in sentence case and subjects are readable labels", () => {

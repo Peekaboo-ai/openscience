@@ -466,6 +466,18 @@ import type {
   SettingsSkillsRemoveRootErrors,
   SettingsSkillsRemoveRootResponses,
   SettingsSkillsRootsResponses,
+  SettingsSpecialistsCatalogErrors,
+  SettingsSpecialistsCatalogResponses,
+  SettingsSpecialistsCreateErrors,
+  SettingsSpecialistsCreateResponses,
+  SettingsSpecialistsListErrors,
+  SettingsSpecialistsListResponses,
+  SettingsSpecialistsRemoveErrors,
+  SettingsSpecialistsRemoveResponses,
+  SettingsSpecialistsToggleErrors,
+  SettingsSpecialistsToggleResponses,
+  SettingsSpecialistsUpdateErrors,
+  SettingsSpecialistsUpdateResponses,
   SettingsStorageClearCacheResponses,
   SettingsStorageRelocateErrors,
   SettingsStorageRelocateResponses,
@@ -487,6 +499,7 @@ import type {
   SettingsUsageStatsGetErrors,
   SettingsUsageStatsGetResponses,
   SettingsWalletGetResponses,
+  SpecialistInput,
   SubtaskPartInput,
   TextPartInput,
   ToolIdsErrors,
@@ -2861,6 +2874,210 @@ export class Skills extends HeyApiClient {
   }
 }
 
+export class Specialists extends HeyApiClient {
+  /**
+   * List built-in and custom specialists
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<
+      SettingsSpecialistsListResponses,
+      SettingsSpecialistsListErrors,
+      ThrowOnError
+    >({
+      url: "/settings/specialists",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Create a specialist
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      revision: number
+      profile: SpecialistInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "revision" },
+            { in: "body", key: "profile" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SettingsSpecialistsCreateResponses,
+      SettingsSpecialistsCreateErrors,
+      ThrowOnError
+    >({
+      url: "/settings/specialists",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * List available specialist capabilities
+   */
+  public catalog<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<
+      SettingsSpecialistsCatalogResponses,
+      SettingsSpecialistsCatalogErrors,
+      ThrowOnError
+    >({
+      url: "/settings/specialists/catalog",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Delete a custom specialist or restore a built-in specialist
+   */
+  public remove<ThrowOnError extends boolean = false>(
+    parameters: {
+      name: string
+      directory?: string
+      revision: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "name" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "revision" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<
+      SettingsSpecialistsRemoveResponses,
+      SettingsSpecialistsRemoveErrors,
+      ThrowOnError
+    >({
+      url: "/settings/specialists/{name}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Enable or disable a specialist
+   */
+  public toggle<ThrowOnError extends boolean = false>(
+    parameters: {
+      name: string
+      directory?: string
+      revision: number
+      enabled: boolean
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "name" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "revision" },
+            { in: "body", key: "enabled" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<
+      SettingsSpecialistsToggleResponses,
+      SettingsSpecialistsToggleErrors,
+      ThrowOnError
+    >({
+      url: "/settings/specialists/{name}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Update a specialist
+   */
+  public update<ThrowOnError extends boolean = false>(
+    parameters: {
+      name: string
+      directory?: string
+      revision: number
+      profile: SpecialistInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "name" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "revision" },
+            { in: "body", key: "profile" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<
+      SettingsSpecialistsUpdateResponses,
+      SettingsSpecialistsUpdateErrors,
+      ThrowOnError
+    >({
+      url: "/settings/specialists/{name}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class Network extends HeyApiClient {
   /**
    * Get network allow-list
@@ -2997,6 +3214,11 @@ export class Settings extends HeyApiClient {
   private _skills?: Skills
   get skills(): Skills {
     return (this._skills ??= new Skills({ client: this.client }))
+  }
+
+  private _specialists?: Specialists
+  get specialists(): Specialists {
+    return (this._specialists ??= new Specialists({ client: this.client }))
   }
 
   private _network?: Network

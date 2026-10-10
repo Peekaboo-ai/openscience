@@ -108,6 +108,17 @@ export default function Page(): JSX.Element {
   )
   const layout = useLayout()
   const prompt = usePrompt()
+  createEffect(() => {
+    const search = new URLSearchParams(location.search)
+    if (search.get("customize") !== "1" || !prompt.ready()) return
+    // 只预填新会话草稿，不自动发送，也不覆盖用户已经输入的内容。
+    if (!prompt.dirty()) {
+      const text = "/customize Help me create a new specialist."
+      prompt.set([{ type: "text", content: text, start: 0, end: text.length }], text.length)
+    }
+    search.delete("customize")
+    navigate(`${location.pathname}${search.size ? `?${search}` : ""}`, { replace: true })
+  })
   const terminal = useTerminal()
   const server = useServer()
   const platform = usePlatform()

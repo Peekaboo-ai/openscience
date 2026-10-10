@@ -76,7 +76,7 @@ export namespace SystemPrompt {
     if (!agent.prompt) return agent
     const withScience = agent.prompt.replace(SCIENCE_SLOT, science())
     if (!withScience.includes(DOMAIN_SKILLS_SLOT)) return { ...agent, prompt: withScience }
-    const index = (await domainSkills(agent.skills ?? [], agent.permission)) ?? ""
+    const index = (await domainSkills(agent.skills ?? [], agent.permission, agent.skillNames)) ?? ""
     return { ...agent, prompt: withScience.replace(DOMAIN_SKILLS_SLOT, index).trim() }
   }
 
@@ -104,13 +104,15 @@ export namespace SystemPrompt {
 
   /** The `<domain-skills>` index of a specialist: every skill in its
    * categories, one line each, grouped by category. */
-  export async function domainSkills(categories: string[], permission: PermissionNext.Ruleset) {
-    if (!categories.length) return
+  export async function domainSkills(categories: string[], permission: PermissionNext.Ruleset, names?: string[]) {
+    if (!categories.length && !names?.length) return
     const catalog = (await Skill.catalog(permission)).allowed
-    const groups = categories
+    const groups = (names ? ["Selected skills"] : categories)
       .map((category) => ({
         category,
-        skills: catalog.filter((skill) => skill.category === category).sort((a, b) => a.name.localeCompare(b.name)),
+        skills: catalog
+          .filter((skill) => (names ? names.includes(skill.name) : skill.category === category))
+          .sort((a, b) => a.name.localeCompare(b.name)),
       }))
       .filter((group) => group.skills.length)
     if (!groups.length) return

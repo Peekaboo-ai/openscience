@@ -9,6 +9,7 @@ const modules: Record<(typeof SETTINGS_PANEL_IDS)[number], string> = {
   models: "Models",
   "local-models": "LocalModels",
   skills: "Skills",
+  specialists: "Specialists",
   memory: "Memory",
   "scientific-tools": "ScientificTools",
   connectors: "Connectors",
@@ -41,6 +42,7 @@ describe("settings registry source contract", () => {
       "Models",
       "Local models",
       "Skills",
+      "Specialists",
       "Memory",
       "Tools",
       "Connectors",
@@ -93,10 +95,10 @@ describe("settings registry source contract", () => {
     expect(general).not.toContain("show_trace")
   })
 
-  test("keeps specialists unavailable and exposes the persistent memory module", () => {
-    expect(SETTINGS_PANEL_IDS).not.toContain("specialists" as never)
+  test("exposes specialists and the persistent memory module", () => {
+    expect(SETTINGS_PANEL_IDS).toContain("specialists")
     expect(SETTINGS_PANEL_IDS).toContain("memory")
-    expect(SETTINGS_PANELS.map((panel) => panel.title)).not.toContain("Specialists")
+    expect(SETTINGS_PANELS.map((panel) => panel.title)).toContain("Specialists")
     expect(SETTINGS_PANELS.map((panel) => panel.title)).toContain("Memory")
   })
 

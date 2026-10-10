@@ -2333,7 +2333,7 @@ export namespace SessionPrompt {
     const nativeIDs = new Set(await ToolRegistry.ids())
     // Connected MCP servers are part of the normal workspace: every tool a
     // server exposes is offered unless a permission rule denies it.
-    const mcp = input.tools?.["*"] === false ? {} : await MCP.tools()
+    const mcp = input.tools?.["*"] === false ? {} : await MCP.tools(input.agent.connectors)
     for (const [key, item] of Object.entries(mcp)) {
       if (nativeIDs.has(key)) continue
       if (!ToolVisibility.enabled(key, { permission, tools: input.tools })) continue
@@ -3800,6 +3800,7 @@ or internal reasoning. Call plan_exit when the plan is ready for approval.`)
     }
 
     const command = await Command.get(input.command)
+    const skillInvocation = command.source === "builtin" && command.name === Command.Default.CUSTOMIZE
     const agentName = command.agent ?? input.agent ?? (await Agent.defaultAgent())
     const prior = await newestUser(input.sessionID)
     const selectedModel = input.model ? Provider.parseModel(input.model) : await lastModel(input.sessionID, prior)
@@ -3825,7 +3826,10 @@ or internal reasoning. Call plan_exit when the plan is ready for approval.`)
       return args[argIndex]
     })
     const usesArgumentsPlaceholder = templateCommand.includes("$ARGUMENTS")
-    let template = withArgs.replaceAll("$ARGUMENTS", input.arguments)
+    // 技能入口保留用户原意，由统一预加载链路加载技能；用户文本不能作为命令模板执行。
+    let template = skillInvocation
+      ? `/customize${input.arguments ? ` ${input.arguments}` : ""}`
+      : withArgs.replaceAll("$ARGUMENTS", input.arguments)
 
     // If command doesn't explicitly handle arguments (no $N or $ARGUMENTS placeholders)
     // but user provided arguments, append them to the template
@@ -3834,7 +3838,7 @@ or internal reasoning. Call plan_exit when the plan is ready for approval.`)
     }
 
     const commandMessageID = input.messageID ?? Identifier.ascending("message")
-    const shell = ConfigMarkdown.shell(template)
+    const shell = skillInvocation ? [] : ConfigMarkdown.shell(template)
     if (shell.length > 0) {
       const commandAgent = await Agent.get(agentName)
       if (!commandAgent) throw new Error(`Agent not found: "${agentName}"`)

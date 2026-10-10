@@ -1185,6 +1185,7 @@ function createGlobalSync() {
   }
 
   let skillRefreshVersion = 0
+  let specialistRefreshVersion = 0
   const unsub = globalSDK.event.listen((e) => {
     const directory = e.name
     const event = e.details
@@ -1244,6 +1245,19 @@ function createGlobalSync() {
                 if (version === skillRefreshVersion) setStore("skill", response.data ?? [])
               })
               .catch(() => {})
+          }
+          return
+        }
+        case "specialist.updated": {
+          const version = ++specialistRefreshVersion
+          for (const [directory, [store, setStore]] of Object.entries(children)) {
+            if (!requested.has(directory)) continue
+            void sdkFor(directory, store.project || undefined)
+              .app.agents()
+              .then((response) => {
+                if (version === specialistRefreshVersion) setStore("agent", response.data ?? [])
+              })
+              .catch((error) => console.warn("Failed to refresh specialists", { error }))
           }
           return
         }

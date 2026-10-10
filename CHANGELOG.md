@@ -8,6 +8,14 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 
 ## Unreleased
 
+- **Stable local workspace.** Add `bun run start:ui` for daily browser use from source. Build and serve the UI without Vite's hot-reload client so a background connection drop does not force a page reload on return; retain `dev:ui` for live source editing and keep local preview output separate from the CLI bundle.
+
+- **Remote capability verification.** Add a deployment check for the actual remote runtime version, lowercase `/customize` command, bundled skill and Specialists APIs. Document rebuilding and reconnecting remote runtimes when backend features change.
+
+- **Customize intent and routing.** Preserve the user's slash message and load the skill before the first model step. Capability questions receive an explanation; drafts stay in the conversation until saving is requested. Search and paginate specialist/capability discovery, fetch a single profile for edits, and return compact write receipts instead of injecting entire registries. Approving catalog reads no longer grants blanket specialist mutation access.
+
+- **Specialists and /customize.** Create and manage research experts in Settings with identity previews, instructions, explicit skill/connector scopes, enable/disable, duplication and built-in reset. Chat with OneLab starts a prefilled customization conversation backed by the real specialist management tool. Profiles persist per server, respect project permissions, update delegation immediately, and reject conflicting edits without losing drafts. The lowercase command appears in slash completion before the skill library loads; selecting it preserves the draft for entering requirements. Specialists uses its own collaboration icon in Settings.
+
 - **Integrated queue controls.** Dock queued messages against the composer, with a prominent Steer button and directly visible edit/delete controls. Reorder tasks by dragging the handle with mouse or touch, with a drop indicator, automatic edge scrolling and arrow-key alternatives. Keep compact single-message rows and pause/resume controls; cancel stale gestures when the queue or session changes.
 
 - **Queue-first conversation follow-ups.** While Research is running, Send/Enter queues a separate task above the composer. Promote a queued message into the current run with Guide, or edit, remove, reorder, pause and resume pending work. Preserve attachments and model settings, bind guidance to the displayed active run, prevent duplicate delivery across retries, and recover queue reads after transient failures. Ctrl/⌘+Enter sends draft guidance directly.

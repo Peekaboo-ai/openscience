@@ -1278,7 +1278,7 @@ export namespace MCP {
     delete s.status[name]
   }
 
-  export async function tools() {
+  export async function tools(allowed?: readonly string[]) {
     return (async () => {
       const result: Record<string, Tool> = {}
       const s = await state()
@@ -1288,6 +1288,7 @@ export namespace MCP {
       const defaultTimeout = cfg.experimental?.mcp_timeout
 
       for (const [clientName, client] of Object.entries(clientsSnapshot)) {
+        if (allowed && !allowed.includes(clientName)) continue
         // Only include tools from connected MCPs (skip disabled ones)
         if (s.status[clientName]?.status !== "connected") {
           continue

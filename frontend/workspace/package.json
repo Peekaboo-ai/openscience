@@ -9,7 +9,7 @@
   },
   "scripts": {
     "typecheck": "tsgo -b",
-    "start": "vite",
+    "start": "node script/start.mjs",
     "dev": "vite",
     "build": "vite build",
     "serve": "vite preview",

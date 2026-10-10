@@ -85,6 +85,7 @@ export namespace Command {
     COMPACT: "compact",
     HANDOFF: "handoff",
     CHECKPOINT: "checkpoint",
+    CUSTOMIZE: "customize",
   } as const
 
   const compute = async () => {
@@ -94,6 +95,15 @@ export namespace Command {
     const cfg = await Config.getExecution()
 
     const result: Record<string, Info> = {
+      [Default.CUSTOMIZE]: {
+        name: Default.CUSTOMIZE,
+        description: "Learn about, design, or manage OneLab specialists",
+        source: "builtin",
+        category: "project",
+        usage: "/customize [question or specialist requirements]",
+        template: "/customize $ARGUMENTS",
+        hints: ["$ARGUMENTS"],
+      },
       [Default.INIT]: {
         name: Default.INIT,
         description: "Write this project's AGENTS.md: question, data, conventions, deliverables",
@@ -276,7 +286,7 @@ export namespace Command {
   }
 
   export async function get(name: string) {
-    return state().then((x) => x[name])
+    return state().then((x) => x[name] ?? (name.toLowerCase() === "customize" ? x[Default.CUSTOMIZE] : undefined))
   }
 
   export async function list() {

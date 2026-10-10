@@ -61,4 +61,16 @@ bun tooling/repo/build-remote.ts linux-x64-baseline
 
 Supported build arguments are `linux-x64-baseline`, `linux-arm64`, `darwin-x64`, and `darwin-arm64`. Package the output beside the local executable as `remote/<target>/openscience`, or set `OPENSCIENCE_REMOTE_ASSETS` to the runtime root. Source development also searches `tooling/remote/dist`. A missing runtime produces an actionable connection error.
 
+Rebuild the remote runtime whenever backend commands, bundled skills or Settings APIs change. Updating the local source server or browser alone does not update an already connected remote backend. After the new binary is packaged, disconnect and reconnect each affected remote workspace at a suitable task boundary; reconnecting stops its in-process work and terminals but preserves saved conversations and files. A cached binary with the same checksum is reused.
+
+Verify the connected remote backend using its gateway, project ID and the version assigned to the build:
+
+```sh
+bun tooling/repo/verify-remote-capabilities.ts \
+  http://127.0.0.1:4106/remote-workspaces/BOOKMARK_ID/api \
+  PROJECT_ID EXPECTED_VERSION
+```
+
+This read-only check requires the expected version, a single lowercase `/customize` command, its bundled skill, and working Specialists list/catalog APIs. It rejects an HTML fallback response even if the HTTP status is 200. If `/customize` works locally but is absent in a remote project, check that remote deployment before changing the browser's command list.
+
 Responses stream over the connection, including binary downloads and event streams. Individual request bodies currently have a 16 MiB limit; use SSH/SFTP or another file transfer tool for larger uploads. The connection does not create Docker containers, install system packages, or provide unattended remote process persistence.

@@ -24,6 +24,19 @@ updater check during startup. Track the fixed installer in
 To keep working, install Node.js and run `npx synsci` in a terminal to open the
 CLI's browser workspace, which uses a separate startup path.
 
+## The browser workspace reloads after returning to a tab
+
+When running from source with `bun run dev:ui`, Vite's development connection can
+reload the page after a background connection drops and reconnects. For daily
+use, keep the API server running and start the frontend with `bun run start:ui`.
+It builds and serves the workspace at `http://127.0.0.1:3000` without hot reload.
+Stop the old frontend listener before starting another on the same port.
+
+If your API uses a different port, pass its address, for example
+`bun run start:ui --server http://127.0.0.1:4106`. Use `dev:ui` when you want source
+edits to update the browser automatically. The installed CLI and desktop app
+already serve a built workspace.
+
 ## No models available
 
 Open **Customize → Models** and check the selected access mode.

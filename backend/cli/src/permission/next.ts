@@ -82,6 +82,12 @@ export namespace PermissionNext {
 
   export function risk(permission: string, metadata?: Record<string, unknown>): Risk {
     if (PASSIVE.has(permission)) return "passive"
+    // 读取专家目录不改变状态；写入会影响服务器上的其他项目，保留有副作用操作的审批边界。
+    if (permission === "specialist") {
+      if (["list", "get", "catalog"].some((action) => action === metadata?.action)) return "passive"
+      if (["create", "update", "toggle", "remove"].some((action) => action === metadata?.action)) return "risky"
+      return "unknown"
+    }
     if (permission === "bash") {
       const parsed = ShellMetadata.safeParse(metadata)
       if (!parsed.success) return "unknown"

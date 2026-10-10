@@ -50,6 +50,7 @@ import { PermissionRoutes } from "./routes/permission"
 import { SearchRoutes } from "./routes/search"
 import { GlobalRoutes } from "./routes/global"
 import { SettingsSkillsRoutes } from "./routes/settings/skills"
+import { SpecialistSettingsRoutes } from "./routes/settings/specialists"
 import { NetworkSettingsRoutes } from "./routes/settings/network"
 import { CredentialsRoutes } from "./routes/settings/credentials"
 import { StorageRoutes } from "./routes/settings/storage"
@@ -439,6 +440,7 @@ export namespace Server {
         .route("/provenance", ProvenanceRoutes())
         .route("/mcp", McpRoutes())
         .route("/settings/skills", SettingsSkillsRoutes())
+        .route("/settings/specialists", SpecialistSettingsRoutes())
         .route("/settings/network", NetworkSettingsRoutes())
         .post(
           "/instance/dispose",

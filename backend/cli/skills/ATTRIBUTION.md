@@ -1,5 +1,15 @@
 # Skill attribution
 
+## Claude Science Customize (via AcademicForge)
+
+`research/customize` is adapted and rewritten from Anthropic's Claude Science
+Customize skill as hosted by [AcademicForge](https://github.com/HughYau/AcademicForge/tree/site-first/skills/claude-science/customize),
+retrieved 2026-10-09. The upstream skill declares Apache-2.0 (independently of the
+forge repository's MIT license). The OneLab adaptation replaces the Claude host
+APIs with its permission-checked specialist tool and server-scoped persistence.
+Author: Anthropic, as recorded in AcademicForge's ATTRIBUTIONS.md. Adaptation:
+Synthetic Sciences. A copy of Apache-2.0 is included beside the adapted skill.
+
 Most of the bundled skills under this directory began life in other open
 collections. This file records where each one came from, under which license,
 and how far it has been changed here, so the people who wrote them are credited

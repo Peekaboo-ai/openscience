@@ -27,11 +27,18 @@ import { BILLING_URL } from "@/endpoints"
 import { requiresWalletBalance, resolveCredentialSource } from "@/session/access-route"
 import { ToolVisibility } from "@/tool/visibility"
 import { BIOLOGY_TOOL_IDS } from "@/tool/biology/ids"
+import { SpecialistRepository } from "../specialist/repository"
+import { specialistAgents } from "../specialist/runtime"
 
 export namespace Agent {
   export const Info = z
     .object({
       name: z.string(),
+      displayName: z.string().optional(),
+      icon: z.string().optional(),
+      disabled: z.boolean().optional(),
+      skillNames: z.array(z.string()).optional(),
+      connectors: z.array(z.string()).optional(),
       description: z.string().optional(),
       mode: z.enum(["subagent", "primary", "all"]),
       native: z.boolean().optional(),
@@ -428,19 +435,28 @@ export namespace Agent {
 
   const state = Instance.state(compute)
 
+  export async function definitions() {
+    return state()
+  }
+
+  async function effective() {
+    const [base, store] = await Promise.all([state(), SpecialistRepository.read()])
+    return specialistAgents(base, store.profiles)
+  }
+
   /** Rebuild project-defined specialists and permissions after trust changes. */
   export function invalidate() {
     State.clear(Instance.directory, compute)
   }
 
   export async function get(agent: string) {
-    return state().then((x) => x[agent])
+    return effective().then((x) => x[agent])
   }
 
   export async function list() {
     const cfg = await Config.getExecution()
     return pipe(
-      await state(),
+      Object.fromEntries(Object.entries(await effective()).filter(([, agent]) => !agent.disabled)),
       values(),
       sortBy([(x) => (cfg.default_agent ? x.name === cfg.default_agent : x.name === "research"), "desc"]),
     )

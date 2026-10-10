@@ -397,7 +397,7 @@ export const TaskTool = Tool.define("task", async (ctx) => {
       }
 
       const next = await Agent.get(params.subagent_type)
-      if (!next || next.mode === "primary") {
+      if (!next || next.mode === "primary" || (next.disabled && !continuation)) {
         const names = accessible.map((a) => a.name).join(", ")
         throw new Error(`Unknown agent type: ${params.subagent_type} is not a valid subagent. Available: ${names}`)
       }

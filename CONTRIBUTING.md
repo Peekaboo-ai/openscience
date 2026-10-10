@@ -50,6 +50,21 @@ bun dev "$PWD"          # run in this checkout
 
 With no directory, `bun dev` runs in `backend/cli`, so the agent treats `backend/cli` as its project and reads `backend/cli/AGENTS.md`. That file is the agent's own instructions for that demo project; the repository style guide is the root [AGENTS.md](AGENTS.md). Relative paths resolve from `backend/cli` too, so pass an absolute path such as `bun dev "$PWD"` to run in this checkout.
 
+### Stable local workspace
+
+For daily use from source, keep the API server running and use `bun run start:ui`.
+This builds the current workspace and serves it at `http://127.0.0.1:3000` without
+the development hot-reload client. Backgrounding a tab or reconnecting the network
+therefore does not trigger Vite's automatic page reload. Changes to source files
+appear the next time this command builds the workspace.
+
+The default API is `http://localhost:4096`. For another running API, use
+`bun run start:ui --server http://127.0.0.1:4106`; the existing
+`VITE_OPENSCIENCE_SERVER_URL`, `_HOST`, and `_PORT` environment variables also work.
+Use `--port 3001` for a separate preview. The local build stays under
+`frontend/workspace/node_modules/.cache/workspace-preview`, separate from the
+bundle embedded into the CLI. This listener is for local use on loopback.
+
 ### Two development loops
 
 **Live UI.** Edit the workspace with hot reload by running the API server and the Vite dev server in two terminals:

@@ -35,6 +35,7 @@ export const SETTINGS_PANEL_IDS = [
   "models",
   "local-models",
   "skills",
+  "specialists",
   "memory",
   "scientific-tools",
   "connectors",
@@ -109,6 +110,13 @@ export const SETTINGS_PANELS: SettingsPanel[] = [
     icon: "book-open",
     section: "capabilities",
     component: lazy(() => import("./Skills")),
+  },
+  {
+    id: "specialists",
+    title: "Specialists",
+    icon: "network",
+    section: "capabilities",
+    component: lazy(() => import("./Specialists")),
   },
   {
     id: "memory",

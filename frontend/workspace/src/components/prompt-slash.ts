@@ -85,7 +85,7 @@ export function slashEdit(text: string, cursor: number, value: string): SlashEdi
 // the rarer built-in actions. Everything else is the library, by subject.
 export const SLASH_NATIVE = ["plan", "goal", "compact"] as const
 export const SLASH_CONTEXTUAL = ["stop"] as const
-export const SLASH_SESSION = ["stop", "init", "handoff", "checkpoint", "resume"] as const
+export const SLASH_SESSION = ["stop", "init", "handoff", "checkpoint", "resume", "customize"] as const
 export const SLASH_ACTION_SKILLS = ["init", "stop", "handoff", "checkpoint"] as const
 export const SLASH_CORE = [
   "plan",
@@ -112,6 +112,11 @@ export const SLASH_QUERY_LIMIT = 40
 export const SLASH_GROUP_CORE = "Core"
 export const SLASH_GROUP_PINNED = "Pinned"
 export const SLASH_GROUP_SESSION = "Session"
+
+// 兼容已保存的大写草稿与升级前的目录；所有新展示和请求统一使用小写名称。
+export function slashCommandName(name: string) {
+  return name.toLowerCase() === "customize" ? "customize" : name
+}
 
 export function slashActionSkill(name: string) {
   return (SLASH_ACTION_SKILLS as readonly string[]).includes(name)
@@ -160,6 +165,7 @@ const CORE_ICON = {
   handoff: "arrow-right",
   checkpoint: "archive",
   resume: "bolt",
+  customize: "network",
 } as const
 
 export function slashIcon(command: SlashCommand) {

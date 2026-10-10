@@ -58564,6 +58564,371 @@
         ]
       }
     },
+    "/settings/specialists": {
+      "get": {
+        "operationId": "settings.specialists.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List built-in and custom specialists",
+        "responses": {
+          "200": {
+            "description": "List built-in and custom specialists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpecialistSnapshot"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid specialist or capabilities"
+          },
+          "404": {
+            "description": "Specialist not found"
+          },
+          "409": {
+            "description": "Conflicting revision or agent ID"
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.settings.specialists.list({\n  ...\n})"
+          }
+        ]
+      },
+      "post": {
+        "operationId": "settings.specialists.create",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Create a specialist",
+        "responses": {
+          "200": {
+            "description": "Create a specialist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpecialistSnapshot"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid specialist or capabilities"
+          },
+          "404": {
+            "description": "Specialist not found"
+          },
+          "409": {
+            "description": "Conflicting revision or agent ID"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "profile": {
+                    "$ref": "#/components/schemas/SpecialistInput"
+                  }
+                },
+                "required": [
+                  "revision",
+                  "profile"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.settings.specialists.create({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/settings/specialists/catalog": {
+      "get": {
+        "operationId": "settings.specialists.catalog",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List available specialist capabilities",
+        "responses": {
+          "200": {
+            "description": "List available specialist capabilities",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpecialistCatalog"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid specialist or capabilities"
+          },
+          "404": {
+            "description": "Specialist not found"
+          },
+          "409": {
+            "description": "Conflicting revision or agent ID"
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.settings.specialists.catalog({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/settings/specialists/{name}": {
+      "put": {
+        "operationId": "settings.specialists.update",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Update a specialist",
+        "responses": {
+          "200": {
+            "description": "Update a specialist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpecialistSnapshot"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid specialist or capabilities"
+          },
+          "404": {
+            "description": "Specialist not found"
+          },
+          "409": {
+            "description": "Conflicting revision or agent ID"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "profile": {
+                    "$ref": "#/components/schemas/SpecialistInput"
+                  }
+                },
+                "required": [
+                  "revision",
+                  "profile"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.settings.specialists.update({\n  ...\n})"
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "settings.specialists.toggle",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Enable or disable a specialist",
+        "responses": {
+          "200": {
+            "description": "Enable or disable a specialist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpecialistSnapshot"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid specialist or capabilities"
+          },
+          "404": {
+            "description": "Specialist not found"
+          },
+          "409": {
+            "description": "Conflicting revision or agent ID"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "revision",
+                  "enabled"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.settings.specialists.toggle({\n  ...\n})"
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "settings.specialists.remove",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Delete a custom specialist or restore a built-in specialist",
+        "responses": {
+          "200": {
+            "description": "Delete a custom specialist or restore a built-in specialist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpecialistSnapshot"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid specialist or capabilities"
+          },
+          "404": {
+            "description": "Specialist not found"
+          },
+          "409": {
+            "description": "Conflicting revision or agent ID"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "revision"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpenScienceClient } from \"@synsci/sdk\"\n\nconst client = createOpenScienceClient()\nawait client.settings.specialists.remove({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/settings/network": {
       "get": {
         "operationId": "settings.network.get",
@@ -63611,6 +63976,30 @@
           "properties"
         ]
       },
+      "Event.specialist.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "specialist.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "revision": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "revision"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "properties"
+        ]
+      },
       "Event.mcp.tools.changed": {
         "type": "object",
         "properties": {
@@ -64579,6 +64968,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.experiment.study.event"
+          },
+          {
+            "$ref": "#/components/schemas/Event.specialist.updated"
           },
           {
             "$ref": "#/components/schemas/Event.mcp.tools.changed"
@@ -70679,6 +71071,271 @@
           "revision"
         ]
       },
+      "SpecialistProfile": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          },
+          "displayName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "description": {
+            "default": "",
+            "type": "string",
+            "maxLength": 2000
+          },
+          "instructions": {
+            "default": "",
+            "type": "string",
+            "maxLength": 32000
+          },
+          "icon": {
+            "default": "brain",
+            "type": "string",
+            "enum": [
+              "brain",
+              "flask",
+              "atom",
+              "code",
+              "chart",
+              "book",
+              "search",
+              "sparkles"
+            ]
+          },
+          "color": {
+            "default": "neutral",
+            "type": "string",
+            "enum": [
+              "neutral",
+              "blue",
+              "purple",
+              "green",
+              "orange",
+              "pink"
+            ]
+          },
+          "enabled": {
+            "default": true,
+            "type": "boolean"
+          },
+          "skillNames": {
+            "default": null,
+            "anyOf": [
+              {
+                "maxItems": 2000,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "connectors": {
+            "default": null,
+            "anyOf": [
+              {
+                "maxItems": 2000,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "builtin",
+              "custom",
+              "configured"
+            ]
+          },
+          "updatedAt": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "displayName",
+          "source",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "SpecialistSnapshot": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "number"
+          },
+          "profiles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SpecialistProfile"
+            }
+          }
+        },
+        "required": [
+          "revision",
+          "profiles"
+        ]
+      },
+      "SpecialistCatalog": {
+        "type": "object",
+        "properties": {
+          "skills": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "category": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "description"
+              ]
+            }
+          },
+          "connectors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "enabled": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "name",
+                "enabled"
+              ]
+            }
+          }
+        },
+        "required": [
+          "skills",
+          "connectors"
+        ]
+      },
+      "SpecialistInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          },
+          "displayName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "description": {
+            "default": "",
+            "type": "string",
+            "maxLength": 2000
+          },
+          "instructions": {
+            "default": "",
+            "type": "string",
+            "maxLength": 32000
+          },
+          "icon": {
+            "default": "brain",
+            "type": "string",
+            "enum": [
+              "brain",
+              "flask",
+              "atom",
+              "code",
+              "chart",
+              "book",
+              "search",
+              "sparkles"
+            ]
+          },
+          "color": {
+            "default": "neutral",
+            "type": "string",
+            "enum": [
+              "neutral",
+              "blue",
+              "purple",
+              "green",
+              "orange",
+              "pink"
+            ]
+          },
+          "enabled": {
+            "default": true,
+            "type": "boolean"
+          },
+          "skillNames": {
+            "default": null,
+            "anyOf": [
+              {
+                "maxItems": 2000,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "connectors": {
+            "default": null,
+            "anyOf": [
+              {
+                "maxItems": 2000,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "displayName"
+        ],
+        "additionalProperties": false
+      },
       "Path": {
         "type": "object",
         "properties": {
@@ -70790,6 +71447,27 @@
         "properties": {
           "name": {
             "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "icon": {
+            "type": "string"
+          },
+          "disabled": {
+            "type": "boolean"
+          },
+          "skillNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "connectors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "description": {
             "type": "string"

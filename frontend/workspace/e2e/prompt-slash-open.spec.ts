@@ -39,6 +39,53 @@ async function slash(page: Page, prompt: Locator, query: string) {
   await prompt.pressSequentially(query, { delay: 30 })
 }
 
+test("customize is discoverable before skills load and selection only prefills the draft", async ({
+  page,
+  gotoSession,
+  sdk,
+}) => {
+  const created = await sdk.session.create({ title: `e2e customize completion ${Date.now()}` }).then((r) => r.data)
+  if (!created?.id) throw new Error("Failed to create a customize fixture")
+  let release!: () => void
+  const pending = new Promise<void>((resolve) => (release = resolve))
+  await page.route("**/skill", async (route) => {
+    const response = await route.fetch()
+    await pending
+    await route.fulfill({ response })
+  })
+  const submissions: string[] = []
+  // 菜单选择只补全文本；即使回归也不让测试意外调用真实模型。
+  await page.route(/\/session\/[^/]+\/(command|prompt_async|message)(\?|$)/, async (route) => {
+    if (route.request().method() !== "POST") return route.continue()
+    submissions.push(route.request().url())
+    await route.fulfill({ status: 400, json: { message: "Selecting a completion must not submit a task" } })
+  })
+  try {
+    await gotoSession(created.id)
+    const prompt = page.locator(promptSelector)
+    await prompt.click()
+    await slash(page, prompt, "cust")
+    const option = page.locator('[data-slash-id="command.customize"]')
+    await expect(option).toBeVisible()
+    await expect(option).toContainText("/customize")
+    await option.click()
+    await expect(prompt).toHaveText("/customize ")
+    await expect(prompt).toBeFocused()
+    await expect(page.locator("#composer-slash-listbox")).toHaveCount(0)
+    release()
+    await prompt.pressSequentially("Review RNA data", { delay: 10 })
+    await expect(prompt).toHaveText("/customize Review RNA data")
+    expect(submissions).toEqual([])
+    await prompt.fill("")
+    await slash(page, prompt, "customize")
+    await expect(page.locator('[data-slash-id="skill.customize"]')).toHaveCount(0)
+    await expect(option).toBeVisible()
+  } finally {
+    release()
+    await sdk.session.delete({ sessionID: created.id }).catch(() => undefined)
+  }
+})
+
 test("smoke slash menu exposes session actions", async ({ page, gotoSession, sdk }) => {
   const title = `e2e slash menu ${Date.now()}`
   const created = await sdk.session.create({ title }).then((r) => r.data)

@@ -304,13 +304,14 @@ export interface AddItem {
   onSelect: () => void
 }
 
-export const AddMenu: Component<{ label: string; items: AddItem[] }> = (props) => {
+export const AddMenu: Component<{ label: string; items: AddItem[]; disabled?: boolean }> = (props) => {
   const dialog = useDialogMount()
   return (
     <DropdownMenu onOpenChange={dialog.open}>
       <DropdownMenu.Trigger
         ref={dialog.anchor}
         aria-label={props.label}
+        disabled={props.disabled}
         class={`${controlBase} settings-control--primary max-w-full`}
       >
         <Icon name="plus" size="small" class="shrink-0" />
